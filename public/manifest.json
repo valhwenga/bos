@@ -1,0 +1,16 @@
+{
+  "name": "Spiketech - Business Operating System",
+  "short_name": "Spiketech BOS",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b0c0e",
+  "theme_color": "#10b981",
+  "description": "Complete business operating system with project management, CRM, HRM, accounting and more",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "48x48 72x72 96x96 128x128 256x256",
+      "type": "image/x-icon"
+    }
+  ]
+}

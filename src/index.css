@@ -1,0 +1,124 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    --background: 0 0% 98%;
+    --foreground: 220 13% 13%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 13% 13%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 13% 13%;
+
+    --primary: 165 100% 36%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 13% 95%;
+    --secondary-foreground: 220 13% 13%;
+
+    --muted: 220 13% 95%;
+    --muted-foreground: 220 9% 46%;
+
+    --accent: 165 100% 36%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 165 100% 36%;
+
+    --radius: 0.75rem;
+    
+    --status-hold: 45 93% 47%;
+    --status-progress: 199 89% 48%;
+    --status-complete: 165 100% 36%;
+    --status-canceled: 348 83% 47%;
+    --status-pending: 29 80% 44%;
+    --status-new: 165 100% 36%;
+    --status-won: 165 100% 36%;
+    --status-loss: 348 83% 47%;
+    
+    --sidebar-width: 240px;
+    --sidebar-collapsed-width: 60px;
+
+    --sidebar-background: 0 0% 98%;
+
+    --sidebar-foreground: 240 5.3% 26.1%;
+
+    --sidebar-primary: 240 5.9% 10%;
+
+    --sidebar-primary-foreground: 0 0% 98%;
+
+    --sidebar-accent: 240 4.8% 95.9%;
+
+    --sidebar-accent-foreground: 240 5.9% 10%;
+
+    --sidebar-border: 220 13% 91%;
+
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 220 13% 13%;
+    --foreground: 0 0% 98%;
+
+    --card: 220 13% 16%;
+    --card-foreground: 0 0% 98%;
+
+    --popover: 220 13% 16%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 165 100% 36%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 13% 20%;
+    --secondary-foreground: 0 0% 98%;
+
+    --muted: 220 13% 20%;
+    --muted-foreground: 220 9% 65%;
+
+    --accent: 165 100% 36%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 13% 20%;
+    --input: 220 13% 20%;
+    --ring: 165 100% 36%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+  }
+}
+
+/* Print rules: only render the subtree with id #print-root */
+@media print {
+  body * { visibility: hidden !important; }
+  #print-root, #print-root * { visibility: visible !important; }
+  #print-root { position: absolute !important; left: 0; top: 0; right: 0; margin: 0 auto; }
+}
