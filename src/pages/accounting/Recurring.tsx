@@ -34,7 +34,7 @@ const NewRecurringDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>v
   const computeInitialNextRun = (): string => {
     const base = new Date(`${startDate}T${timeOfDay}:00`);
     const now = Date.now();
-    let t = base;
+    const t = base;
     const advance = () => {
       switch (cadence) {
         case 'weekly': t.setDate(t.getDate()+7); break;
@@ -202,7 +202,7 @@ const Recurring: React.FC = () => {
         const body = `Dear ${t.customer.name},\n\nPlease find attached your invoice ${inv.number}.\n\nRegards,\n${cs.name || 'Our Company'}`;
         const ensureScript = (src: string) => new Promise<void>((resolve, reject) => { const s = document.createElement('script'); s.src = src; s.async = true; s.onload = () => resolve(); s.onerror = () => reject(new Error('Failed to load '+src)); document.head.appendChild(s); });
         const w: any = window as any;
-        if (!(w.jspdf || w.jspdf_esm || w.jspdfjs)) { try { await ensureScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js'); } catch {} }
+        if (!(w.jspdf || w.jspdf_esm || w.jspdfjs)) { try { await ensureScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js'); } catch { /* ignore */ } }
         const { jsPDF } = (w.jspdf || w.jspdf_esm || w.jspdfjs) as any;
         const pdf = new jsPDF('p','mm','a4');
         let y = 15; pdf.setFontSize(16); pdf.text(`Invoice ${inv.number}`, 15, y); y+=8;
@@ -214,7 +214,7 @@ const Recurring: React.FC = () => {
         const dataUrl = pdf.output('datauristring');
         await EmailStore.send({ from: { name: cs.name || 'Billing', email: cs.email || 'noreply@example.com' }, to: [{ name: t.customer.name, email: t.customer.email }], subject, body, attachments: [{ id: `att_${Date.now()}`, name: `${inv.number}.pdf`, type: 'application/pdf', size: dataUrl.length, dataUrl }] } as any);
       }
-    } catch {}
+    } catch { /* ignore */ }
     setList(RecurringStore.list());
   };
 
@@ -255,7 +255,18 @@ const Recurring: React.FC = () => {
                     <TableCell className="text-right space-x-2">
                       <Button size="sm" variant="outline" onClick={()=> { setEditing(t); setOpen(true); }}>Edit</Button>
                       <Button size="sm" onClick={()=> runNow(t)}>Run Now</Button>
-                      <Button size="sm" variant="destructive" onClick={()=> { RecurringStore.remove(t.id); setList(RecurringStore.list()); }}>Delete</Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => {
+                          const ok = window.confirm("Delete this recurring template? This action cannot be undone.");
+                          if (!ok) return;
+                          RecurringStore.remove(t.id);
+                          setList(RecurringStore.list());
+                        }}
+                      >
+                        Delete
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}

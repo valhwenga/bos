@@ -77,7 +77,12 @@ const Expenses: React.FC = () => {
 
   const add = () => { setEditing(undefined); setDlgOpen(true); };
   const save = (e: Expense) => { editing ? ExpenseStore.update(e) : ExpenseStore.add(e); setExpenses(ExpenseStore.list()); };
-  const del = (id: string) => { ExpenseStore.remove(id); setExpenses(ExpenseStore.list()); };
+  const del = (id: string) => {
+    const ok = window.confirm("Delete this expense? This action cannot be undone.");
+    if (!ok) return;
+    ExpenseStore.remove(id);
+    setExpenses(ExpenseStore.list());
+  };
 
   const total = useMemo(() => filtered.reduce((s,e)=> s + (e.amount + (e.tax||0)), 0), [filtered]);
 

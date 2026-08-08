@@ -24,7 +24,7 @@ const WaConsole: React.FC = () => {
 
   useEffect(() => {
     const onChange = () => { setThreads(WhatsAppStore.listThreads()); setMessages(WhatsAppStore.listMessages()); };
-    window.addEventListener('wa.messages-changed', onChange as any);
+    window.addEventListener('wa.messages-changed', onChange as EventListener);
     // Poll inbound from serverless if available
     const iv = setInterval(async () => {
       try {
@@ -36,9 +36,11 @@ const WaConsole: React.FC = () => {
           const phone = WhatsAppStore.normalizePhone(e.from);
           WhatsAppStore.addMessage({ id: `wam_${Date.now()}_${Math.random().toString(36).slice(2,6)}`, threadId: phone, phone, from: 'customer', body: e.body || '', ts: e.ts || new Date().toISOString() });
         }
-      } catch {}
+      } catch {
+      // ignore errors
+    }
     }, 5000);
-    return () => { window.removeEventListener('wa.messages-changed', onChange as any); clearInterval(iv); };
+    return () => { window.removeEventListener('wa.messages-changed', onChange); clearInterval(iv); };
   }, []);
 
   const filteredThreads = useMemo(() => {
@@ -60,11 +62,11 @@ const WaConsole: React.FC = () => {
     setCompose("");
     // Real send if configured
     try {
-      const c = CustomersStore.list().find(x => x.id===thread.customerId) || CustomersStore.list().find(x=> x.phone && WhatsAppStore.normalizePhone(x.phone)===thread.phone);
+      const c = CustomersStore.list().find(x => x.id === thread.customerId) || CustomersStore.list().find(x => x.phone && WhatsAppStore.normalizePhone(x.phone) === thread.phone);
       const toPhone = c?.phone || thread.phone;
       if (!s.accessToken || !s.phoneNumberId) throw new Error('Missing settings, simulating');
       const url = `https://graph.facebook.com/v20.0/${s.phoneNumberId}/messages`;
-      const payload = { messaging_product: "whatsapp", to: toPhone, type: "text", text: { body: out.body } } as any;
+      const payload = { messaging_product: "whatsapp", to: toPhone, type: "text", text: { body: out.body } };
       const res = await fetch(url, { method: 'POST', headers: { 'Authorization': `Bearer ${s.accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       if (!res.ok) { const t = await res.text(); throw new Error(t); }
     } catch { /* simulated */ }
@@ -73,8 +75,8 @@ const WaConsole: React.FC = () => {
   const createThreadForCustomer = () => {
     // Quick start a thread by picking a customer
     const cs = CustomersStore.list();
-    const withPhone = cs.filter(c=> !!c.phone);
-    if (withPhone.length===0) { alert('No customers with phone'); return; }
+    const withPhone = cs.filter(c => !!c.phone);
+    if (withPhone.length === 0) { alert('No customers with phone'); return; }
     const c = withPhone[0];
     const phone = WhatsAppStore.normalizePhone(c.phone!);
     WhatsAppStore.upsertThread({ id: phone, phone, customerId: c.id, unread: 0 });

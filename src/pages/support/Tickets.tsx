@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Plus, Filter, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -10,12 +10,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { Link, useNavigate } from "react-router-dom";
 import { UserStore } from "@/lib/userStore";
 import { UsersStore } from "@/lib/usersStore";
+import { AuthStore } from "@/lib/authStore";
 
 const statusOptions: TicketStatus[] = ["open","in_progress","waiting","resolved","pending_approval","closed","rejected"];
 const priorityOptions: Priority[] = ["low","medium","high","urgent"];
 
 const Tickets = () => {
-  const [list, setList] = useState<Ticket[]>(SupportStore.list());
+  const acc = AuthStore.currentUser();
+  const myClientId = acc?.clientId;
+  const [list, setList] = useState<Ticket[]>(SupportStore.list().filter(t => (myClientId ? t.clientId === myClientId : true)));
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<TicketStatus | "all">("all");
   const [priority, setPriority] = useState<Priority | "all">("all");
@@ -23,8 +26,10 @@ const Tickets = () => {
   const [assignee, setAssignee] = useState<string | "all" | "unassigned" | "me">("all");
   const [form, setForm] = useState<Ticket>({ id: "", title: "", description: "", requester: "user", priority: "medium", status: "open", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), comments: [], attachments: [], category: "General", closureRequest: null, approval: null });
 
-  const refresh = () => setList(SupportStore.list());
-  useEffect(()=>{ refresh(); }, []);
+  const refresh = useCallback(() => {
+    setList(SupportStore.list().filter(t => (myClientId ? t.clientId === myClientId : true)));
+  }, [myClientId]);
+  useEffect(()=>{ refresh(); }, [refresh]);
 
   const me = UserStore.get();
   const filtered = useMemo(() => list.filter(t => {
@@ -41,14 +46,14 @@ const Tickets = () => {
     const now = new Date();
     const addHours = (h: number) => new Date(now.getTime() + h*3600000).toISOString();
     const due = addHours(s.slaTargets["medium"]);
-    setForm({ id: `T${Math.floor(Math.random()*90000+10000)}`, title: "", description: "", requester: me.id, priority: "medium", status: "open", createdAt: now.toISOString(), updatedAt: now.toISOString(), dueAt: due, comments: [], attachments: [], category: s.categories[0] || "General", closureRequest: null, approval: null }); setOpen(true); };
+    setForm({ id: `T${Math.floor(Math.random()*90000+10000)}`, title: "", description: "", clientId: myClientId, requester: me.id, priority: "medium", status: "open", createdAt: now.toISOString(), updatedAt: now.toISOString(), dueAt: due, comments: [], attachments: [], category: s.categories[0] || "General", closureRequest: null, approval: null }); setOpen(true); };
   const save = () => {
     if (!form.title.trim()) return;
     const s = SupportStore.settings();
     const now = new Date();
     const slaHrs = s.slaTargets[form.priority];
     const due = new Date(now.getTime() + slaHrs*3600000).toISOString();
-    const data = { ...form, requester: me.id, createdAt: now.toISOString(), updatedAt: now.toISOString(), dueAt: due };
+    const data = { ...form, clientId: myClientId, requester: me.id, createdAt: now.toISOString(), updatedAt: now.toISOString(), dueAt: due };
     SupportStore.upsert(data);
     AuditLogStore.append({ id: crypto.randomUUID?.() || String(Date.now()), ts: new Date().toISOString(), actor: "user", entity: "ticket", entityId: data.id, action: "create", details: data.title });
     setOpen(false);
@@ -78,21 +83,21 @@ const Tickets = () => {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input placeholder="Search by title or description..." value={q} onChange={(e)=> setQ(e.target.value)} className="pl-9 w-72" />
         </div>
-        <Select value={status} onValueChange={(v)=> setStatus(v as any)}>
+        <Select value={status} onValueChange={(v)=> setStatus(v === "all" ? "all" : (v as TicketStatus))}>
           <SelectTrigger className="w-44"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Statuses</SelectItem>
             {statusOptions.map(s => <SelectItem key={s} value={s}>{s.replace(/_/g,' ')}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Select value={priority} onValueChange={(v)=> setPriority(v as any)}>
+        <Select value={priority} onValueChange={(v)=> setPriority(v === "all" ? "all" : (v as Priority))}>
           <SelectTrigger className="w-44"><SelectValue placeholder="Priority" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Priorities</SelectItem>
             {priorityOptions.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Select value={assignee} onValueChange={(v)=> setAssignee(v as any)}>
+        <Select value={assignee} onValueChange={(v)=> setAssignee(v as (typeof assignee))}>
           <SelectTrigger className="w-44"><SelectValue placeholder="Assignee" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Assignees</SelectItem>

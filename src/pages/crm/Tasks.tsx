@@ -3,6 +3,7 @@ import { CrmTasksStore, type CrmTask, type TaskPriority } from "@/lib/crmTasksSt
 import { CrmLeadsStore } from "@/lib/crmLeadsStore";
 import { CrmDealsStore } from "@/lib/crmDealsStore";
 import { UsersStore } from "@/lib/usersStore";
+import { AuthStore } from "@/lib/authStore";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -27,6 +28,13 @@ const Tasks = () => {
   const [priority, setPriority] = useState<TaskPriority>("medium");
   const [assigneeId, setAssigneeId] = useState<string>(users[0]?.id || "");
 
+  const me = AuthStore.currentUser()?.id;
+
+  const applyPreset = (hours: number) => {
+    const iso = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString().slice(0, 16);
+    setDueAt(iso);
+  };
+
   const filtered = useMemo(() => list.filter(t => {
     const hay = `${t.title}`.toLowerCase();
     if (!hay.includes(q.toLowerCase())) return false;
@@ -38,9 +46,9 @@ const Tasks = () => {
   useEffect(() => {
     const refresh = () => setList(CrmTasksStore.list());
     const onStorage = (e: StorageEvent) => { if (e.key && e.key.startsWith('crm.tasks')) refresh(); };
-    window.addEventListener('crm.tasks-changed', refresh as any);
+    window.addEventListener('crm.tasks-changed', refresh);
     window.addEventListener('storage', onStorage);
-    return () => { window.removeEventListener('crm.tasks-changed', refresh as any); window.removeEventListener('storage', onStorage); };
+    return () => { window.removeEventListener('crm.tasks-changed', refresh); window.removeEventListener('storage', onStorage); };
   }, []);
 
   const add = () => { setEditing(undefined); setOpen(true); };
@@ -96,7 +104,7 @@ const Tasks = () => {
           <CardTitle>Tasks</CardTitle>
           <div className="flex items-center gap-2">
             <Input placeholder="Search" value={q} onChange={(e)=> setQ(e.target.value)} />
-            <Select value={show} onValueChange={(v)=> setShow(v as any)}>
+            <Select value={show} onValueChange={(v) => setShow(v as 'all'|'open'|'completed')}>
               <SelectTrigger className="w-40"><SelectValue placeholder="Filter"/></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All</SelectItem>
@@ -133,7 +141,18 @@ const Tasks = () => {
                     <td className="p-2 text-right space-x-2">
                       <Button size="sm" variant="secondary" onClick={()=> toggle(t)}>{t.completed ? 'Reopen' : 'Complete'}</Button>
                       <Button size="sm" variant="outline" onClick={()=> startEdit(t)}>Edit</Button>
-                      <Button size="sm" variant="destructive" onClick={()=> { CrmTasksStore.remove(t.id); setList(CrmTasksStore.list()); }}>Delete</Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => {
+                          const ok = window.confirm("Delete this task? This action cannot be undone.");
+                          if (!ok) return;
+                          CrmTasksStore.remove(t.id);
+                          setList(CrmTasksStore.list());
+                        }}
+                      >
+                        Delete
+                      </Button>
                       <Button size="sm" variant="outline" onClick={()=> remind(t)}>Remind</Button>
                     </td>
                   </tr>
@@ -160,7 +179,7 @@ const Tasks = () => {
             <div className="grid grid-cols-2 gap-2">
               <div className="grid gap-1">
                 <label className="text-xs text-muted-foreground">Entity Type</label>
-                <Select value={entityType} onValueChange={(v)=> { setEntityType(v as any); const first = (v==='lead' ? CrmLeadsStore.list()[0]?.id : CrmDealsStore.list()[0]?.id) || ""; setEntityId(first); }}>
+                <Select value={entityType} onValueChange={(v) => { setEntityType(v as 'lead'|'deal'); const first = (v==='lead' ? CrmLeadsStore.list()[0]?.id : CrmDealsStore.list()[0]?.id) || ""; setEntityId(first); }}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="lead">Lead</SelectItem>
@@ -185,11 +204,18 @@ const Tasks = () => {
             <div className="grid grid-cols-2 gap-2">
               <div className="grid gap-1">
                 <label className="text-xs text-muted-foreground">Due Date</label>
-                <Input type="datetime-local" value={dueAt} onChange={(e)=> setDueAt(e.target.value)} />
+                <div className="grid gap-2">
+                  <Input type="datetime-local" value={dueAt} onChange={(e)=> setDueAt(e.target.value)} />
+                  <div className="flex gap-2">
+                    <Button type="button" variant="secondary" onClick={()=> applyPreset(1)}>+1h</Button>
+                    <Button type="button" variant="secondary" onClick={()=> applyPreset(24)}>+1d</Button>
+                    <Button type="button" variant="secondary" onClick={()=> applyPreset(24*7)}>+1w</Button>
+                  </div>
+                </div>
               </div>
               <div className="grid gap-1">
                 <label className="text-xs text-muted-foreground">Priority</label>
-                <Select value={priority} onValueChange={(v)=> setPriority(v as TaskPriority)}>
+                <Select value={priority} onValueChange={(v) => setPriority(v as TaskPriority)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="low">Low</SelectItem>
@@ -201,12 +227,17 @@ const Tasks = () => {
             </div>
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">Assign To</label>
-              <Select value={assigneeId} onValueChange={setAssigneeId}>
-                <SelectTrigger><SelectValue placeholder="Select user" /></SelectTrigger>
-                <SelectContent>
-                  {users.map(u=> <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <div className="grid gap-2">
+                <Select value={assigneeId} onValueChange={setAssigneeId}>
+                  <SelectTrigger><SelectValue placeholder="Select user" /></SelectTrigger>
+                  <SelectContent>
+                    {users.map(u=> <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <div className="flex justify-end">
+                  <Button type="button" variant="secondary" disabled={!me} onClick={()=> { if(!me) return; setAssigneeId(me); }}>Assign to me</Button>
+                </div>
+              </div>
             </div>
           </div>
           <DialogFooter>

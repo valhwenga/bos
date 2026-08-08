@@ -3,6 +3,7 @@ import { DealCard } from "@/components/DealCard";
 import { Button } from "@/components/ui/button";
 import { Plus, DollarSign } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { CompanySettingsStore } from "@/lib/companySettings";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,25 +17,25 @@ import { CRMStore, type Deal, type DealStage } from "@/lib/crmStore";
 const stats = [
   {
     title: "Total Deals",
-    value: "$1,404,250.99",
+    value: 1404250.99,
     icon: DollarSign,
     color: "bg-blue-500",
   },
   {
     title: "This Month Total Deals",
-    value: "$0.00",
+    value: 0,
     icon: DollarSign,
     color: "bg-green-500",
   },
   {
     title: "This Week Total Deals",
-    value: "$0.00",
+    value: 0,
     icon: DollarSign,
     color: "bg-orange-500",
   },
   {
     title: "Last 30 Days Total Deals",
-    value: "$0.00",
+    value: 0,
     icon: DollarSign,
     color: "bg-pink-500",
   },
@@ -44,6 +45,8 @@ const CRMDeals = () => {
   const [title, setTitle] = useState("");
   const [amount, setAmount] = useState<number>(0);
   const [stage, setStage] = useState<DealStage>("Initial Contact");
+  const cs = CompanySettingsStore.get();
+  const sym = cs.currencySymbol || "$";
   const stages = CRMStore.stages();
   const data = useMemo(() => stages.map((s) => ({ stage: s, deals: CRMStore.byStage(s) })), [stages, open, title, amount, stage]);
 
@@ -95,7 +98,7 @@ const CRMDeals = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground mb-1">{stat.title}</p>
-                <p className="text-2xl font-bold">{stat.value}</p>
+                <p className="text-2xl font-bold">{sym}{Number(stat.value).toLocaleString()}</p>
               </div>
               <div className={`w-12 h-12 rounded-full ${stat.color} flex items-center justify-center`}>
                 <stat.icon className="w-6 h-6 text-white" />
@@ -117,7 +120,7 @@ const CRMDeals = () => {
               </div>
               <div className="space-y-3 max-h[600px] overflow-y-auto">
                 {column.deals.map((deal) => (
-                  <DealCard key={deal.id} title={deal.title} status={(deal.status as any) || "New"} amount={`$${(deal.amount||0).toLocaleString()}`} progress="" tasks={0} comments={0} members={[]} />
+                  <DealCard key={deal.id} title={deal.title} status={(deal.status as string) || "New"} amount={`${sym}${(deal.amount||0).toLocaleString()}`} progress="" tasks={0} comments={0} members={[]} />
                 ))}
               </div>
             </div>

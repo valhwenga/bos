@@ -8,6 +8,7 @@ export type Ticket = {
   id: string;
   title: string;
   description: string;
+  clientId?: string;
   requester: string; // user id or email
   departmentId?: string;
   assigneeId?: string;

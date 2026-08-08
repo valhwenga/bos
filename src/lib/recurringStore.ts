@@ -24,7 +24,7 @@ export type RecurringTemplate = {
 const K = { rec: "acct.recurring" };
 const r = <T,>(k: string, f: T): T => { try { const v = localStorage.getItem(k); return v ? (JSON.parse(v) as T) : f; } catch { return f; } };
 const w = (k: string, v: unknown) => localStorage.setItem(k, JSON.stringify(v));
-const emit = (name: string) => { try { window.dispatchEvent(new Event(name)); } catch {} };
+const emit = (name: string) => { try { window.dispatchEvent(new Event(name)); } catch { void 0; } };
 
 export const RecurringStore = {
   list(): RecurringTemplate[] { return r<RecurringTemplate[]>(K.rec, []); },
@@ -33,7 +33,7 @@ export const RecurringStore = {
   get(id: string) { return this.list().find(x=> x.id===id); },
   computeNextRun(prev: RecurringTemplate): string {
     const cur = new Date(prev.nextRunAt || (prev.startDate + 'T' + (prev.timeOfDay||'09:00') + ':00'));
-    let next = new Date(cur.getTime());
+    const next = new Date(cur.getTime());
     switch (prev.cadence) {
       case 'weekly': next.setDate(next.getDate() + 7); break;
       case 'monthly': next.setMonth(next.getMonth() + 1); break;

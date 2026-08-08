@@ -21,7 +21,7 @@ export type WaThread = {
 const K = { threads: 'wa.threads', messages: 'wa.messages' };
 const r = <T,>(k: string, f: T): T => { try { const v = localStorage.getItem(k); return v ? (JSON.parse(v) as T) : f; } catch { return f; } };
 const w = (k: string, v: unknown) => localStorage.setItem(k, JSON.stringify(v));
-const emit = (name: string) => { try { window.dispatchEvent(new Event(name)); } catch {} };
+const emit = (name: string) => { try { window.dispatchEvent(new Event(name)); } catch { void 0; } };
 
 const normalizePhone = (p: string) => {
   const x = (p||'').replace(/[^\d+]/g, '');

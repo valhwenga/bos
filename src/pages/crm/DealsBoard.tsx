@@ -49,7 +49,9 @@ const DealsBoard = () => {
   const allowDrop = (e: React.DragEvent) => { e.preventDefault(); };
   const onDrop = (e: React.DragEvent, stage: DealStage) => {
     e.preventDefault();
-    try { const data = JSON.parse(e.dataTransfer.getData('text/plain')); if (data?.id) onDropCard(data.id, stage); } catch {}
+    try { const data = JSON.parse(e.dataTransfer.getData('text/plain')); if (data?.id) onDropCard(data.id, stage); } catch {
+      // ignore parsing errors
+    }
   };
 
   return (

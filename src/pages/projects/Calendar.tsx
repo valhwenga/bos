@@ -59,10 +59,10 @@ const Calendar: React.FC = () => {
 
   useEffect(() => {
     const onChange = () => setEvents(ProjectStore.listEvents());
-    window.addEventListener('proj.events-changed', onChange as any);
+    window.addEventListener('proj.events-changed', onChange);
     const onStorage = (e: StorageEvent) => { if (e.key && e.key.startsWith('proj.events')) onChange(); };
     window.addEventListener('storage', onStorage);
-    return () => { window.removeEventListener('proj.events-changed', onChange as any); window.removeEventListener('storage', onStorage); };
+    return () => { window.removeEventListener('proj.events-changed', onChange); window.removeEventListener('storage', onStorage); };
   }, []);
 
   return (
@@ -106,7 +106,7 @@ const Calendar: React.FC = () => {
                 </div>
               </div>
               <Input placeholder="Description (optional)" value={description} onChange={(e)=> setDescription(e.target.value)} />
-              <div className="flex justify-end"><Button variant="elevated" onClick={add}>Add</Button></div>
+              <div className="flex justify-end"><Button onClick={add}>Add</Button></div>
             </div>
             <div className="space-y-2">
               {filtered.map(e => (
@@ -201,7 +201,7 @@ const Calendar: React.FC = () => {
               <div className="grid grid-cols-2 gap-2 mt-2">
                 <div>
                   <label className="text-xs text-muted-foreground">Status</label>
-                  <select className="border rounded px-2 text-sm bg-background text-foreground w-full h-10" value={editTask.status} onChange={(e)=> setEditTask({ ...editTask, status: e.target.value as any })}>
+                  <select className="border rounded px-2 text-sm bg-background text-foreground w-full h-10" value={editTask.status} onChange={(e) => setEditTask({ ...editTask, status: e.target.value as 'todo'|'inprogress'|'done' })}>
                     <option value="todo">To do</option>
                     <option value="inprogress">In progress</option>
                     <option value="done">Done</option>

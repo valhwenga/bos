@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { ChevronsUpDown, Check } from "lucide-react";
+import { ChevronsUpDown, Check, CreditCard, Eye, Printer, ArrowRightLeft, Edit, Trash2 } from "lucide-react";
 import { CustomersStore } from "@/lib/customersStore";
 import { ProductsStore } from "@/lib/productsStore";
 import { useNavigate } from "react-router-dom";
@@ -220,8 +220,8 @@ const NewQuoteDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void;
               <span>Shipping</span>
               <Input className="w-24 text-right" type="number" min={0} value={shipping} onChange={(e)=> setShipping(parseFloat(e.target.value||"0"))} />
             </div>
-            {CompanySettingsStore.get().taxRatePct ? (
-              <div className="flex items-center justify-between text-sm mt-2"><span>Tax ({CompanySettingsStore.get().taxRatePct}%)</span><span>{t.tax.toFixed(2)}</span></div>
+            {CompanySettingsStore.get()?.taxRatePct ? (
+              <div className="flex items-center justify-between text-sm mt-2"><span>Tax ({CompanySettingsStore.get()?.taxRatePct}%)</span><span>{t.tax.toFixed(2)}</span></div>
             ) : null}
             <div className="h-px bg-border my-2" />
             <div className="flex items-center justify-between font-semibold mt-1"><span>Grand Total</span><span>{t.grand.toFixed(2)}</span></div>
@@ -250,6 +250,8 @@ const Quotations: React.FC = () => {
   const [capOpen, setCapOpen] = useState(false);
   const [activeQuote, setActiveQuote] = useState<Quotation | undefined>(undefined);
   const [open, setOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewQuote, setPreviewQuote] = useState<Quotation | undefined>(undefined);
 
   useEffect(() => {
     const refresh = () => setQuotes(AccountingStore.listQuotes());
@@ -258,10 +260,11 @@ const Quotations: React.FC = () => {
       if (!e.key) return;
       if (e.key.startsWith("acct.payments") || e.key.startsWith("acct.quotes")) refresh();
     };
-    window.addEventListener('payments-changed', onPayments as any);
+    window.addEventListener('payments-changed', onPayments as EventListener);
     window.addEventListener('storage', onStorage);
+    
     return () => {
-      window.removeEventListener('payments-changed', onPayments as any);
+      window.removeEventListener('payments-changed', onPayments as EventListener);
       window.removeEventListener('storage', onStorage);
     };
   }, []);
@@ -272,6 +275,12 @@ const Quotations: React.FC = () => {
     toast({ title: "Quotation added", description: q.number });
   };
 
+  const editQuote = (q: Quotation) => {
+    AccountingStore.upsertQuote(q);
+    setQuotes(AccountingStore.listQuotes());
+    toast({ title: "Quotation updated", description: q.number });
+  };
+
   const convert = (id: string) => {
     const inv = AccountingStore.convertQuoteToInvoice(id);
     if (inv) toast({ title: "Converted to invoice", description: inv.number });
@@ -280,13 +289,21 @@ const Quotations: React.FC = () => {
   const emailQuote = (q: Quotation) => {
     const total = computeTotals(q).grand.toFixed(2);
     const subject = encodeURIComponent(`Quotation ${q.number}`);
+    const sym = c.currencySymbol || "$";
     const body = encodeURIComponent(
-      `Hello ${q.customer.name},%0D%0A%0D%0APlease find quotation ${q.number}.%0D%0ATotal: $${total}.%0D%0A%0D%0AThank you.`,
+      `Hello ${q.customer.name},%0D%0A%0D%0APlease find quotation ${q.number}.%0D%0ATotal: ${sym}${total}.%0D%0A%0D%0AThank you.`,
     );
     window.location.href = `mailto:${q.customer.email || ""}?subject=${subject}&body=${body}`;
   };
 
   const printQuote = (q: Quotation) => navigate(`/accounting/quotations/${q.id}/print`);
+
+  const quotePrintUrl = (id: string) => `${import.meta.env.BASE_URL}accounting/quotations/${id}/print`;
+
+  const openPreview = (q: Quotation) => {
+    setPreviewQuote(q);
+    setPreviewOpen(true);
+  };
 
   return (
     <div className="p-6 space-y-4">
@@ -316,11 +333,66 @@ const Quotations: React.FC = () => {
                     <TableCell className="capitalize">{q.status}</TableCell>
                     <TableCell className="text-right">{c.currencySymbol}{PaymentStore.sumAmount(PaymentStore.byQuote(q.id)).toFixed(2)}</TableCell>
                     <TableCell className="text-right">{c.currencySymbol}{outstanding(q).toFixed(2)}</TableCell>
-                    <TableCell className="text-right space-x-2">
-                      <Button size="sm" variant="secondary" onClick={()=> { setActiveQuote(q); setCapOpen(true); }}>Capture Payment</Button>
-                      <Button size="sm" variant="secondary" onClick={() => emailQuote(q)}>Email</Button>
-                      <Button size="sm" variant="outline" onClick={() => printQuote(q)}>Print/PDF</Button>
-                      <Button size="sm" onClick={() => convert(q.id)}>Convert to Invoice</Button>
+                    <TableCell className="text-right">
+                      <div className="inline-flex items-center justify-end gap-2">
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          onClick={() => editQuote(q)}
+                          aria-label="Edit quotation"
+                        >
+                          <Edit className="w-3 h-3" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          onClick={() => {
+                            if (confirm(`Delete quotation ${q.number}?`)) {
+                              AccountingStore.removeQuote(q.id);
+                              setQuotes(AccountingStore.listQuotes());
+                              toast({ title: "Quotation deleted", description: q.number });
+                            }
+                          }}
+                          aria-label="Delete quotation"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="secondary"
+                          onClick={() => { setActiveQuote(q); setCapOpen(true); }}
+                          aria-label="Capture payment"
+                          title="Capture payment"
+                        >
+                          <CreditCard className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="secondary"
+                          onClick={() => openPreview(q)}
+                          aria-label="Preview & send quotation"
+                          title="Preview & send quotation"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          onClick={() => printQuote(q)}
+                          aria-label="Print / download PDF"
+                          title="Print / download PDF"
+                        >
+                          <Printer className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          onClick={() => convert(q.id)}
+                          aria-label="Convert to invoice"
+                          title="Convert to invoice"
+                        >
+                          <ArrowRightLeft className="w-4 h-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -331,6 +403,32 @@ const Quotations: React.FC = () => {
       </Card>
       <NewQuoteDialog open={open} onOpenChange={setOpen} onAdd={addQuote} />
       <CapturePaymentDialog open={capOpen} onOpenChange={(v)=> { setCapOpen(v); if (!v) { setActiveQuote(undefined); setQuotes(AccountingStore.listQuotes()); } }} context={{ quote: activeQuote }} onSaved={()=> { setQuotes(AccountingStore.listQuotes()); }} />
+
+      <Dialog open={previewOpen} onOpenChange={(v) => { setPreviewOpen(v); if (!v) setPreviewQuote(undefined); }}>
+        <DialogContent className="max-w-5xl max-h-[85vh] overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>Quotation Preview</DialogTitle>
+          </DialogHeader>
+          <div className="h-[70vh] border rounded overflow-hidden bg-white">
+            {previewQuote ? (
+              <iframe
+                title="Quotation preview"
+                className="w-full h-full"
+                src={quotePrintUrl(previewQuote.id)}
+              />
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setPreviewOpen(false)}>Close</Button>
+            {previewQuote ? (
+              <>
+                <Button variant="outline" onClick={() => printQuote(previewQuote)}>Open Full Preview</Button>
+                <Button onClick={() => { emailQuote(previewQuote); setPreviewOpen(false); }}>Send Email</Button>
+              </>
+            ) : null}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

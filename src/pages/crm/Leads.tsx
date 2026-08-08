@@ -66,7 +66,7 @@ const Leads = () => {
           <CardTitle>Leads</CardTitle>
           <div className="flex items-center gap-2">
             <Input placeholder="Search" value={q} onChange={(e)=> setQ(e.target.value)} />
-            <Select value={stage} onValueChange={(v)=> setStage(v as any)}>
+            <Select value={stage} onValueChange={(v) => setStage(v as LeadStage | 'all')}>
               <SelectTrigger className="w-44"><SelectValue placeholder="Stage" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Stages</SelectItem>
@@ -136,7 +136,7 @@ const Leads = () => {
             </div>
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">Source</label>
-              <Select value={form.source} onValueChange={(v)=> setForm({ ...form, source: v as any })}>
+              <Select value={form.source} onValueChange={(v) => setForm({ ...form, source: v as 'website'|'referral'|'campaign'|'manual' })}>
                 <SelectTrigger><SelectValue placeholder="Source" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="website">Website</SelectItem>

@@ -50,13 +50,14 @@ export const EmailStore = {
       const { UsersStore } = await import("@/lib/usersStore");
       const { notify } = await import("@/lib/notificationsStore");
       const users = UsersStore.list();
-      const toEmails = [...(m.to||[]), ...((m.cc||[]) as any[])].map(a => a.email.toLowerCase());
+      const cc = (m.cc || []) as MailAddress[];
+      const toEmails = [...(m.to || []), ...cc].map(a => a.email.toLowerCase());
       for (const u of users) {
         if (u.email && toEmails.includes(u.email.toLowerCase())) {
           notify(u.id, "email", `New email: ${m.subject}`, undefined, `/email/${id}`);
         }
       }
-    } catch {}
+    } catch { void 0; }
     return sent;
   },
 };

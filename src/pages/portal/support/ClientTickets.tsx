@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -6,18 +6,23 @@ import { Textarea } from "@/components/ui/textarea";
 import { SupportStore, type Ticket, type Priority } from "@/lib/supportStore";
 import { UserStore } from "@/lib/userStore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AuthStore } from "@/lib/authStore";
 
 const priorityOptions: Priority[] = ["low","medium","high","urgent"];
 
 const ClientTickets = () => {
   const me = UserStore.get();
-  const [list, setList] = useState<Ticket[]>(SupportStore.list().filter(t => t.requester===me.id));
+  const acc = AuthStore.currentUser();
+  const myClientId = acc?.clientId;
+  const [list, setList] = useState<Ticket[]>(SupportStore.list().filter(t => (myClientId ? t.clientId === myClientId : t.requester===me.id)));
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<Ticket>({ id: "", title: "", description: "", requester: me.id, priority: "medium", status: "open", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), comments: [], attachments: [], category: SupportStore.settings().categories[0] || "General", closureRequest: null, approval: null });
+  const [form, setForm] = useState<Ticket>({ id: "", title: "", description: "", clientId: myClientId, requester: me.id, priority: "medium", status: "open", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), comments: [], attachments: [], category: SupportStore.settings().categories[0] || "General", closureRequest: null, approval: null });
 
-  const refresh = () => setList(SupportStore.list().filter(t => t.requester===me.id));
-  useEffect(()=>{ refresh(); }, []);
+  const refresh = useCallback(() => {
+    setList(SupportStore.list().filter(t => (myClientId ? t.clientId === myClientId : t.requester===me.id)));
+  }, [me.id, myClientId]);
+  useEffect(()=>{ refresh(); }, [refresh]);
 
   const filtered = useMemo(() => list.filter(t => {
     const hay = `${t.id} ${t.title} ${t.description} ${t.category} ${t.status}`.toLowerCase();
@@ -26,13 +31,13 @@ const ClientTickets = () => {
 
   const startAdd = () => {
     const s = SupportStore.settings();
-    setForm({ id: `C${Math.floor(Math.random()*90000+10000)}`, title: "", description: "", requester: me.id, priority: "medium", status: "open", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), comments: [], attachments: [], category: s.categories[0] || "General", closureRequest: null, approval: null });
+    setForm({ id: `C${Math.floor(Math.random()*90000+10000)}`, title: "", description: "", clientId: myClientId, requester: me.id, priority: "medium", status: "open", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), comments: [], attachments: [], category: s.categories[0] || "General", closureRequest: null, approval: null });
     setOpen(true);
   };
   const save = () => {
     if (!form.title.trim()) return;
     const now = new Date().toISOString();
-    const data = { ...form, requester: me.id, createdAt: now, updatedAt: now };
+    const data = { ...form, clientId: myClientId, requester: me.id, createdAt: now, updatedAt: now };
     SupportStore.upsert(data);
     setOpen(false);
     refresh();

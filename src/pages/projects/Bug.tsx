@@ -27,7 +27,7 @@ const Bug: React.FC = () => {
         <CardContent className="space-y-4">
           <div className="flex gap-2">
             <Input placeholder="New bug title" value={title} onChange={(e)=> setTitle(e.target.value)} />
-            <Button variant="elevated" onClick={add}>Add</Button>
+            <Button onClick={add}>Add</Button>
           </div>
           <div className="space-y-2">
             {bugs.map(b => (

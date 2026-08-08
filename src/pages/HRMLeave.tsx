@@ -1,9 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { Plus, Check, X, Clock, Eye } from "lucide-react";
+import { Plus, Calendar, CheckCircle, XCircle, Clock, AlertCircle, Eye, Check, X } from "lucide-react";
+import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -11,17 +14,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { HRMLeaveStore, type Leave, type LeaveStatus } from "@/lib/hrmLeaveStore";
-import { Permissions } from "@/lib/permissions";
-
-const leaveStats = [
-  { type: "Total Requests", count: 15, icon: "📝", color: "bg-blue-500" },
-  { type: "Pending", count: 2, icon: "⏳", color: "bg-orange-500" },
-  { type: "Approved", count: 10, icon: "✅", color: "bg-green-500" },
-  { type: "Rejected", count: 3, icon: "❌", color: "bg-red-500" },
-];
+import { canAccess, ModuleKey, getCurrentRole } from "@/lib/rolesStore";
+import { AuthStore } from "@/lib/authStore";
+import { UserStore } from "@/lib/userStore";
+import { countWorkingDays, updateLeaveBalances } from "@/lib/leaveBalance";
+import { PUBLIC_HOLIDAYS } from "@/lib/holidays";
+import { notifyManagerOfLeaveRequest, notifyEmployeeOfLeaveDecision } from "@/lib/emailNotifier";
+import { LeaveBalanceStore } from "@/lib/leaveBalanceStore";
+import { LeaveBalanceDisplay } from "@/components/LeaveBalanceDisplay";
+import { HolidayCalendar } from "@/components/HolidayCalendar";
 
 const statusColors = {
   Pending: "bg-orange-500 text-white",
@@ -36,31 +38,119 @@ export default function HRMLeave() {
   const [action, setAction] = useState<LeaveStatus | null>(null);
   const [managerNote, setManagerNote] = useState("");
   const [applyOpen, setApplyOpen] = useState(false);
-  const [form, setForm] = useState<{ employee: string; employeeId: string; type: string; startDate: string; endDate: string; reason: string }>({ employee: "", employeeId: "", type: "Sick Leave", startDate: "", endDate: "", reason: "" });
-  const canAct = (()=> {
-    const r = Permissions.getRole();
-    return r === "admin" || r === "manager";
-  })();
+  const user = UserStore.get();
+  const role = getCurrentRole();
+
+  const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "approved" | "rejected">("all");
+  const [form, setForm] = useState<{ employee: string; employeeId: string; type: string; startDate: string; endDate: string; reason: string }>(() => ({
+    employee: user.name || "",
+    employeeId: user.id || "",
+    type: "Sick Leave",
+    startDate: "",
+    endDate: "",
+    reason: "",
+  }));
+
+  const canReviewAll = canAccess("hrm.leave" as ModuleKey, "full");
+  const canEdit = canAccess("hrm.leave" as ModuleKey, "edit");
+  const isPrivileged = role.id === "role_super_admin" || role.id === "role_company_admin";
+  const managedDepartmentIds = useMemo(() => {
+    const set = new Set(user.managedDepartmentIds || []);
+    if (user.departmentId) set.add(user.departmentId);
+    return set;
+  }, [user.departmentId, user.managedDepartmentIds]);
+
+  const visibleLeaves = useMemo(() => {
+    const canSee = (l: Leave) => {
+      if (isPrivileged) return true;
+      if (l.createdByUserId && l.createdByUserId === user.id) return true;
+      if (!l.createdByUserId && l.employeeId === user.id) return true;
+      if (canReviewAll) {
+        if (!l.departmentId) return true; // legacy records without department
+        return managedDepartmentIds.has(l.departmentId);
+      }
+      return false;
+    };
+
+    const list = leaves.filter(canSee);
+    if (statusFilter === "all") return list;
+    const target = statusFilter[0].toUpperCase() + statusFilter.slice(1);
+    return list.filter(l => l.status === target);
+  }, [canReviewAll, isPrivileged, leaves, managedDepartmentIds, statusFilter, user.id]);
+
+  const stats = useMemo(() => {
+    const all = visibleLeaves;
+    const pending = all.filter(l => l.status === "Pending").length;
+    const approved = all.filter(l => l.status === "Approved").length;
+    const rejected = all.filter(l => l.status === "Rejected").length;
+    return [
+      { type: "Total Requests", count: all.length, icon: "📝", color: "bg-blue-500" },
+      { type: "Pending", count: pending, icon: "⏳", color: "bg-orange-500" },
+      { type: "Approved", count: approved, icon: "✅", color: "bg-green-500" },
+      { type: "Rejected", count: rejected, icon: "❌", color: "bg-red-500" },
+    ];
+  }, [visibleLeaves]);
+
+  useEffect(() => {
+    const refresh = () => setLeaves(HRMLeaveStore.list());
+    const onStorage = (e: StorageEvent) => { if (e.key === "hrm.leaves") refresh(); };
+    window.addEventListener("hrm.leave-changed", refresh);
+    window.addEventListener("storage", onStorage);
+    return () => { window.removeEventListener("hrm.leave-changed", refresh); window.removeEventListener("storage", onStorage); };
+  }, []);
+
+  const canActOnLeave = (l?: Leave) => {
+    if (!canReviewAll) return false;
+    if (isPrivileged) return true;
+    if (!l?.departmentId) return true;
+    return managedDepartmentIds.has(l.departmentId);
+  };
+
   const view = (l: Leave) => { setSelected(l); setAction(null); setManagerNote(""); setOpen(true); };
-  const approve = (l: Leave) => { if(!canAct) return; setSelected(l); setAction("Approved"); setManagerNote(""); setOpen(true); };
-  const reject = (l: Leave) => { if(!canAct) return; setSelected(l); setAction("Rejected"); setManagerNote(""); setOpen(true); };
+  const approve = (l: Leave) => { if(!canActOnLeave(l)) return; setSelected(l); setAction("Approved"); setManagerNote(""); setOpen(true); };
+  const reject = (l: Leave) => { if(!canActOnLeave(l)) return; setSelected(l); setAction("Rejected"); setManagerNote(""); setOpen(true); };
   const submit = () => {
     if (!selected || !action) { setOpen(false); return; }
-    HRMLeaveStore.setStatus(selected.id, action, managerNote);
-    setLeaves(HRMLeaveStore.list());
+    if (!canActOnLeave(selected)) { setOpen(false); return; }
+    const updated = HRMLeaveStore.setStatus(selected.id, action, managerNote);
+    // Auto-deduct or restore balance on approval/rejection
+    if (updated && action === "Approved") {
+      LeaveBalanceStore.deduct(updated.employeeId, updated.type, updated.days);
+    } else if (updated && action === "Rejected") {
+      // If it was previously approved, restore days (edge case)
+      LeaveBalanceStore.add(updated.employeeId, updated.type, updated.days);
+    }
+    // Notify employee of decision
+    if (updated) {
+      notifyEmployeeOfLeaveDecision(updated);
+    }
     setOpen(false);
   };
   const apply = () => {
     if (!form.employee.trim() || !form.employeeId.trim() || !form.type.trim() || !form.startDate || !form.endDate) return;
     const start = new Date(form.startDate);
     const end = new Date(form.endDate);
-    const ms = Math.max(0, end.getTime() - start.getTime());
-    const days = Math.floor(ms / (1000*60*60*24)) + 1;
-    const l: Leave = { id: `L${Date.now()}`, employee: form.employee, employeeId: form.employeeId, type: form.type, startDate: form.startDate, endDate: form.endDate, days, reason: form.reason, status: "Pending", appliedOn: new Date().toISOString() };
+    // Calculate working days (exclude weekends and public holidays)
+    const workingDays = countWorkingDays(form.startDate, form.endDate);
+    const l: Leave = {
+      id: `L${Date.now()}`,
+      employee: form.employee,
+      employeeId: form.employeeId,
+      createdByUserId: user.id,
+      departmentId: user.departmentId,
+      type: form.type,
+      startDate: form.startDate,
+      endDate: form.endDate,
+      days: workingDays,
+      reason: form.reason,
+      status: "Pending",
+      appliedOn: new Date().toISOString(),
+    };
     HRMLeaveStore.upsert(l);
-    setLeaves(HRMLeaveStore.list());
+    // Notify manager (placeholder email)
+    notifyManagerOfLeaveRequest(l);
     setApplyOpen(false);
-    setForm({ employee: "", employeeId: "", type: "Sick Leave", startDate: "", endDate: "", reason: "" });
+    setForm({ employee: user.name || "", employeeId: user.id || "", type: "Sick Leave", startDate: "", endDate: "", reason: "" });
   };
   return (
     <div className="p-6">
@@ -83,7 +173,7 @@ export default function HRMLeave() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        {leaveStats.map((stat, index) => (
+        {stats.map((stat, index) => (
           <Card key={index} className="p-5">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm text-muted-foreground">{stat.type}</span>
@@ -99,7 +189,7 @@ export default function HRMLeave() {
       <div className="bg-card rounded-lg border border-border overflow-hidden">
         <div className="p-4 border-b border-border flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Select defaultValue="all">
+            <Select value={statusFilter} onValueChange={(v)=> setStatusFilter(v as typeof statusFilter)}>
               <SelectTrigger className="w-32">
                 <SelectValue />
               </SelectTrigger>
@@ -142,7 +232,7 @@ export default function HRMLeave() {
               </tr>
             </thead>
             <tbody>
-              {leaves.map((request) => (
+              {visibleLeaves.map((request) => (
                 <tr key={request.id} className="border-t border-border hover:bg-secondary/30 transition-colors">
                   <td className="p-4">
                     <div className="flex items-center gap-3">
@@ -182,7 +272,7 @@ export default function HRMLeave() {
                       <Button size="icon" variant="ghost" className="h-9 w-9" onClick={()=> view(request)}>
                         <Eye className="w-4 h-4" />
                       </Button>
-                    {request.status === "Pending" && canAct && (
+                    {request.status === "Pending" && canActOnLeave(request) && (
                       <div className="flex items-center justify-end gap-2">
                         <Button size="icon" variant="ghost" className="h-9 w-9 text-green-600 hover:text-green-700 hover:bg-green-50" onClick={()=> approve(request)}>
                           <Check className="w-4 h-4" />
@@ -202,7 +292,7 @@ export default function HRMLeave() {
         </div>
 
         <div className="p-4 border-t border-border flex items-center justify-between text-sm text-muted-foreground">
-          <span>Showing 1 to 5 of 5 entries</span>
+          <span>Showing {visibleLeaves.length ? 1 : 0} to {visibleLeaves.length} of {visibleLeaves.length} entries</span>
           <div className="flex gap-1">
             <Button variant="outline" size="sm" disabled>
               Previous
@@ -231,7 +321,7 @@ export default function HRMLeave() {
               {selected.managerNote && <div><span className="text-muted-foreground">Manager Note:</span> {selected.managerNote}</div>}
             </div>
           )}
-          {canAct && action && (
+          {canActOnLeave(selected || undefined) && action && (
             <div className="grid gap-2 mt-3">
               <label className="text-xs text-muted-foreground">Manager Note ({action === 'Rejected' ? 'required' : 'optional'})</label>
               <Input value={managerNote} onChange={(e)=> setManagerNote(e.target.value)} placeholder={action === 'Rejected' ? 'Provide a reason for rejection' : 'Optional note'} />
@@ -239,7 +329,7 @@ export default function HRMLeave() {
           )}
           <DialogFooter>
             <Button variant="secondary" onClick={()=> setOpen(false)}>Close</Button>
-            {canAct && action && <Button onClick={submit} disabled={action==='Rejected' && !managerNote.trim()}>Confirm {action}</Button>}
+            {canActOnLeave(selected || undefined) && action && <Button onClick={submit} disabled={action==='Rejected' && !managerNote.trim()}>Confirm {action}</Button>}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -251,11 +341,11 @@ export default function HRMLeave() {
         <div className="grid md:grid-cols-2 gap-3">
           <div className="grid gap-1">
             <label className="text-xs text-muted-foreground">Employee</label>
-            <Input value={form.employee} onChange={(e)=> setForm({ ...form, employee: e.target.value })} />
+            <Input value={form.employee} onChange={(e)=> setForm({ ...form, employee: e.target.value })} readOnly={!isPrivileged && !canReviewAll} />
           </div>
           <div className="grid gap-1">
             <label className="text-xs text-muted-foreground">Employee ID</label>
-            <Input value={form.employeeId} onChange={(e)=> setForm({ ...form, employeeId: e.target.value })} />
+            <Input value={form.employeeId} onChange={(e)=> setForm({ ...form, employeeId: e.target.value })} readOnly={!isPrivileged && !canReviewAll} />
           </div>
           <div className="grid gap-1 md:col-span-2">
             <label className="text-xs text-muted-foreground">Leave Type</label>
@@ -285,6 +375,12 @@ export default function HRMLeave() {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    {/* Leave balance display for current employee */}
+    <LeaveBalanceDisplay employeeId={user.id || ""} />
+
+    {/* Holiday calendar */}
+    <HolidayCalendar />
   </div>
   );
 }

@@ -19,7 +19,12 @@ const Products: React.FC = () => {
 
   const startAdd = () => { setEditing(null); setName(""); setPrice(0); setDescription(""); setOpen(true); };
   const startEdit = (p: Product) => { setEditing(p); setName(p.name); setPrice(p.price); setDescription(p.description || ""); setOpen(true); };
-  const remove = (id: string) => { ProductsStore.remove(id); refresh(); };
+  const remove = (id: string) => {
+    const ok = window.confirm("Delete this product? This action cannot be undone.");
+    if (!ok) return;
+    ProductsStore.remove(id);
+    refresh();
+  };
   const save = () => {
     if (!name.trim()) return;
     const p: Product = { id: editing?.id || `p_${Date.now()}`, name, price, description };

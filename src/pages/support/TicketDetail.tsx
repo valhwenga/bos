@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,6 +7,7 @@ import { SupportStore, type Ticket, type Attachment, type Comment } from "@/lib/
 import { AuditLogStore } from "@/lib/auditLogStore";
 import { getCurrentRole, canAccess } from "@/lib/accessControl";
 import { UsersStore } from "@/lib/usersStore";
+import { AuthStore } from "@/lib/authStore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/components/ui/use-toast";
@@ -31,13 +32,29 @@ const TicketDetail = () => {
   const [cannedId, setCannedId] = useState<string>("");
   const canned = SupportStore.canned();
 
-  const refresh = () => setT(id ? SupportStore.get(id) : undefined);
-  useEffect(()=>{ refresh(); }, [id]);
+  const refresh = useCallback(() => {
+    setT(id ? SupportStore.get(id) : undefined);
+  }, [id]);
+  useEffect(()=>{ refresh(); }, [refresh]);
 
   const isManager = useMemo(() => {
     const role = getCurrentRole();
     return role.level === "Department" && canAccess("support","edit");
   }, []);
+
+  const acc = AuthStore.currentUser();
+  const me = acc?.id;
+  const myClientId = acc?.clientId;
+
+  useEffect(() => {
+    if (!myClientId) return;
+    if (!t) return;
+    if (t.clientId !== myClientId) navigate(-1);
+  }, [myClientId, t, navigate]);
+  const applyDuePreset = (hours: number) => {
+    const iso = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
+    saveTicket({ ...t, dueAt: iso } as Ticket, "sla_due", `SLA due set to ${new Date(iso).toLocaleString()}`);
+  };
 
   if (!t) return (
     <div className="p-6">
@@ -61,33 +78,33 @@ const TicketDetail = () => {
         const requester = users.find(u => u.id === next.requester);
         if (requester) notify(requester.id, "ticket", `Ticket ${next.id} status: ${s.replace(/_/g,' ')}`, next.title, `/support/tickets/${next.id}`);
         if (next.assigneeId) notify(next.assigneeId, "ticket", `Ticket ${next.id} status: ${s.replace(/_/g,' ')}`, next.title, `/support/tickets/${next.id}`);
-      } catch {}
+      } catch { void 0; }
     } else if (action === "comment") {
       toast({ title: "Comment added" });
     } else if (action === "assign") {
       toast({ title: "Assignment updated", description: details });
       try {
         if (next.assigneeId) notify(next.assigneeId, "ticket", `Assigned: ${next.title}`, `You were assigned to ticket ${next.id}`, `/support/tickets/${next.id}`);
-      } catch {}
+      } catch { void 0; }
     } else if (action === "request_closure") {
       toast({ title: "Closure requested" });
       try {
         if (next.assigneeId) notify(next.assigneeId, "ticket", `Closure requested: ${next.title}`, undefined, `/support/tickets/${next.id}`);
-      } catch {}
+      } catch { void 0; }
     } else if (action === "approve_closure") {
       toast({ title: "Ticket closed" });
       try {
         const users = UsersStore.list();
         const requester = users.find(u => u.id === next.requester);
         if (requester) notify(requester.id, "ticket", `Ticket closed: ${next.title}`, undefined, `/support/tickets/${next.id}`);
-      } catch {}
+      } catch { void 0; }
     } else if (action === "reject_closure") {
       toast({ title: "Closure rejected", description: details });
       try {
         const users = UsersStore.list();
         const requester = users.find(u => u.id === next.requester);
         if (requester) notify(requester.id, "ticket", `Closure rejected: ${next.title}`, details, `/support/tickets/${next.id}`);
-      } catch {}
+      } catch { void 0; }
     }
   };
 
@@ -209,13 +226,29 @@ const TicketDetail = () => {
         <div className="space-y-4">
           <div className="rounded-lg border p-4">
             <h4 className="font-semibold mb-2">Assignment</h4>
-            <Select value={t.assigneeId || ""} onValueChange={(v)=> saveTicket({ ...t, assigneeId: v || undefined } as Ticket, 'assign', v || 'unassigned')}>
-              <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="">Unassigned</SelectItem>
-                {UsersStore.list().map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <div className="grid gap-2">
+              <Select value={t.assigneeId || ""} onValueChange={(v)=> saveTicket({ ...t, assigneeId: v || undefined } as Ticket, 'assign', v || 'unassigned')}>
+                <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Unassigned</SelectItem>
+                  {UsersStore.list().map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <div className="flex justify-end">
+                <Button variant="secondary" disabled={!me} onClick={()=> { if(!me) return; saveTicket({ ...t, assigneeId: me } as Ticket, 'assign', 'self'); }}>Assign to me</Button>
+              </div>
+            </div>
+            <div className="mt-3 grid gap-1">
+              <label className="text-xs text-muted-foreground">Expiry / SLA Due</label>
+              <div className="grid gap-2">
+                <Input type="datetime-local" value={t.dueAt ? new Date(t.dueAt).toISOString().slice(0,16) : ""} onChange={(e)=> saveTicket({ ...t, dueAt: e.target.value ? new Date(e.target.value).toISOString() : undefined } as Ticket, "sla_due", "SLA due updated") } />
+                <div className="flex gap-2">
+                  <Button type="button" variant="secondary" onClick={()=> applyDuePreset(1)}>+1h</Button>
+                  <Button type="button" variant="secondary" onClick={()=> applyDuePreset(24)}>+1d</Button>
+                  <Button type="button" variant="secondary" onClick={()=> applyDuePreset(24*7)}>+1w</Button>
+                </div>
+              </div>
+            </div>
           </div>
           <div className="rounded-lg border p-4">
             <h4 className="font-semibold mb-2">Request Closure</h4>

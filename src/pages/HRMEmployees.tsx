@@ -1,42 +1,88 @@
-import { useEffect, useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Plus, Edit, Trash, Eye, Search } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { Plus, Search, Filter, Download, Upload, Eye, Edit, Trash2, Trash } from "lucide-react";
+import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { HRMStore, type Employee, type EmployeeDocument } from "@/lib/hrmStore";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CompanySettingsStore } from "@/lib/companySettings";
+
+// Simple local HRM store to replace CompanyAwareHRMStore
+const LocalHRMStore = {
+  list: () => {
+    const data = localStorage.getItem('hrm_employees');
+    return data ? JSON.parse(data) : [];
+  },
+  upsert: (employee: any) => {
+    const employees = LocalHRMStore.list();
+    const index = employees.findIndex((e: any) => e.id === employee.id);
+    if (index >= 0) {
+      employees[index] = employee;
+    } else {
+      employees.push(employee);
+    }
+    localStorage.setItem('hrm_employees', JSON.stringify(employees));
+    window.dispatchEvent(new Event('hrm_employees-changed'));
+  },
+  remove: (id: string) => {
+    const employees = LocalHRMStore.list();
+    const filtered = employees.filter((e: any) => e.id !== id);
+    localStorage.setItem('hrm_employees', JSON.stringify(filtered));
+    window.dispatchEvent(new Event('hrm_employees-changed'));
+  },
+  migrateDepartmentIds: (map: Record<string,string>) => {
+    const employees = LocalHRMStore.list();
+    let changed = false;
+    employees.forEach((emp: any) => {
+      if (emp.department && !emp.departmentId && map[emp.department]) {
+        emp.departmentId = map[emp.department];
+        changed = true;
+      }
+    });
+    if (changed) {
+      localStorage.setItem('hrm_employees', JSON.stringify(employees));
+    }
+  }
+};
+import { EmployeeDocumentVault } from "@/components/EmployeeDocumentVault";
 import { Textarea } from "@/components/ui/textarea";
 import { HRMDepartmentsStore, type Department } from "@/lib/hrmDepartmentsStore";
 import { Separator } from "@/components/ui/separator";
 
 const HRMEmployees = () => {
-  const [employees, setEmployees] = useState<Employee[]>(HRMStore.list());
+  const [employees, setEmployees] = useState<Employee[]>(LocalHRMStore.list());
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Employee | null>(null);
+  const [viewing, setViewing] = useState<Employee | null>(null);
+  const [viewOpen, setViewOpen] = useState(false);
   const [form, setForm] = useState<Employee>({ id: "", name: "", status: "Active", cv: null, qualifications: null, idCopy: null, otherDocuments: [] });
   const [departments, setDepartments] = useState<Department[]>(HRMDepartmentsStore.list());
   const [attempted, setAttempted] = useState(false);
+  const cs = CompanySettingsStore.get();
 
-  const refresh = () => setEmployees(HRMStore.list());
+  const totalEntries = employees.length;
+  const showingFrom = totalEntries === 0 ? 0 : 1;
+  const showingTo = totalEntries;
+
+  const refresh = () => setEmployees(LocalHRMStore.list());
   useEffect(()=>{
     // migrate departmentId for existing employees
     const deps = HRMDepartmentsStore.list();
     const map: Record<string,string> = Object.fromEntries(deps.map(d=> [d.name, d.id]));
-    HRMStore.migrateDepartmentIds(map);
+    LocalHRMStore.migrateDepartmentIds(map);
     refresh();
   }, []);
 
   const startAdd = () => { setEditing(null); setForm({ id: `EMP${Math.floor(Math.random()*900+100)}`, name: "", status: "Active", cv: null, qualifications: null, idCopy: null, otherDocuments: [] }); setDepartments(HRMDepartmentsStore.list()); setAttempted(false); setOpen(true); };
   const startEdit = (e: Employee) => { setEditing(e); setForm(e); setOpen(true); };
-  const remove = (id: string) => { HRMStore.remove(id); refresh(); };
+  const remove = (id: string) => {
+    const ok = window.confirm("Delete this employee? This action cannot be undone.");
+    if (!ok) return;
+    LocalHRMStore.remove(id);
+    refresh();
+  };
   const allRequiredPresent = () => {
     const f = form;
     return Boolean(
@@ -48,7 +94,7 @@ const HRMEmployees = () => {
   const save = () => {
     setAttempted(true);
     if (!allRequiredPresent()) return;
-    HRMStore.upsert({ ...form });
+    LocalHRMStore.upsert({ ...form });
     setOpen(false);
     refresh();
   };
@@ -150,7 +196,9 @@ const HRMEmployees = () => {
                     <span className="text-sm">{employee.joiningDate}</span>
                   </td>
                   <td className="p-4">
-                    <span className="text-sm font-medium">{employee.salary}</span>
+                    <span className="text-sm font-medium">
+                      {employee.salary ? `${cs.currencySymbol}${String(employee.salary).replace(/[^0-9.,\s-]/g, "").trim()}` : "-"}
+                    </span>
                   </td>
                   <td className="p-4">
                     <Badge 
@@ -162,7 +210,7 @@ const HRMEmployees = () => {
                   </td>
                   <td className="p-4">
                     <div className="flex items-center justify-end gap-2">
-                      <Button size="icon" variant="ghost" className="h-9 w-9 text-blue-600 hover:text-blue-700 hover:bg-blue-50">
+                      <Button size="icon" variant="ghost" className="h-9 w-9 text-blue-600 hover:text-blue-700 hover:bg-blue-50" onClick={() => { setViewing(employee); setViewOpen(true); }}>
                         <Eye className="w-4 h-4" />
                       </Button>
                       <Button size="icon" variant="ghost" className="h-9 w-9 text-green-600 hover:text-green-700 hover:bg-green-50" onClick={()=> startEdit(employee)}>
@@ -180,7 +228,7 @@ const HRMEmployees = () => {
         </div>
 
         <div className="p-4 border-t border-border flex items-center justify-between text-sm text-muted-foreground">
-          <span>Showing 1 to 6 of 6 entries</span>
+          <span>Showing {showingFrom} to {showingTo} of {totalEntries} entries</span>
           <div className="flex gap-1">
             <Button variant="outline" size="sm" disabled>
               Previous
@@ -194,6 +242,62 @@ const HRMEmployees = () => {
           </div>
         </div>
       </div>
+
+      <Dialog open={viewOpen} onOpenChange={setViewOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Employee Details</DialogTitle>
+          </DialogHeader>
+          {viewing && (
+            <div className="grid gap-4 text-sm">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div><span className="text-muted-foreground">Name:</span> {viewing.name}</div>
+                <div><span className="text-muted-foreground">ID:</span> {viewing.id}</div>
+                <div><span className="text-muted-foreground">Email:</span> {viewing.email || "-"}</div>
+                <div><span className="text-muted-foreground">Phone:</span> {viewing.phone || "-"}</div>
+                <div><span className="text-muted-foreground">Department:</span> {viewing.department || "-"}</div>
+                <div><span className="text-muted-foreground">Designation:</span> {viewing.designation || "-"}</div>
+                <div><span className="text-muted-foreground">Joining Date:</span> {viewing.joiningDate || "-"}</div>
+                <div><span className="text-muted-foreground">Salary:</span> {viewing.salary ? `${cs.currencySymbol}${String(viewing.salary).replace(/[^0-9.,\s-]/g, "").trim()}` : "-"}</div>
+                <div><span className="text-muted-foreground">Status:</span> {viewing.status || "-"}</div>
+              </div>
+
+              <div className="grid gap-2">
+                <div className="font-medium">Documents</div>
+                <div className="grid gap-1">
+                  <div>
+                    <span className="text-muted-foreground">CV:</span>{" "}
+                    {viewing.cv?.dataUrl ? <a className="underline" href={viewing.cv.dataUrl} target="_blank">{viewing.cv.name}</a> : "-"}
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Qualifications:</span>{" "}
+                    {viewing.qualifications?.dataUrl ? <a className="underline" href={viewing.qualifications.dataUrl} target="_blank">{viewing.qualifications.name}</a> : "-"}
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">ID Copy:</span>{" "}
+                    {viewing.idCopy?.dataUrl ? <a className="underline" href={viewing.idCopy.dataUrl} target="_blank">{viewing.idCopy.name}</a> : "-"}
+                  </div>
+                  {(viewing.otherDocuments || []).length > 0 && (
+                    <div className="grid gap-1">
+                      <span className="text-muted-foreground">Other:</span>
+                      <div className="grid gap-1">
+                        {(viewing.otherDocuments || []).map((d) => (
+                          <a key={d.name + d.size} className="underline" href={d.dataUrl} target="_blank">{d.name}</a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setViewOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-[95vw] w-[95vw] lg:max-w-[1200px] h-[85vh] max-h-[85vh] overflow-y-auto overflow-x-hidden">
@@ -443,6 +547,11 @@ const HRMEmployees = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Employee Document Vault */}
+      {viewing && (
+        <EmployeeDocumentVault employeeId={viewing.id} />
+      )}
     </div>
   );
 };

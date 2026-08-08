@@ -6,6 +6,7 @@ export type ModuleKey =
   | "hrm.employees"
   | "hrm.departments"
   | "hrm.attendance"
+  | "hrm.leave"
   | "hrm.payroll"
   | "hrm.performance"
   | "accounting"
@@ -23,6 +24,7 @@ export const Modules: { key: ModuleKey; label: string }[] = [
   { key: "hrm.employees", label: "HRM • Employees" },
   { key: "hrm.departments", label: "HRM • Departments" },
   { key: "hrm.attendance", label: "HRM • Attendance" },
+  { key: "hrm.leave", label: "HRM • Leave" },
   { key: "hrm.payroll", label: "HRM • Payroll" },
   { key: "hrm.performance", label: "HRM • Performance" },
   { key: "accounting", label: "Accounting" },
@@ -58,7 +60,7 @@ const EDIT: AccessLevel = "edit";
 const VIEW: AccessLevel = "view";
 const NONE: AccessLevel = "none";
 
-const baseAccess = (def: AccessLevel): Record<ModuleKey, AccessLevel> => Object.fromEntries(Modules.map(m => [m.key, def])) as any;
+const baseAccess = (def: AccessLevel): Record<ModuleKey, AccessLevel> => Object.fromEntries(Modules.map(m => [m.key, def])) as Record<ModuleKey, AccessLevel>;
 
 const SEED: Role[] = [
   {
@@ -87,6 +89,7 @@ const SEED: Role[] = [
       "hrm.employees": FULL,
       "hrm.departments": FULL,
       "hrm.attendance": FULL,
+      "hrm.leave": FULL,
       "hrm.payroll": FULL,
       "hrm.performance": FULL,
     },
@@ -98,7 +101,7 @@ const SEED: Role[] = [
     name: "HR Manager",
     level: "Department",
     description: "Handles staff, payroll, attendance",
-    access: { ...baseAccess(NONE), dashboard: VIEW, "hrm.employees": FULL, "hrm.departments": EDIT, "hrm.attendance": FULL, "hrm.payroll": FULL, "hrm.performance": EDIT },
+    access: { ...baseAccess(NONE), dashboard: VIEW, "hrm.employees": FULL, "hrm.departments": EDIT, "hrm.attendance": FULL, "hrm.leave": FULL, "hrm.payroll": FULL, "hrm.performance": EDIT },
     require2FA: false,
   },
   {
@@ -136,7 +139,7 @@ const SEED: Role[] = [
     name: "Employee",
     level: "Team",
     description: "Executes assigned work",
-    access: { ...baseAccess(NONE), dashboard: VIEW, projects: EDIT, "hrm.attendance": EDIT, "hrm.employees": VIEW },
+    access: { ...baseAccess(NONE), dashboard: VIEW, projects: EDIT, "hrm.attendance": EDIT, "hrm.leave": EDIT, "hrm.employees": VIEW },
   },
   {
     id: "role_client",
@@ -155,11 +158,11 @@ export const RolesStore = {
     const normalized = list.map(role => {
       const access = { ...role.access } as Record<ModuleKey, AccessLevel>;
       for (const k of moduleKeys) {
-        if (!(k in access)) (access as any)[k] = "none";
+        if (!(k in access)) access[k] = "none";
       }
       // Super Admin: full access to everything
       if (role.id === "role_super_admin") {
-        for (const k of moduleKeys) (access as any)[k] = "full";
+        for (const k of moduleKeys) access[k] = "full";
       }
       return { ...role, access } as Role;
     });
@@ -170,3 +173,27 @@ export const RolesStore = {
   remove(id: string) { const all = this.list().filter(x => x.id !== id); w(K.roles, all); },
   get(id: string) { return this.list().find(x=> x.id===id); }
 };
+
+/**
+ * Check if the current user's role can access a module at a given level.
+ */
+export function canAccess(module: ModuleKey, level: AccessLevel): boolean {
+  const roleId = localStorage.getItem('auth.roleId');
+  if (!roleId) return false;
+  const role = RolesStore.list().find(r => r.id === roleId);
+  if (!role) return false;
+  const userLevel = role.access[module];
+  if (userLevel === "full") return true;
+  if (userLevel === "none") return false;
+  const hierarchy = { none: 0, view: 1, edit: 2, full: 3 };
+  return hierarchy[userLevel] >= hierarchy[level];
+}
+
+/**
+ * Get the current user's role object.
+ */
+export function getCurrentRole(): Role | undefined {
+  const roleId = localStorage.getItem('auth.roleId');
+  if (!roleId) return undefined;
+  return RolesStore.list().find(r => r.id === roleId);
+}

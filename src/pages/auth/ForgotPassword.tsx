@@ -14,8 +14,8 @@ const ForgotPassword: React.FC = () => {
     try {
       const rec = AuthStore.requestPasswordReset(email);
       setToken(rec.token);
-    } catch (err: any) {
-      setError(err.message || 'Unable to request reset');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Unable to request reset');
     }
   };
 

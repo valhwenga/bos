@@ -17,8 +17,8 @@ const Signup: React.FC = () => {
     try {
       AuthStore.signUpRequest(name, email, password);
       setSubmitted(true);
-    } catch (err: any) {
-      setError(err.message || "Failed to submit request");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to submit request");
     }
   };
 
@@ -29,7 +29,7 @@ const Signup: React.FC = () => {
         <div className="p-6 pb-3 text-center">
           <div className="flex items-center justify-center mb-2">
             {cs.logoDataUrl ? (
-              <img src={cs.logoDataUrl} alt="logo" className="h-10 w-auto drop-shadow-sm" />
+              <img src={cs.logoDataUrl} alt="logo" className="h-10 w-auto border-0 bg-transparent" />
             ) : (
               <div className="h-10 w-10 rounded-full bg-gradient-to-br from-[#5F33FF] to-[#7A60D9] text-white flex items-center justify-center text-sm font-semibold">
                 {(cs.name||'S').slice(0,2).toUpperCase()}

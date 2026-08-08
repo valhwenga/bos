@@ -11,6 +11,7 @@ export type Payment = {
   method: PaymentMethod;
   reference?: string; // e.g., bank ref
   notes?: string;
+  paymentType?: "full" | "partial" | "overpayment"; // Track payment type
 };
 
 const KEY = { payments: "acct.payments" };
@@ -27,9 +28,53 @@ const write = (k: string, v: unknown) => localStorage.setItem(k, JSON.stringify(
 
 export const PaymentStore = {
   list(): Payment[] { return read<Payment[]>(KEY.payments, []); },
-  add(p: Payment) { const all = this.list(); all.push(p); write(KEY.payments, all); try { window.dispatchEvent(new Event('payments-changed')); } catch {} return p; },
-  update(p: Payment) { const all = this.list(); const i = all.findIndex(x=> x.id===p.id); if (i>=0) all[i]=p; write(KEY.payments, all); try { window.dispatchEvent(new Event('payments-changed')); } catch {} return p; },
-  remove(id: string) { const all = this.list().filter(x=> x.id!==id); write(KEY.payments, all); try { window.dispatchEvent(new Event('payments-changed')); } catch {} },
+  add(p: Payment) { 
+    const all = this.list(); 
+    all.push(p); 
+    write(KEY.payments, all); 
+    console.log('Payment added:', p);
+    try { 
+      window.dispatchEvent(new Event('payments-changed')); 
+      // Also trigger storage event for cross-tab sync
+      window.dispatchEvent(new StorageEvent('storage', { 
+        key: KEY.payments,
+        newValue: JSON.stringify(all),
+        oldValue: JSON.stringify(all.filter(x => x.id !== p.id))
+      }));
+    } catch { 
+      void 0; 
+    } 
+    return p; 
+  },
+  update(p: Payment) { 
+    const all = this.list(); 
+    const i = all.findIndex(x=> x.id===p.id); 
+    if (i>=0) all[i]=p; 
+    write(KEY.payments, all); 
+    try { 
+      window.dispatchEvent(new Event('payments-changed')); 
+      window.dispatchEvent(new StorageEvent('storage', { 
+        key: KEY.payments,
+        newValue: JSON.stringify(all)
+      }));
+    } catch { 
+      void 0; 
+    } 
+    return p; 
+  },
+  remove(id: string) { 
+    const all = this.list().filter(x=> x.id!==id); 
+    write(KEY.payments, all); 
+    try { 
+      window.dispatchEvent(new Event('payments-changed')); 
+      window.dispatchEvent(new StorageEvent('storage', { 
+        key: KEY.payments,
+        newValue: JSON.stringify(all)
+      }));
+    } catch { 
+      void 0; 
+    } 
+  },
   byInvoice(invoiceId: string) { return this.list().filter(p=> p.invoiceId===invoiceId); },
   byQuote(quoteId: string) { return this.list().filter(p=> p.quoteId===quoteId); },
   byCustomer(customerId: string) { return this.list().filter(p=> p.customerId===customerId); },

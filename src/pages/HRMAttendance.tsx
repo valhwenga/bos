@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+type ViewMode = "today" | "all" | "date";
 type Row = { employee: string; id: string; department?: string; checkIn: string; checkOut: string; workHours: string; status: string; date: string };
 
 const statusColors = {
@@ -23,7 +24,8 @@ const statusColors = {
 
 const HRMAttendance = () => {
   const [attendance, setAttendance] = useState<AttendanceEntry[]>(UserStore.attendance());
-  const [view, setView] = useState<"today" | "all">("today");
+  const [view, setView] = useState<ViewMode>("today");
+  const [selectedDate, setSelectedDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const user = UserStore.get();
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
@@ -55,11 +57,11 @@ const HRMAttendance = () => {
 
   const rows: Row[] = useMemo(() => {
     if (view === "all") return rowsAll;
-    const today = new Date().toISOString().slice(0,10);
+    const targetDate = view === "date" ? selectedDate : new Date().toISOString().slice(0, 10);
     // filter original attendance by ISO date match to avoid locale issues
-    const indices = attendance.map((e, i) => ({ i, e })).filter(x => x.e.date === today).map(x => x.i);
+    const indices = attendance.map((e, i) => ({ i, e })).filter(x => x.e.date === targetDate).map(x => x.i);
     return rowsAll.filter((_, i) => indices.includes(i));
-  }, [rowsAll, attendance, view]);
+  }, [rowsAll, attendance, view, selectedDate]);
 
   const presentCount = rows.filter(r => r.status === 'Present').length;
   const inProgress = rows.filter(r => r.status === 'In Progress').length;
@@ -76,16 +78,19 @@ const HRMAttendance = () => {
     const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `attendance_${view}_${new Date().toISOString().slice(0,10)}.csv`;
+    const datePart = view === "date" ? selectedDate : new Date().toISOString().slice(0,10);
+    a.href = url; a.download = `attendance_${view}_${datePart}.csv`;
     document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
   };
 
   const todayIso = new Date().toISOString().slice(0,10);
-  const todayEntry = attendance.find(e => e.date === todayIso);
-  const todayStatus = (() => {
-    if (!todayEntry) return "Absent";
-    if (todayEntry.clockIn && todayEntry.clockOut) return "Present";
-    if (todayEntry.clockIn && !todayEntry.clockOut) return "In Progress";
+  const statusIso = view === "date" ? selectedDate : todayIso;
+  const statusEntry = attendance.find(e => e.date === statusIso);
+  const statusLabel = view === "date" ? "Selected Date Status" : "Today's Status";
+  const dayStatus = (() => {
+    if (!statusEntry) return "Absent";
+    if (statusEntry.clockIn && statusEntry.clockOut) return "Present";
+    if (statusEntry.clockIn && !statusEntry.clockOut) return "In Progress";
     return "Absent";
   })();
 
@@ -110,19 +115,25 @@ const HRMAttendance = () => {
           <Button variant="outline" size="sm" onClick={doClockOut}>
             Clock Out
           </Button>
-          <Select value={view} onValueChange={(v)=> setView(v as any)}>
+          <Select value={view} onValueChange={(v)=> setView(v as ViewMode)}>
             <SelectTrigger className="w-32">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="today">Today</SelectItem>
+              <SelectItem value="date">Selected Date</SelectItem>
               <SelectItem value="all">All</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" size="sm">
-            <Calendar className="w-4 h-4 mr-2" />
-            Select Date
-          </Button>
+          <div className="flex items-center gap-2">
+            <Calendar className="w-4 h-4 text-muted-foreground" />
+            <Input
+              type="date"
+              value={selectedDate}
+              onChange={(e)=> { setSelectedDate(e.target.value); setView("date"); }}
+              className="w-[150px]"
+            />
+          </div>
           <Button size="sm" onClick={handleExport}>
             <Download className="w-4 h-4 mr-2" />
             Export Report
@@ -133,16 +144,16 @@ const HRMAttendance = () => {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-card rounded-lg border border-border p-5">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-muted-foreground">Today's Status</span>
+            <span className="text-sm text-muted-foreground">{statusLabel}</span>
             <div className="w-10 h-10 rounded-lg bg-secondary/40 flex items-center justify-center">
               <span className="text-xl">📅</span>
             </div>
           </div>
-          <p className="text-3xl font-bold">{todayStatus}</p>
+          <p className="text-3xl font-bold">{dayStatus}</p>
           <p className="text-xs text-muted-foreground mt-1">
-            {todayEntry?.clockIn ? new Date(todayEntry.clockIn).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}) : '-'}
+            {statusEntry?.clockIn ? new Date(statusEntry.clockIn).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}) : '-'}
             {" "}–{" "}
-            {todayEntry?.clockOut ? new Date(todayEntry.clockOut).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}) : '-'}
+            {statusEntry?.clockOut ? new Date(statusEntry.clockOut).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}) : '-'}
           </p>
         </div>
         <div className="bg-card rounded-lg border border-border p-5">
@@ -270,7 +281,7 @@ const HRMAttendance = () => {
         </div>
 
         <div className="p-4 border-t border-border flex items-center justify-between text-sm text-muted-foreground">
-          <span>Showing 1 to 6 of 6 entries</span>
+          <span>Showing {rows.length ? 1 : 0} to {rows.length} of {rows.length} entries</span>
           <div className="flex gap-1">
             <Button variant="outline" size="sm" disabled>
               Previous

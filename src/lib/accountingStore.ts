@@ -19,8 +19,10 @@ export type Quotation = {
   discountPct?: number; // 0-100
   shipping?: number; // currency amount
   useShippingAddress?: boolean;
+  logoDataUrl?: string;
+  signatureDataUrl?: string;
 };
-export type Invoice = { id: string; number: string; customer: Customer; items: LineItem[]; status: "draft" | "sent" | "paid" | "overdue"; createdAt: string; sourceQuoteId?: string; useShippingAddress?: boolean };
+export type Invoice = { id: string; number: string; customer: Customer; items: LineItem[]; status: "draft" | "sent" | "paid" | "overdue"; createdAt: string; sourceQuoteId?: string; useShippingAddress?: boolean; discountPct?: number; shipping?: number; dueDate?: string; reference?: string; notes?: string };
 
 const KEY = {
   quotes: "acct.quotes",
@@ -58,6 +60,11 @@ export const AccountingStore = {
     write(KEY.invoices, all);
     return iw;
   },
+  removeInvoice(invoiceId: string) {
+    const all = this.listInvoices();
+    const filtered = all.filter((x) => x.id !== invoiceId);
+    write(KEY.invoices, filtered);
+  },
   convertQuoteToInvoice(quoteId: string): Invoice | undefined {
     const quotes = this.listQuotes();
     const q = quotes.find((x) => x.id === quoteId);
@@ -82,7 +89,7 @@ export const AccountingStore = {
       deposits.forEach((p) => {
         PaymentStore.update({ ...p, quoteId: undefined, invoiceId: invoice.id });
       });
-    } catch {}
+    } catch { void 0; }
     return invoice;
   },
 };

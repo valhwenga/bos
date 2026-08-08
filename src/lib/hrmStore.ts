@@ -40,8 +40,8 @@ const read = <T,>(k: string, f: T): T => {
 const write = (k: string, v: unknown) => localStorage.setItem(k, JSON.stringify(v));
 
 const SEED: Employee[] = [
-  { id: "EMP001", name: "John Anderson", email: "john.anderson@company.com", phone: "+1 234 567 8901", department: "Engineering", designation: "Senior Developer", joiningDate: "15 Jan 2022", salary: "$85,000", status: "Active" },
-  { id: "EMP002", name: "Sarah Williams", email: "sarah.williams@company.com", phone: "+1 234 567 8902", department: "Marketing", designation: "Marketing Manager", joiningDate: "20 Mar 2021", salary: "$75,000", status: "Active" },
+  { id: "EMP001", name: "John Anderson", email: "john.anderson@company.com", phone: "+1 234 567 8901", department: "Engineering", designation: "Senior Developer", joiningDate: "15 Jan 2022", salary: "85,000", status: "Active" },
+  { id: "EMP002", name: "Sarah Williams", email: "sarah.williams@company.com", phone: "+1 234 567 8902", department: "Marketing", designation: "Marketing Manager", joiningDate: "20 Mar 2021", salary: "75,000", status: "Active" },
 ];
 
 export const HRMStore = {

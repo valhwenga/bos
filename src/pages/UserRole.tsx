@@ -16,7 +16,12 @@ const UserRole = () => {
   const refresh = () => setList(RolesStore.list());
   const startAdd = () => { setEditing(null); setForm({ id: `role_${Math.random().toString(36).slice(2,8)}`, name: "", level: "Team", description: "", access: Object.fromEntries(Modules.map(m=> [m.key, "none"])) as any }); setOpen(true); };
   const startEdit = (r: Role) => { setEditing(r); setForm(r); setOpen(true); };
-  const remove = (id: string) => { RolesStore.remove(id); refresh(); };
+  const remove = (id: string) => {
+    const ok = window.confirm("Delete this role? This action cannot be undone.");
+    if (!ok) return;
+    RolesStore.remove(id);
+    refresh();
+  };
   const save = () => { if (!form.name.trim()) return; RolesStore.upsert(form); setOpen(false); refresh(); };
 
   const levelOptions: RoleLevel[] = ["Global","Company","Department","Team","External"];

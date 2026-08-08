@@ -22,9 +22,9 @@ const Reports: React.FC = () => {
   useEffect(() => {
     const onPayments = () => setTick(t=>t+1);
     const onStorage = (e: StorageEvent) => { if (!e.key) return; if (e.key.startsWith("acct.")) setTick(t=>t+1); };
-    window.addEventListener('payments-changed', onPayments as any);
+    window.addEventListener('payments-changed', onPayments as EventListener);
     window.addEventListener('storage', onStorage);
-    return () => { window.removeEventListener('payments-changed', onPayments as any); window.removeEventListener('storage', onStorage); };
+    return () => { window.removeEventListener('payments-changed', onPayments as EventListener); window.removeEventListener('storage', onStorage); };
   }, []);
 
   const range = useMemo(() => ({ from: new Date(from + 'T00:00:00'), to: new Date(to + 'T23:59:59') }), [from, to]);
@@ -123,28 +123,28 @@ const Reports: React.FC = () => {
             <Button variant="outline" onClick={()=> { setFrom(new Date(new Date().getFullYear(),0,1).toISOString().slice(0,10)); setTo(new Date().toISOString().slice(0,10)); }}>This Year</Button>
             <Button variant="secondary" onClick={async ()=> {
               // Export CSV
-              const esc = (s: any) => ('"' + String(s??'').replace(/"/g,'""') + '"');
-              let rows: string[] = [];
+              const esc = (s: string | number | undefined) => ('"' + String(s??'').replace(/"/g,'""') + '"');
+              const rows: string[] = [];
               if (module === 'income') {
                 rows.push(['Type','Date','Amount'].join(','));
-                (data as any).invs.forEach((i: any)=> rows.push(['Invoice '+i.number, new Date(i.createdAt).toLocaleDateString(), i.items.reduce((s:any,it:any)=> s+it.qty*it.price,0).toFixed(2)].map(esc).join(',')));
-                (data as any).sales.forEach((s: any)=> rows.push(['Sale '+s.number, new Date(s.date).toLocaleDateString(), s.items.reduce((su:number,it:any)=> su+it.qty*it.price,0).toFixed(2)].map(esc).join(',')));
-                (data as any).credits.forEach((c: any)=> rows.push(['Credit '+c.number, new Date(c.date).toLocaleDateString(), (-c.amount||0).toFixed(2)].map(esc).join(',')));
+                (data as { invs: Invoice[] }).invs.forEach((i: Invoice) => rows.push(['Invoice '+i.number, new Date(i.createdAt).toLocaleDateString(), i.items.reduce((s, it) => s+it.qty*it.price,0).toFixed(2)].map(esc).join(',')));
+                (data as { sales: Sale[] }).sales.forEach((s: Sale) => rows.push(['Sale '+s.number, new Date(s.date).toLocaleDateString(), s.items.reduce((su, it) => su+it.qty*it.price,0).toFixed(2)].map(esc).join(',')));
+                (data as { credits: CreditNote[] }).credits.forEach((c: CreditNote) => rows.push(['Credit '+c.number, new Date(c.date).toLocaleDateString(), (-c.amount||0).toFixed(2)].map(esc).join(',')));
               } else if (module === 'expenses') {
                 rows.push(['Date','Vendor','Category','Amount'].join(','));
-                (data as any).ex.forEach((e: any)=> rows.push([new Date(e.date).toLocaleDateString(), e.vendor, e.category, (((e.amount||0)+(e.tax||0)).toFixed(2))].map(esc).join(',')));
+                (data as { ex: Expense[] }).ex.forEach((e: Expense) => rows.push([new Date(e.date).toLocaleDateString(), e.vendor, e.category, (((e.amount||0)+(e.tax||0)).toFixed(2))].map(esc).join(',')));
               } else if (module === 'income_vs_expense') {
                 rows.push(['Metric','Amount'].join(','));
-                const t = (data as any).totals; rows.push(['Income', t.income.toFixed(2)].map(esc).join(',')); rows.push(['Expenses', t.expenses.toFixed(2)].map(esc).join(',')); rows.push(['Net', t.net.toFixed(2)].map(esc).join(',')); rows.push(['Cash Received', t.cashReceived.toFixed(2)].map(esc).join(','));
+                const t = (data as { totals: { income: number; expenses: number; net: number; cashReceived: number } }).totals; rows.push(['Income', t.income.toFixed(2)].map(esc).join(',')); rows.push(['Expenses', t.expenses.toFixed(2)].map(esc).join(',')); rows.push(['Net', t.net.toFixed(2)].map(esc).join(',')); rows.push(['Cash Received', t.cashReceived.toFixed(2)].map(esc).join(','));
               } else if (module === 'invoices') {
                 rows.push(['No.','Customer','Date','Total','Paid','Balance'].join(','));
-                (data as any).list.forEach((i: any)=> { const sub=i.items.reduce((s:any,it:any)=>s+it.qty*it.price,0); const paid=PaymentStore.sumAmount(PaymentStore.byInvoice(i.id)); rows.push([i.number, i.customer.name, new Date(i.createdAt).toLocaleDateString(), sub.toFixed(2), paid.toFixed(2), Math.max(0, sub-paid).toFixed(2)].map(esc).join(',')); });
+                (data as { list: Invoice[] }).list.forEach((i: Invoice) => { const sub=i.items.reduce((s, it) => s+it.qty*it.price,0); const paid=PaymentStore.sumAmount(PaymentStore.byInvoice(i.id)); rows.push([i.number, i.customer.name, new Date(i.createdAt).toLocaleDateString(), sub.toFixed(2), paid.toFixed(2), Math.max(0, sub-paid).toFixed(2)].map(esc).join(',')); });
               } else if (module === 'quotations') {
                 rows.push(['No.','Customer','Date','Estimate','Deposits','Balance'].join(','));
-                (data as any).list.forEach((q: any)=> { const sub=q.items.reduce((s:any,it:any)=>s+it.qty*it.price,0); const discount=q.discountPct?(sub*q.discountPct)/100:0; const shipping=q.shipping||0; const grand=Math.max(0,sub-discount+shipping); const paid=PaymentStore.sumAmount(PaymentStore.byQuote(q.id)); rows.push([q.number,q.customer.name,new Date(q.createdAt).toLocaleDateString(),grand.toFixed(2),paid.toFixed(2),Math.max(0,grand-paid).toFixed(2)].map(esc).join(',')); });
+                (data as { list: Quotation[] }).list.forEach((q: Quotation) => { const sub=q.items.reduce((s, it) => s+it.qty*it.price,0); const discount=q.discountPct?(sub*q.discountPct)/100:0; const shipping=q.shipping||0; const grand=Math.max(0,sub-discount+shipping); const paid=PaymentStore.sumAmount(PaymentStore.byQuote(q.id)); rows.push([q.number,q.customer.name,new Date(q.createdAt).toLocaleDateString(),grand.toFixed(2),paid.toFixed(2),Math.max(0,grand-paid).toFixed(2)].map(esc).join(',')); });
               } else if (module === 'payments') {
                 rows.push(['Date','Customer','Applied To','Method','Reference','Amount'].join(','));
-                (data as any).list.forEach((p: any)=> rows.push([new Date(p.date).toLocaleDateString(), ((allCustomers.find(c=> c.id===p.customerId)?.name) || p.customerId), (p.invoiceId?`Invoice ${p.invoiceId}`:(p.quoteId?`Quote ${p.quoteId}`:'Unapplied')), (p.method||''), (p.reference||''), (p.amount||0).toFixed(2)].map(esc).join(',')));
+                (data as { list: Payment[] }).list.forEach((p: Payment) => rows.push([new Date(p.date).toLocaleDateString(), ((allCustomers.find(c=> c.id===p.customerId)?.name) || p.customerId), (p.invoiceId?`Invoice ${p.invoiceId}`:(p.quoteId?`Quote ${p.quoteId}`:'Unapplied')), (p.method||''), (p.reference||''), (p.amount||0).toFixed(2)].map(esc).join(',')));
               }
               const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
               const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `report_${module}_${from}_to_${to}.csv`; a.click(); URL.revokeObjectURL(url);
@@ -153,9 +153,9 @@ const Reports: React.FC = () => {
               // Export PDF with company styling similar to invoice/quote
               const cs2 = CompanySettingsStore.get();
               const ensureScript = (src: string) => new Promise<void>((resolve, reject) => { const s = document.createElement('script'); s.src = src; s.async = true; s.onload = () => resolve(); s.onerror = () => reject(new Error('Failed to load '+src)); document.head.appendChild(s); });
-              const w: any = window as any;
-              if (!(w.jspdf || w.jspdf_esm || w.jspdfjs)) { try { await ensureScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js'); } catch {} }
-              const { jsPDF } = (w.jspdf || w.jspdf_esm || w.jspdfjs) as any;
+              const w = window as typeof window & { jspdf?: any; jspdf_esm?: any; jspdfjs?: any };
+              if (!(w.jspdf || w.jspdf_esm || w.jspdfjs)) { try { await ensureScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js'); } catch { /* ignore */ } }
+              const { jsPDF } = (w.jspdf || w.jspdf_esm || w.jspdfjs) as { jsPDF: new (...args: any[]) => any };
               const pdf = new jsPDF('p','mm','a4');
               // Smooth gradient-like header (multi-band interpolation to simulate)
               const topColor = { r:95, g:51, b:255 };
@@ -170,23 +170,23 @@ const Reports: React.FC = () => {
                 pdf.rect(0, i*(headerH/steps), 210, (headerH/steps)+0.2, 'F');
               }
               // Header content (logo left, details right)
-              if (cs2.logoDataUrl) { try { pdf.addImage(cs2.logoDataUrl, 'PNG', 12, 5, 28, 12); } catch {} }
+              if (cs2.logoDataUrl) { try { pdf.addImage(cs2.logoDataUrl, 'PNG', 12, 5, 28, 12); } catch { /* ignore */ } }
               pdf.setTextColor(255,255,255);
               pdf.setFontSize(12); pdf.text(cs2.name || 'Company', 198, 8, { align: 'right' as any });
               // Single-line address beneath company name
               if (cs2.address) {
                 const addrLine = String(cs2.address).split(/\r?\n/)[0]?.slice(0, 60) || '';
-                if (addrLine) { pdf.setFontSize(8); pdf.text(addrLine, 198, 11, { align: 'right' as any }); }
+                if (addrLine) { pdf.setFontSize(8); pdf.text(addrLine, 198, 11, { align: 'right' }); }
               }
               // Contact line beneath address
               pdf.setFontSize(9); const hdr2 = `${cs2.email||''}${cs2.email&&cs2.phone?' • ':''}${cs2.phone||''}`;
-              if (hdr2.trim()) pdf.text(hdr2, 198, 15, { align: 'right' as any });
+              if (hdr2.trim()) pdf.text(hdr2, 198, 15, { align: 'right' });
               // Report title area directly below header (company details remain in header only)
               let y = 28; pdf.setTextColor(0,0,0);
-              const titleMap: Record<string,string> = { income: 'Income (Accrual)', expenses: 'Expenses', income_vs_expense: 'Income vs Expense', invoices: 'Invoices', quotations: 'Quotations', payments: 'Payments (Cash)' } as any;
+              const titleMap: Record<string, string> = { income: 'Income (Accrual)', expenses: 'Expenses', income_vs_expense: 'Income vs Expense', invoices: 'Invoices', quotations: 'Quotations', payments: 'Payments (Cash)' };
               pdf.setFontSize(16); pdf.text(titleMap[module], 12, y); pdf.setFontSize(10);
               const period = `${new Date(from).toLocaleDateString()} - ${new Date(to).toLocaleDateString()}`;
-              pdf.text(period, 198, y, { align: 'right' as any });
+              pdf.text(period, 198, y, { align: 'right' });
               y += 6;
               // Consolidated summary chips/boxes
               const drawChip = (label: string, value: string, x: number) => {
@@ -196,21 +196,21 @@ const Reports: React.FC = () => {
                 pdf.setTextColor(33,33,36); pdf.setFontSize(11); pdf.text(value, x+4, y+10);
               };
               if (module==='income') {
-                const t = (data as any).totals; drawChip('Invoices', `${cs.currencySymbol}${(t.invTotal||0).toFixed(2)}`, 12); drawChip('Sales', `${cs.currencySymbol}${(t.salesTotal||0).toFixed(2)}`, 76); drawChip('Credits', `-${cs.currencySymbol}${(t.creditsTotal||0).toFixed(2)}`, 140);
+                const t = (data as { totals: { invTotal?: number; salesTotal?: number; creditsTotal?: number; gross?: number; net?: number; cashReceived?: number } }).totals; drawChip('Invoices', `${cs.currencySymbol}${(t.invTotal||0).toFixed(2)}`, 12); drawChip('Sales', `${cs.currencySymbol}${(t.salesTotal||0).toFixed(2)}`, 76); drawChip('Credits', `-${cs.currencySymbol}${(t.creditsTotal||0).toFixed(2)}`, 140);
                 y += 16; drawChip('Gross', `${cs.currencySymbol}${(t.gross||0).toFixed(2)}`, 12); drawChip('Net', `${cs.currencySymbol}${(t.net||0).toFixed(2)}`, 76); drawChip('Cash Received', `${cs.currencySymbol}${(t.cashReceived||0).toFixed(2)}`, 140); y += 18;
               } else if (module==='expenses') {
-                const t = (data as any).totals; drawChip('Count', String(t.count||0), 12); drawChip('Total', `${cs.currencySymbol}${(t.total||0).toFixed(2)}`, 76); y += 18;
+                const t = (data as { totals: { count?: number; total?: number } }).totals; drawChip('Count', String(t.count||0), 12); drawChip('Total', `${cs.currencySymbol}${(t.total||0).toFixed(2)}`, 76); y += 18;
                 // Expenses by Category summary table
                 pdf.setFontSize(12); pdf.text('By Category', 12, y); y += 6; pdf.setFontSize(10);
                 const catTotals: Record<string, number> = {};
-                (data as any).ex.forEach((e: any) => { const amt = (e.amount||0) + (e.tax||0); catTotals[e.category||'Uncategorized'] = (catTotals[e.category||'Uncategorized']||0) + amt; });
+                (data as { ex: Expense[] }).ex.forEach((e: Expense) => { const amt = (e.amount||0) + (e.tax||0); catTotals[e.category||'Uncategorized'] = (catTotals[e.category||'Uncategorized']||0) + amt; });
                 const entries = Object.entries(catTotals).sort((a,b)=> b[1]-a[1]);
                 // header
-                pdf.setTextColor(102,102,110); pdf.text('Category', 12, y); pdf.text('Amount', 180, y, { align: 'right' as any }); y += 4; pdf.setDrawColor(235,235,240); pdf.line(12, y, 198, y); y += 3; pdf.setTextColor(33,33,36);
-                entries.forEach(([cat, amt]) => { pdf.text(String(cat), 12, y); pdf.text(`${cs.currencySymbol}${amt.toFixed(2)}`, 180, y, { align: 'right' as any }); y += 6; if (y>280) { pdf.addPage(); y=20; } });
+                pdf.setTextColor(102,102,110); pdf.text('Category', 12, y); pdf.text('Amount', 180, y, { align: 'right' }); y += 4; pdf.setDrawColor(235,235,240); pdf.line(12, y, 198, y); y += 3; pdf.setTextColor(33,33,36);
+                entries.forEach(([cat, amt]: [string, number]) => { pdf.text(String(cat), 12, y); pdf.text(`${cs.currencySymbol}${amt.toFixed(2)}`, 180, y, { align: 'right' }); y += 6; if (y>280) { pdf.addPage(); y=20; } });
                 y += 4;
               } else if (module==='income_vs_expense') {
-                const t = (data as any).totals; drawChip('Income', `${cs.currencySymbol}${(t.income||0).toFixed(2)}`, 12); drawChip('Expenses', `${cs.currencySymbol}${(t.expenses||0).toFixed(2)}`, 76); drawChip('Net', `${cs.currencySymbol}${(t.net||0).toFixed(2)}`, 140); y += 18; drawChip('Cash Received', `${cs.currencySymbol}${(t.cashReceived||0).toFixed(2)}`, 12); y += 18;
+                const t = (data as { totals: { income?: number; expenses?: number; net?: number; cashReceived?: number } }).totals; drawChip('Income', `${cs.currencySymbol}${(t.income||0).toFixed(2)}`, 12); drawChip('Expenses', `${cs.currencySymbol}${(t.expenses||0).toFixed(2)}`, 76); drawChip('Net', `${cs.currencySymbol}${(t.net||0).toFixed(2)}`, 140); y += 18; drawChip('Cash Received', `${cs.currencySymbol}${(t.cashReceived||0).toFixed(2)}`, 12); y += 18;
               } else {
                 // For detailed modules, provide period only
                 y += 4;
@@ -221,34 +221,34 @@ const Reports: React.FC = () => {
               const row = () => { y+=6; if (y>280) { pdf.addPage(); y=20; } };
               if (module==='income') {
                 col(12,'Type'); col(80,'Date'); col(160,'Amount'); row();
-                (data as any).invs.forEach((i:any)=> { col(12,`Invoice ${i.number}`); col(80,new Date(i.createdAt).toLocaleDateString()); col(160,(i.items.reduce((s:any,it:any)=>s+it.qty*it.price,0)).toFixed(2)); row(); });
-                (data as any).sales.forEach((s:any)=> { col(12,`Sale ${s.number}`); col(80,new Date(s.date).toLocaleDateString()); col(160,(s.items.reduce((su:number,it:any)=>su+it.qty*it.price,0)).toFixed(2)); row(); });
-                (data as any).credits.forEach((c:any)=> { col(12,`Credit ${c.number}`); col(80,new Date(c.date).toLocaleDateString()); col(160,`-${(c.amount||0).toFixed(2)}`); row(); });
+                (data as { invs: Invoice[] }).invs.forEach((i: Invoice) => { col(12,`Invoice ${i.number}`); col(80,new Date(i.createdAt).toLocaleDateString()); col(160,(i.items.reduce((s, it) => s+it.qty*it.price,0)).toFixed(2)); row(); });
+                (data as { sales: Sale[] }).sales.forEach((s: Sale) => { col(12,`Sale ${s.number}`); col(80,new Date(s.date).toLocaleDateString()); col(160,(s.items.reduce((su, it) => su+it.qty*it.price,0)).toFixed(2)); row(); });
               } else if (module==='expenses') {
                 col(12,'Date'); col(60,'Vendor'); col(120,'Category'); col(170,'Amount'); row();
-                (data as any).ex.forEach((e:any)=> { col(12,new Date(e.date).toLocaleDateString()); col(60,String(e.vendor)); col(120,String(e.category)); col(170,(((e.amount||0)+(e.tax||0)).toFixed(2))); row(); });
+                (data as { ex: Expense[] }).ex.forEach((e: Expense) => { col(12,new Date(e.date).toLocaleDateString()); col(60,String(e.vendor)); col(120,String(e.category)); col(170,(((e.amount||0)+(e.tax||0)).toFixed(2))); row(); });
               } else if (module==='income_vs_expense') {
-                col(12,'Metric'); col(140,'Amount'); row(); const t=(data as any).totals; [['Income',t.income],['Expenses',t.expenses],['Net',t.net],['Cash Received',t.cashReceived]].forEach(([k,v]:any)=> { col(12,String(k)); col(140,(Number(v)||0).toFixed(2)); row(); });
+                col(12,'Metric'); col(140,'Amount'); row();
+                const t=(data as { totals: { income: number; expenses: number; net: number; cashReceived: number } }).totals; [['Income',t.income],['Expenses',t.expenses],['Net',t.net],['Cash Received',t.cashReceived]].forEach(([k,v]: [string, number | undefined]) => { col(12,String(k)); col(140,(Number(v)||0).toFixed(2)); row(); });
               } else if (module==='invoices') {
                 col(12,'No.'); col(60,'Customer'); col(120,'Date'); col(155,'Total'); col(180,'Balance'); row();
-                (data as any).list.forEach((i:any)=> { const sub=i.items.reduce((s:any,it:any)=>s+it.qty*it.price,0); const bal=Math.max(0, sub - PaymentStore.sumAmount(PaymentStore.byInvoice(i.id))); col(12,i.number); col(60,i.customer.name); col(120,new Date(i.createdAt).toLocaleDateString()); col(155,sub.toFixed(2)); col(180,bal.toFixed(2)); row(); });
+                (data as { list: Invoice[] }).list.forEach((i: Invoice) => { const sub=i.items.reduce((s, it) => s+it.qty*it.price,0); const bal=Math.max(0, sub - PaymentStore.sumAmount(PaymentStore.byInvoice(i.id))); col(12,i.number); col(60,i.customer.name); col(120,new Date(i.createdAt).toLocaleDateString()); col(155,sub.toFixed(2)); col(180,bal.toFixed(2)); row(); });
               } else if (module==='quotations') {
                 col(12,'No.'); col(60,'Customer'); col(120,'Date'); col(155,'Estimate'); col(180,'Balance'); row();
-                (data as any).list.forEach((q:any)=> { const sub=q.items.reduce((s:any,it:any)=>s+it.qty*it.price,0); const discount=q.discountPct?(sub*q.discountPct)/100:0; const shipping=q.shipping||0; const grand=Math.max(0,sub-discount+shipping); const bal=Math.max(0, grand - PaymentStore.sumAmount(PaymentStore.byQuote(q.id))); col(12,q.number); col(60,q.customer.name); col(120,new Date(q.createdAt).toLocaleDateString()); col(155,grand.toFixed(2)); col(180,bal.toFixed(2)); row(); });
+                (data as { list: Quotation[] }).list.forEach((q: Quotation) => { const sub=q.items.reduce((s, it) => s+it.qty*it.price,0); const discount=q.discountPct?(sub*q.discountPct)/100:0; const shipping=q.shipping||0; const grand=Math.max(0,sub-discount+shipping); const bal=Math.max(0, grand - PaymentStore.sumAmount(PaymentStore.byQuote(q.id))); col(12,q.number); col(60,q.customer.name); col(120,new Date(q.createdAt).toLocaleDateString()); col(155,grand.toFixed(2)); col(180,bal.toFixed(2)); row(); });
               } else if (module==='payments') {
                 col(12,'Date'); col(60,'Customer'); col(120,'Applied'); col(160,'Amount'); row();
-                (data as any).list.forEach((p:any)=> { col(12,new Date(p.date).toLocaleDateString()); col(60,((allCustomers.find((c:any)=> c.id===p.customerId)?.name)||p.customerId)); col(120,(p.invoiceId?`Invoice ${p.invoiceId}`:(p.quoteId?`Quote ${p.quoteId}`:'Unapplied'))); col(160,(p.amount||0).toFixed(2)); row(); });
+                (data as { list: Payment[] }).list.forEach((p: Payment) => { col(12,new Date(p.date).toLocaleDateString()); col(60,((allCustomers.find((c: Customer) => c.id===p.customerId)?.name)||p.customerId)); col(120,(p.invoiceId?`Invoice ${p.invoiceId}`:(p.quoteId?`Quote ${p.quoteId}`:'Unapplied'))); col(160,(p.amount||0).toFixed(2)); row(); });
               }
               // Footer with timestamp and page numbers
               try {
-                const pageCount = (pdf as any).getNumberOfPages ? (pdf as any).getNumberOfPages() : (pdf as any).internal.getNumberOfPages();
+                const pageCount = (pdf as { getNumberOfPages?: () => number; internal?: { getNumberOfPages?: () => number } }).getNumberOfPages ? (pdf as { getNumberOfPages: () => number }).getNumberOfPages() : (pdf as { internal: { getNumberOfPages: () => number } }).internal.getNumberOfPages();
                 for (let p = 1; p <= pageCount; p++) {
-                  (pdf as any).setPage(p);
+                  (pdf as { setPage: (page: number) => void }).setPage(p);
                   pdf.setFontSize(9); pdf.setTextColor(120,120,128);
                   const stamp = `Generated ${new Date().toLocaleString()} • Page ${p}/${pageCount}`;
-                  pdf.text(stamp, 105, 290, { align: 'center' as any });
+                  pdf.text(stamp, 105, 290, { align: 'center' });
                 }
-              } catch {}
+              } catch { /* ignore */ }
               pdf.save(`report_${module}_${from}_to_${to}.pdf`);
             }}>Export PDF</Button>
           </div>
@@ -256,18 +256,18 @@ const Reports: React.FC = () => {
         <CardContent className="space-y-4">
           {module === 'income' && (
             <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-              <div className="border rounded p-3"><div className="text-xs text-muted-foreground">Invoices</div><div className="text-xl font-semibold">{cs.currencySymbol}{((data as any).totals.invTotal||0).toFixed(2)}</div></div>
-              <div className="border rounded p-3"><div className="text-xs text-muted-foreground">Sales</div><div className="text-xl font-semibold">{cs.currencySymbol}{((data as any).totals.salesTotal||0).toFixed(2)}</div></div>
-              <div className="border rounded p-3"><div className="text-xs text-muted-foreground">Credits</div><div className="text-xl font-semibold">-{cs.currencySymbol}{((data as any).totals.creditsTotal||0).toFixed(2)}</div></div>
-              <div className="border rounded p-3"><div className="text-xs text-muted-foreground">Gross</div><div className="text-xl font-semibold">{cs.currencySymbol}{((data as any).totals.gross||0).toFixed(2)}</div></div>
+              <div className="border rounded p-3"><div className="text-xs text-muted-foreground">Invoices</div><div className="text-xl font-semibold">{cs.currencySymbol}{(((data as { totals: { invTotal?: number } }).totals.invTotal)||0).toFixed(2)}</div></div>
+              <div className="border rounded p-3"><div className="text-xs text-muted-foreground">Sales</div><div className="text-xl font-semibold">{cs.currencySymbol}{(((data as { totals: { salesTotal?: number } }).totals.salesTotal)||0).toFixed(2)}</div></div>
+              <div className="border rounded p-3"><div className="text-xs text-muted-foreground">Credits</div><div className="text-xl font-semibold">-{cs.currencySymbol}{(((data as { totals: { creditsTotal?: number } }).totals.creditsTotal)||0).toFixed(2)}</div></div>
+              <div className="border rounded p-3"><div className="text-xs text-muted-foreground">Gross</div><div className="text-xl font-semibold">{cs.currencySymbol}{(((data as { totals: { gross?: number } }).totals.gross)||0).toFixed(2)}</div></div>
               <div className="border rounded p-3"><div className="text-xs text-muted-foreground">Net</div><div className="text-xl font-semibold">{cs.currencySymbol}{((data as any).totals.net||0).toFixed(2)}</div></div>
               <div className="border rounded p-3"><div className="text-xs text-muted-foreground">Cash Received</div><div className="text-xl font-semibold">{cs.currencySymbol}{((data as any).totals.cashReceived||0).toFixed(2)}</div></div>
             </div>
           )}
           {module === 'expenses' && (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              <div className="border rounded p-3"><div className="text-xs text-muted-foreground">Count</div><div className="text-xl font-semibold">{(data as any).totals.count}</div></div>
-              <div className="border rounded p-3"><div className="text-xs text-muted-foreground">Total</div><div className="text-xl font-semibold">{cs.currencySymbol}{((data as any).totals.total||0).toFixed(2)}</div></div>
+              <div className="border rounded p-3"><div className="text-xs text-muted-foreground">Count</div><div className="text-xl font-semibold">{((data as { totals: { count?: number } }).totals.count)||0}</div></div>
+              <div className="border rounded p-3"><div className="text-xs text-muted-foreground">Total</div><div className="text-xl font-semibold">{cs.currencySymbol}{(((data as { totals: { total?: number } }).totals.total)||0).toFixed(2)}</div></div>
             </div>
           )}
           {module === 'income_vs_expense' && (

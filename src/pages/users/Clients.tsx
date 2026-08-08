@@ -6,6 +6,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { ClientsStore, type Client } from "@/lib/clientsStore";
 import { AuditLogStore } from "@/lib/auditLogStore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AuthStore } from "@/lib/authStore";
+import { RolesStore } from "@/lib/rolesStore";
 
 const Clients = () => {
   const [list, setList] = useState<Client[]>(ClientsStore.list());
@@ -14,13 +16,81 @@ const Clients = () => {
   const [editing, setEditing] = useState<Client | null>(null);
   const [form, setForm] = useState<Client>({ id: "", name: "", email: "", company: "", phone: "", status: "active", createdAt: new Date().toISOString() });
 
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [loginClient, setLoginClient] = useState<Client | null>(null);
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginName, setLoginName] = useState("");
+  const [loginRoleId, setLoginRoleId] = useState("role_client");
+  const [loginTempPass, setLoginTempPass] = useState<string>("");
+  const [loginError, setLoginError] = useState<string>("");
+
   const refresh = () => setList(ClientsStore.list());
   useEffect(()=>{ refresh(); }, []);
 
+  const roles = RolesStore.list();
+  const externalRoles = roles.filter(r => r.level === "External");
+
+  const accounts = AuthStore.listAccounts();
+  const accountByClientId = useMemo(() => {
+    const map: Record<string, { id: string; clientId?: string; name?: string; email?: string }> = {};
+    accounts.forEach(a => { if (a.clientId) map[a.clientId] = a; });
+    return map;
+  }, [accounts]);
+
   const startAdd = () => { setEditing(null); setForm({ id: `c_${Math.random().toString(36).slice(2,8)}`, name: "", email: "", company: "", phone: "", status: "active", createdAt: new Date().toISOString() }); setOpen(true); };
   const startEdit = (c: Client) => { setEditing(c); setForm(c); setOpen(true); };
-  const remove = (id: string) => { ClientsStore.remove(id); AuditLogStore.append({ id: crypto.randomUUID?.() || String(Date.now()), ts: new Date().toISOString(), actor: "admin", entity: "client", entityId: id, action: "delete" }); refresh(); };
+  const startCreateLogin = (c: Client) => {
+    setLoginClient(c);
+    setLoginEmail(c.email || "");
+    setLoginName(c.name);
+    setLoginRoleId(externalRoles.find(r => r.id === "role_client")?.id || externalRoles[0]?.id || "role_client");
+    setLoginTempPass("");
+    setLoginError("");
+    setLoginOpen(true);
+  };
+  const remove = (id: string) => {
+    const ok = window.confirm("Delete this client? This action cannot be undone.");
+    if (!ok) return;
+    ClientsStore.remove(id);
+    AuditLogStore.append({ id: crypto.randomUUID?.() || String(Date.now()), ts: new Date().toISOString(), actor: "admin", entity: "client", entityId: id, action: "delete" });
+    refresh();
+  };
   const save = () => { if (!form.name.trim()) return; const data = { ...form, createdAt: editing ? form.createdAt : new Date().toISOString() }; ClientsStore.upsert(data); AuditLogStore.append({ id: crypto.randomUUID?.() || String(Date.now()), ts: new Date().toISOString(), actor: "admin", entity: "client", entityId: data.id, action: editing ? "update" : "create" }); setOpen(false); refresh(); };
+
+  const generateTempPassword = () => {
+    const p = Math.random().toString(36).slice(2, 8) + Math.random().toString(36).slice(2, 6);
+    setLoginTempPass(p);
+    return p;
+  };
+
+  const createLogin = () => {
+    if (!loginClient) return;
+    setLoginError("");
+    if (!loginName.trim() || !loginEmail.trim()) { setLoginError("Name and email are required."); return; }
+    if (!externalRoles.find(r => r.id === loginRoleId)) { setLoginError("Please select an external/client role."); return; }
+    const pass = loginTempPass || generateTempPassword();
+    try {
+      const acc = AuthStore.createClientAccount({
+        name: loginName.trim(),
+        email: loginEmail.trim(),
+        password: pass,
+        roleId: loginRoleId,
+        clientId: loginClient.id,
+        active: true,
+      });
+      AuditLogStore.append({ id: crypto.randomUUID?.() || String(Date.now()), ts: new Date().toISOString(), actor: "admin", entity: "auth.account", entityId: acc.id, action: "create", details: `clientId=${loginClient.id}` });
+      setLoginTempPass(pass);
+    } catch (e: unknown) {
+      setLoginError(e instanceof Error ? e.message : "Failed to create login");
+      return;
+    }
+  };
+
+  const toggleAccountActive = (clientId: string) => {
+    const acc = accountByClientId[clientId];
+    if (!acc) return;
+    AuthStore.setAccountActive(acc.id, !acc.active);
+  };
 
   return (
     <div className="p-6">
@@ -70,6 +140,13 @@ const Clients = () => {
                   <td className="p-4 capitalize">{c.status}</td>
                   <td className="p-4">
                     <div className="flex items-center justify-end gap-2">
+                      {accountByClientId[c.id] ? (
+                        <Button size="sm" variant="secondary" onClick={()=> toggleAccountActive(c.id)}>
+                          {accountByClientId[c.id].active ? "Disable Login" : "Enable Login"}
+                        </Button>
+                      ) : (
+                        <Button size="sm" variant="secondary" onClick={()=> startCreateLogin(c)}>Create Login</Button>
+                      )}
                       <Button size="icon" variant="ghost" className="h-9 w-9 text-blue-600 hover:text-blue-700 hover:bg-blue-50" onClick={()=> startEdit(c)}>
                         <Edit className="w-4 h-4" />
                       </Button>
@@ -109,7 +186,7 @@ const Clients = () => {
             </div>
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">Status</label>
-              <Select value={form.status} onValueChange={(v)=> setForm({ ...form, status: v as any })}>
+              <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v as 'active'|'inactive' })}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -123,6 +200,50 @@ const Clients = () => {
           <DialogFooter>
             <Button variant="secondary" onClick={()=> setOpen(false)}>Cancel</Button>
             <Button onClick={save}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={loginOpen} onOpenChange={setLoginOpen}>
+        <DialogContent className="max-w-[95vw] w-[95vw] lg:max-w-[700px]">
+          <DialogHeader>
+            <DialogTitle>Create Client Login</DialogTitle>
+          </DialogHeader>
+          {loginError && <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded p-2">{loginError}</div>}
+          <div className="grid md:grid-cols-2 gap-3">
+            <div className="grid gap-1">
+              <label className="text-xs text-muted-foreground">Client</label>
+              <Input value={loginClient?.name || ""} disabled />
+            </div>
+            <div className="grid gap-1">
+              <label className="text-xs text-muted-foreground">Access Level (Role)</label>
+              <Select value={loginRoleId} onValueChange={setLoginRoleId}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {externalRoles.map(r => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1">
+              <label className="text-xs text-muted-foreground">Full Name</label>
+              <Input value={loginName} onChange={(e)=> setLoginName(e.target.value)} />
+            </div>
+            <div className="grid gap-1">
+              <label className="text-xs text-muted-foreground">Email</label>
+              <Input value={loginEmail} onChange={(e)=> setLoginEmail(e.target.value)} />
+            </div>
+            <div className="grid gap-1 md:col-span-2">
+              <label className="text-xs text-muted-foreground">Temporary Password</label>
+              <div className="flex gap-2">
+                <Input value={loginTempPass} onChange={(e)=> setLoginTempPass(e.target.value)} placeholder="Click Generate or type one" />
+                <Button type="button" variant="secondary" onClick={generateTempPassword}>Generate</Button>
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">Share these credentials with the client. You can disable login anytime.</div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="secondary" onClick={()=> setLoginOpen(false)}>Close</Button>
+            <Button onClick={createLogin} disabled={!loginClient}>Create Login</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

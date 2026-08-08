@@ -7,6 +7,8 @@ export type CompanySettings = {
   taxRatePct?: number; // e.g., 15 means 15%
   currencyCode: string; // e.g., USD
   currencySymbol: string; // e.g., $
+  primaryColor?: string; // e.g., #5F33FF
+  secondaryColor?: string; // e.g., #7A60D9
   bankName?: string;
   bankAccount?: string;
   branchCode?: string;
@@ -31,6 +33,8 @@ const DEFAULTS: CompanySettings = {
   taxRatePct: 0,
   currencyCode: "USD",
   currencySymbol: "$",
+  primaryColor: "#5F33FF",
+  secondaryColor: "#7A60D9",
   bankName: "Bank Name",
   bankAccount: "000123456789",
   branchCode: "123456",
@@ -44,7 +48,26 @@ const DEFAULTS: CompanySettings = {
 };
 
 export const CompanySettingsStore = {
-  get(): CompanySettings { return r<CompanySettings>(K.settings, DEFAULTS); },
-  set(s: CompanySettings) { w(K.settings, s); return s; },
-  update(patch: Partial<CompanySettings>) { const cur = this.get(); const next = { ...cur, ...patch }; return this.set(next); }
+  get(): CompanySettings { 
+    return r(K.settings, DEFAULTS);
+  },
+  
+  set(s: CompanySettings) { 
+    w(K.settings, s); 
+    
+    // Emit change event for components to update
+    try { 
+      window.dispatchEvent(new Event("company.settings-changed")); 
+    } catch { 
+      void 0; 
+    }
+    
+    return s; 
+  },
+  
+  update(patch: Partial<CompanySettings>) { 
+    const current = this.get();
+    const next = { ...current, ...patch }; 
+    return this.set(next); 
+  }
 };

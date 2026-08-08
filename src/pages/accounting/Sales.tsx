@@ -93,12 +93,12 @@ const Sales: React.FC = () => {
   useEffect(() => {
     const refresh = () => setList(SalesStore.list());
     const onStorage = (e: StorageEvent) => { if (e.key && e.key.startsWith('acct.sales')) refresh(); };
-    window.addEventListener('acct.sales-changed', refresh as any);
+    window.addEventListener('acct.sales-changed', refresh);
     window.addEventListener('storage', onStorage);
-    return () => { window.removeEventListener('acct.sales-changed', refresh as any); window.removeEventListener('storage', onStorage); };
+    return () => { window.removeEventListener('acct.sales-changed', refresh); window.removeEventListener('storage', onStorage); };
   }, []);
 
-  const total = useMemo(() => (s: Sale) => s.items.reduce((sum, i)=> sum + i.qty*i.price, 0), []);
+  const total = useMemo(() => (s: Sale) => s.items.reduce((sum, i) => sum + i.qty * i.price, 0), []);
 
   return (
     <div className="p-6 space-y-4">
@@ -127,7 +127,18 @@ const Sales: React.FC = () => {
                     <TableCell>{s.customerName || '-'}</TableCell>
                     <TableCell className="text-right">{cs.currencySymbol}{total(s).toFixed(2)}</TableCell>
                     <TableCell className="text-right space-x-2">
-                      <Button size="sm" variant="destructive" onClick={()=> { SalesStore.remove(s.id); setList(SalesStore.list()); }}>Delete</Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => {
+                          const ok = window.confirm("Delete this sale? This action cannot be undone.");
+                          if (!ok) return;
+                          SalesStore.remove(s.id);
+                          setList(SalesStore.list());
+                        }}
+                      >
+                        Delete
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}

@@ -21,8 +21,8 @@ const ResetPassword: React.FC = () => {
       AuthStore.resetPassword(token, password);
       setDone(true);
       setTimeout(()=> nav('/auth/login'), 800);
-    } catch (err: any) {
-      setError(err.message || 'Failed to reset password');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to reset password');
     }
   };
 

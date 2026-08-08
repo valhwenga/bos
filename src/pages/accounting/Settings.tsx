@@ -1,12 +1,12 @@
 import React, { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { CompanySettingsStore, type CompanySettings } from "@/lib/companySettings";
+import { CompanySettingsStore } from "@/lib/companySettings";
 import { toast } from "@/components/ui/use-toast";
+import { Button } from "@/components/ui/button";
 
 const Settings: React.FC = () => {
-  const [s, setS] = useState<CompanySettings>(CompanySettingsStore.get());
+  const [s, setS] = useState(CompanySettingsStore.get());
 
   const onLogo = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -24,8 +24,10 @@ const Settings: React.FC = () => {
           canvas.width = w; canvas.height = h;
           const ctx = canvas.getContext("2d");
           if (ctx) {
+            // Preserve transparency by not filling background
             ctx.drawImage(img, 0, 0, w, h);
-            const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+            // Use PNG to preserve transparency
+            const dataUrl = canvas.toDataURL("image/png");
             setS({ ...s, logoDataUrl: dataUrl });
           } else {
             setS({ ...s, logoDataUrl: String(reader.result) });
@@ -71,9 +73,11 @@ const Settings: React.FC = () => {
   };
   const save = () => {
     try {
-      CompanySettingsStore.set(s);
-      window.dispatchEvent(new Event("company-settings-changed"));
-      toast({ title: "Settings saved" });
+      if (s) {
+        CompanySettingsStore.set(s);
+        window.dispatchEvent(new Event("company.settings-changed"));
+        toast({ title: "Settings saved" });
+      }
     } catch (err) {
       toast({ title: "Failed to save", description: "Try a smaller logo image or reduce size.", variant: "destructive" });
     }
@@ -89,43 +93,51 @@ const Settings: React.FC = () => {
           <div className="grid md:grid-cols-2 gap-4">
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">Company Name</label>
-              <Input value={s.name} onChange={(e)=> setS({ ...s, name: e.target.value })} />
+              <Input value={s?.name || ""} onChange={(e)=> setS({ ...s, name: e.target.value })} />
             </div>
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">Tax ID</label>
-              <Input value={s.taxId || ""} onChange={(e)=> setS({ ...s, taxId: e.target.value })} />
+              <Input value={s?.taxId || ""} onChange={(e)=> setS({ ...s, taxId: e.target.value })} />
             </div>
             <div className="grid gap-1 md:col-span-2">
               <label className="text-xs text-muted-foreground">Address</label>
-              <Input value={s.address || ""} onChange={(e)=> setS({ ...s, address: e.target.value })} />
+              <Input value={s?.address || ""} onChange={(e)=> setS({ ...s, address: e.target.value })} />
             </div>
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">Email</label>
-              <Input value={s.email || ""} onChange={(e)=> setS({ ...s, email: e.target.value })} />
+              <Input value={s?.email || ""} onChange={(e)=> setS({ ...s, email: e.target.value })} />
             </div>
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">Phone</label>
-              <Input value={s.phone || ""} onChange={(e)=> setS({ ...s, phone: e.target.value })} />
+              <Input value={s?.phone || ""} onChange={(e)=> setS({ ...s, phone: e.target.value })} />
             </div>
           </div>
 
           <div className="grid md:grid-cols-3 gap-4">
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">Currency Code</label>
-              <Input value={s.currencyCode} onChange={(e)=> setS({ ...s, currencyCode: e.target.value })} />
+              <Input value={s?.currencyCode || ""} onChange={(e)=> setS({ ...s, currencyCode: e.target.value })} />
             </div>
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">Currency Symbol</label>
-              <Input value={s.currencySymbol} onChange={(e)=> setS({ ...s, currencySymbol: e.target.value })} />
+              <Input value={s?.currencySymbol || ""} onChange={(e)=> setS({ ...s, currencySymbol: e.target.value })} />
+            </div>
+            <div className="grid gap-1">
+              <label className="text-xs text-muted-foreground">Primary Color</label>
+              <Input type="color" value={s?.primaryColor || "#5F33FF"} onChange={(e)=> setS({ ...s, primaryColor: e.target.value })} />
+            </div>
+            <div className="grid gap-1">
+              <label className="text-xs text-muted-foreground">Secondary Color</label>
+              <Input type="color" value={s?.secondaryColor || "#7A60D9"} onChange={(e)=> setS({ ...s, secondaryColor: e.target.value })} />
             </div>
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">Logo</label>
               <Input type="file" accept="image/*" onChange={onLogo} />
             </div>
           </div>
-          {s.logoDataUrl && (
+          {s?.logoDataUrl && (
             <div className="flex items-center gap-4">
-              <img src={s.logoDataUrl} alt="Logo preview" className="h-12 w-auto rounded border" />
+              <img src={s?.logoDataUrl} alt="Logo preview" className="h-12 w-auto border-0 bg-transparent" />
               <Button variant="secondary" onClick={()=> setS({ ...s, logoDataUrl: undefined })}>Remove Logo</Button>
             </div>
           )}
@@ -136,7 +148,7 @@ const Settings: React.FC = () => {
               <Input type="file" accept="image/*" onChange={onSignature} />
             </div>
           </div>
-          {s.signatureDataUrl && (
+          {s?.signatureDataUrl && (
             <div className="flex items-center gap-4">
               <img src={s.signatureDataUrl} alt="Signature preview" className="h-16 w-auto rounded border bg-white p-1" />
               <Button variant="secondary" onClick={()=> setS({ ...s, signatureDataUrl: undefined })}>Remove Signature</Button>
@@ -146,38 +158,38 @@ const Settings: React.FC = () => {
           <div className="grid md:grid-cols-2 gap-4">
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">Bank Name</label>
-              <Input value={s.bankName || ""} onChange={(e)=> setS({ ...s, bankName: e.target.value })} />
+              <Input value={s?.bankName || ""} onChange={(e)=> setS({ ...s, bankName: e.target.value })} />
             </div>
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">Account Number</label>
-              <Input value={s.bankAccount || ""} onChange={(e)=> setS({ ...s, bankAccount: e.target.value })} />
+              <Input value={s?.bankAccount || ""} onChange={(e)=> setS({ ...s, bankAccount: e.target.value })} />
             </div>
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">Branch Code</label>
-              <Input value={s.branchCode || ""} onChange={(e)=> setS({ ...s, branchCode: e.target.value })} />
+              <Input value={s?.branchCode || ""} onChange={(e)=> setS({ ...s, branchCode: e.target.value })} />
             </div>
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">Branch Name</label>
-              <Input value={s.branchName || ""} onChange={(e)=> setS({ ...s, branchName: e.target.value })} />
+              <Input value={s?.branchName || ""} onChange={(e)=> setS({ ...s, branchName: e.target.value })} />
             </div>
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">SWIFT</label>
-              <Input value={s.bankSwift || ""} onChange={(e)=> setS({ ...s, bankSwift: e.target.value })} />
+              <Input value={s?.bankSwift || ""} onChange={(e)=> setS({ ...s, bankSwift: e.target.value })} />
             </div>
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">IBAN</label>
-              <Input value={s.bankIban || ""} onChange={(e)=> setS({ ...s, bankIban: e.target.value })} />
+              <Input value={s?.bankIban || ""} onChange={(e)=> setS({ ...s, bankIban: e.target.value })} />
             </div>
           </div>
 
           <div className="grid md:grid-cols-2 gap-4">
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">Default Customer Notes</label>
-              <Input value={s.customerNotesDefault || ""} onChange={(e)=> setS({ ...s, customerNotesDefault: e.target.value })} />
+              <Input value={s?.customerNotesDefault || ""} onChange={(e)=> setS({ ...s, customerNotesDefault: e.target.value })} />
             </div>
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">Footer Note</label>
-              <Input value={s.footerNote || ""} onChange={(e)=> setS({ ...s, footerNote: e.target.value })} />
+              <Input value={s?.footerNote || ""} onChange={(e)=> setS({ ...s, footerNote: e.target.value })} />
             </div>
           </div>
 

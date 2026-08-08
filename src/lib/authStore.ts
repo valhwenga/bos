@@ -1,3 +1,5 @@
+import { SecurityStore } from './securityStore';
+
 export type PendingSignup = {
   id: string;
   name: string;
@@ -12,6 +14,7 @@ export type Account = {
   email: string;
   password: string; // demo only; not for production
   roleId: string;
+  clientId?: string;
   createdAt: string;
   active: boolean;
 };
@@ -48,14 +51,66 @@ const K = {
 
 const r = <T,>(k: string, f: T): T => { try { const v = localStorage.getItem(k); return v ? (JSON.parse(v) as T) : f; } catch { return f; } };
 const w = (k: string, v: unknown) => localStorage.setItem(k, JSON.stringify(v));
-const emit = (name: string) => { try { window.dispatchEvent(new Event(name)); } catch {}
+const emit = (name: string) => { try { window.dispatchEvent(new Event(name)); } catch { void 0; }
 };
 
 function seedAdmin() {
   const accs = r<Account[]>(K.accounts, []);
   if (accs.length === 0) {
-    const admin: Account = { id: 'u_admin', name: 'Administrator', email: 'admin@example.com', password: 'admin', roleId: 'role_super_admin', createdAt: new Date().toISOString(), active: true };
-    w(K.accounts, [admin]);
+    // Create users directly in AuthStore for reliability
+    console.log('AuthStore.seedAdmin - Creating users directly...');
+    
+    const admin: Account = { 
+      id: 'user_admin', 
+      name: 'SpikeTech Administrator', 
+      email: 'admin@spiketech.co.za', 
+      password: 'Password@00', 
+      roleId: 'admin', 
+      createdAt: new Date().toISOString(), 
+      active: true 
+    };
+    
+    const manager: Account = { 
+      id: 'user_manager', 
+      name: 'Office Manager', 
+      email: 'manager@company.com', 
+      password: 'password', 
+      roleId: 'manager', 
+      createdAt: new Date().toISOString(), 
+      active: true 
+    };
+    
+    const employee: Account = { 
+      id: 'user_employee', 
+      name: 'Sales Employee', 
+      email: 'employee@company.com', 
+      password: 'password', 
+      roleId: 'employee', 
+      createdAt: new Date().toISOString(), 
+      active: true 
+    };
+    
+    const viewer: Account = { 
+      id: 'user_viewer', 
+      name: 'Report Viewer', 
+      email: 'viewer@company.com', 
+      password: 'password', 
+      roleId: 'viewer', 
+      createdAt: new Date().toISOString(), 
+      active: true 
+    };
+    
+    const accounts = [admin, manager, employee, viewer];
+    w(K.accounts, accounts);
+    
+    console.log('AuthStore.seedAdmin - Created accounts:', accounts);
+    console.log('AuthStore.seedAdmin - Available credentials:');
+    console.log('- Admin: admin@spiketech.co.za / Password@00');
+    console.log('- Manager: manager@company.com / password');
+    console.log('- Employee: employee@company.com / password');
+    console.log('- Viewer: viewer@company.com / password');
+  } else {
+    console.log('AuthStore.seedAdmin - Accounts already exist:', accs);
   }
 }
 seedAdmin();
@@ -83,9 +138,11 @@ export const AuthStore = {
     toks.push(rec); w(K.resets, toks);
     try {
       // Lazy import to avoid cycles
-      const mod = (window as any).EmailStore || null;
+      const wAny = window as unknown as { EmailStore?: unknown };
+      const mod = wAny.EmailStore || null;
       // If EmailStore is globally not exposed, fallback to dynamic import via eval-like require is not available; we will attempt window dispatch
-    } catch {}
+      void mod;
+    } catch { void 0; }
     return rec;
   },
 
@@ -129,13 +186,71 @@ export const AuthStore = {
   },
 
   signIn(email: string, password: string) {
-    const acc = this.listAccounts().find(a=> a.email.toLowerCase()===email.toLowerCase() && a.password===password && a.active);
-    if (!acc) throw new Error('Invalid credentials or not approved.');
-    const sess: Session = { userId: acc.id, createdAt: new Date().toISOString() };
-    w(K.session, sess); localStorage.setItem('auth.roleId', acc.roleId); emit('auth-changed'); return acc;
+    console.log('AuthStore.signIn - Attempting login for:', email);
+    
+    const acc = this.listAccounts().find(a=> 
+      a.email.toLowerCase()===email.toLowerCase() && 
+      a.password===password && 
+      a.active
+    );
+    
+    console.log('AuthStore.signIn - Found account:', acc);
+    
+    if (!acc) {
+      console.log('AuthStore.signIn - No account found');
+      throw new Error('Invalid credentials or not approved.');
+    }
+    
+    const sess: Session = { 
+      userId: acc.id, 
+      createdAt: new Date().toISOString() 
+    };
+    w(K.session, sess); 
+    localStorage.setItem('auth.roleId', acc.roleId); 
+    emit('auth-changed'); 
+    
+    console.log('AuthStore.signIn - Login successful for:', acc.name);
+    return acc;
   },
   signOut() { localStorage.removeItem(K.session); emit('auth-changed'); },
   currentSession(): Session | null { return r<Session | null>(K.session, null); },
   currentUser(): Account | undefined { const s = this.currentSession(); if (!s) return undefined; return this.listAccounts().find(a=> a.id===s.userId); },
-  isAuthed(): boolean { return !!this.currentSession(); }
+  isAuthed(): boolean { return !!this.currentSession(); },
+
+  upsertAccount(acc: Account) {
+    const all = this.listAccounts();
+    const i = all.findIndex(a => a.id === acc.id);
+    if (i >= 0) all[i] = { ...all[i], ...acc };
+    else all.push(acc);
+    w(K.accounts, all);
+    emit('auth-changed');
+    return acc;
+  },
+
+  setAccountActive(userId: string, active: boolean) {
+    const all = this.listAccounts();
+    const i = all.findIndex(a => a.id === userId);
+    if (i < 0) return;
+    all[i] = { ...all[i], active };
+    w(K.accounts, all);
+    emit('auth-changed');
+    return all[i];
+  },
+
+  createClientAccount(input: { name: string; email: string; password: string; roleId: string; clientId: string; active?: boolean }) {
+    const existsEmail = this.listAccounts().find(a => a.email.toLowerCase() === input.email.toLowerCase());
+    if (existsEmail) throw new Error('Email already registered.');
+    const acc: Account = {
+      id: `u_${Date.now()}`,
+      name: input.name,
+      email: input.email,
+      password: input.password,
+      roleId: input.roleId,
+      clientId: input.clientId,
+      createdAt: new Date().toISOString(),
+      active: input.active ?? true,
+    };
+    this.upsertAccount(acc);
+    return acc;
+  },
 };

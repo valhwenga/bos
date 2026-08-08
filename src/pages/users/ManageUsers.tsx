@@ -24,7 +24,13 @@ const ManageUsers = () => {
 
   const startAdd = () => { setEditing(null); setForm({ id: `u_${Math.random().toString(36).slice(2,8)}`, name: "", email: "", roleId: roles[0]?.id || "", status: "active", twoFactorEnabled: false, createdAt: new Date().toISOString() }); setOpen(true); };
   const startEdit = (u: AppUser) => { setEditing(u); setForm(u); setOpen(true); };
-  const remove = (id: string) => { UsersStore.remove(id); AuditLogStore.append({ id: crypto.randomUUID?.() || String(Date.now()), ts: new Date().toISOString(), actor: "admin", entity: "user", entityId: id, action: "delete" }); refresh(); };
+  const remove = (id: string) => {
+    const ok = window.confirm("Delete this user? This action cannot be undone.");
+    if (!ok) return;
+    UsersStore.remove(id);
+    AuditLogStore.append({ id: crypto.randomUUID?.() || String(Date.now()), ts: new Date().toISOString(), actor: "admin", entity: "user", entityId: id, action: "delete" });
+    refresh();
+  };
   const save = () => {
     if (!form.name.trim() || !form.email.trim() || !form.roleId) return;
     const role = roleMap[form.roleId];
@@ -134,7 +140,7 @@ const ManageUsers = () => {
             </div>
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">Status</label>
-              <Select value={form.status} onValueChange={(v)=> setForm({ ...form, status: v as any })}>
+              <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v as 'active'|'inactive' })}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>

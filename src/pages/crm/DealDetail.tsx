@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { CrmDealsStore, type Deal, type DealStage, type DealComment } from "@/lib/crmDealsStore";
 import { UsersStore } from "@/lib/usersStore";
@@ -24,8 +24,10 @@ const DealDetail = () => {
   const [d, setD] = useState<Deal | undefined>(undefined);
   const [note, setNote] = useState("");
 
-  const refresh = () => setD(id ? CrmDealsStore.get(id) : undefined);
-  useEffect(()=> { refresh(); }, [id]);
+  const refresh = useCallback(() => {
+    setD(id ? CrmDealsStore.get(id) : undefined);
+  }, [id]);
+  useEffect(()=> { refresh(); }, [refresh]);
 
   if (!d) return (
     <div className="p-6">
@@ -44,7 +46,17 @@ const DealDetail = () => {
           <CardTitle>Deal Detail</CardTitle>
           <div className="flex items-center gap-2">
             {canAccess('crm','full') && (
-              <Button variant="destructive" onClick={()=> { CrmDealsStore.remove(d.id); nav(-1); }}>Delete</Button>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  const ok = window.confirm("Delete this deal? This action cannot be undone.");
+                  if (!ok) return;
+                  CrmDealsStore.remove(d.id);
+                  nav(-1);
+                }}
+              >
+                Delete
+              </Button>
             )}
             <Button variant="secondary" onClick={()=> nav(-1)}>Back</Button>
           </div>

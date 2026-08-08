@@ -1,13 +1,24 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Plus, TrendingUp, Target, Award } from "lucide-react";
+import { Plus, TrendingUp, Target, Award, Calculator } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { HRMPerformanceStore, type Performance, type PerformanceStatus } from "@/lib/hrmPerformanceStore";
+import { computeAttendancePercent } from "@/lib/performanceUtils";
+import { PerformanceGoals } from "@/components/PerformanceGoals";
+import { PerformanceCalibration } from "@/components/PerformanceCalibration";
+import { Review360Form } from "@/components/Review360Form";
 
 const performanceDataSeed = HRMPerformanceStore.list();
 
@@ -53,7 +64,43 @@ const HRMPerformance = () => {
   const [data, setData] = useState<Performance[]>(HRMPerformanceStore.list());
   const [open, setOpen] = useState(false);
   const [detail, setDetail] = useState<Performance | null>(null);
+  const [showCalculation, setShowCalculation] = useState<{ breakdown: string[] } | null>(null);
   const [form, setForm] = useState<Performance>({ id: `PR${Math.floor(Math.random()*900+100)}`, employee: "", employeeId: "", department: "", rating: 0, goalsCompleted: 0, totalGoals: 10, attendance: 0, productivity: 0, status: "Good", reviewDate: new Date().toISOString().slice(0,10) });
+
+  // Auto-calculate attendance when employeeId or reviewDate changes
+  useEffect(() => {
+    if (form.employeeId && form.reviewDate) {
+      const calc = computeAttendancePercent(form.employeeId, form.reviewDate);
+      setForm(prev => ({ ...prev, attendance: calc.attendancePercent }));
+    }
+  }, [form.employeeId, form.reviewDate]);
+
+  const employeeOptions = Array.from(
+    new Map(
+      data
+        .filter((r) => r.employee && r.employeeId)
+        .map((r) => [r.employee, { employee: r.employee, employeeId: r.employeeId, department: r.department }])
+    ).values()
+  ).sort((a, b) => a.employee.localeCompare(b.employee));
+
+  const handleEmployeeSelect = (employeeName: string) => {
+    const found = employeeOptions.find((e) => e.employee === employeeName);
+    setForm({
+      ...form,
+      employee: employeeName,
+      employeeId: found?.employeeId ?? "",
+      department: found?.department ?? "",
+    });
+  };
+
+  const handleShowCalculation = () => {
+    if (!form.employeeId || !form.reviewDate) {
+      setShowCalculation({ breakdown: ["Select an employee and review date to see calculation."] });
+      return;
+    }
+    const calc = computeAttendancePercent(form.employeeId, form.reviewDate);
+    setShowCalculation({ breakdown: calc.breakdown });
+  };
   const add = () => {
     if (!form.employee.trim() || !form.employeeId.trim()) return;
     HRMPerformanceStore.upsert(form);
@@ -169,11 +216,22 @@ const HRMPerformance = () => {
           <div className="grid md:grid-cols-2 gap-3">
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">Employee</label>
-              <Input value={form.employee} onChange={(e)=> setForm({ ...form, employee: e.target.value })} />
+              <Select value={form.employee} onValueChange={handleEmployeeSelect}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select employee" />
+                </SelectTrigger>
+                <SelectContent>
+                  {employeeOptions.map((emp) => (
+                    <SelectItem key={emp.employeeId} value={emp.employee}>
+                      {emp.employee}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">Employee ID</label>
-              <Input value={form.employeeId} onChange={(e)=> setForm({ ...form, employeeId: e.target.value })} />
+              <Input value={form.employeeId} readOnly />
             </div>
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">Department</label>
@@ -193,7 +251,19 @@ const HRMPerformance = () => {
             </div>
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">Attendance %</label>
-              <Input type="number" value={form.attendance} onChange={(e)=> setForm({ ...form, attendance: parseInt(e.target.value||"0") })} />
+              <div className="flex gap-1">
+                <Input type="number" value={form.attendance} onChange={(e)=> setForm({ ...form, attendance: parseInt(e.target.value||"0") })} />
+                <Button type="button" variant="outline" size="sm" onClick={handleShowCalculation} title="Show calculation breakdown">
+                  <Calculator className="w-4 h-4" />
+                </Button>
+              </div>
+              {showCalculation && (
+                <div className="text-xs text-muted-foreground bg-secondary/30 rounded p-2 mt-1">
+                  {showCalculation.breakdown.map((line, i) => (
+                    <div key={i}>{line}</div>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">Productivity %</label>
@@ -242,6 +312,15 @@ const HRMPerformance = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Advanced Performance Features */}
+      {detail && (
+        <>
+          <PerformanceGoals employeeId={detail.employeeId} />
+          <PerformanceCalibration />
+          <Review360Form employeeId={detail.employeeId} employeeName={detail.employee} />
+        </>
+      )}
     </div>
   );
 };

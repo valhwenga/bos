@@ -38,7 +38,7 @@ const Tracker: React.FC = () => {
         </CardHeader>
         <CardContent className="flex items-center gap-4">
           <div className="text-3xl font-mono tabular-nums">{h.toString().padStart(2, "0")}:{m.toString().padStart(2, "0")}:{s.toString().padStart(2, "0")}</div>
-          <Button variant="elevated" onClick={toggle}>{running ? "Pause" : "Start"}</Button>
+          <Button onClick={toggle}>{running ? "Pause" : "Start"}</Button>
           <Button onClick={save}>Save</Button>
         </CardContent>
       </Card>

@@ -16,12 +16,14 @@ import ProjectReport from "./pages/projects/Report";
 import ProjectDetails from "./pages/projects/Details";
 import UserRole from "./pages/UserRole";
 import ManageUsers from "./pages/users/ManageUsers";
+import Clients from "./pages/users/Clients";
 import UserProfile from "./pages/users/Profile";
 import HRMEmployees from "./pages/HRMEmployees";
 import HRMDepartments from "./pages/HRMDepartments";
 import HRMAttendance from "./pages/HRMAttendance";
 import HRMLeave from "./pages/HRMLeave";
 import HRMPayroll from "./pages/HRMPayroll";
+import HRMPayrollManage from "./pages/HRMPayrollManage";
 import HRMPerformance from "./pages/HRMPerformance";
 import NotFound from "./pages/NotFound";
 import Placeholder from "./pages/Placeholder";
@@ -54,6 +56,7 @@ import MessengerConversations from "./pages/messenger/Conversations";
 import MessengerChat from "./pages/messenger/Chat";
 import InvoicePrint from "./pages/accounting/InvoicePrint";
 import QuotationPrint from "./pages/accounting/QuotationPrint";
+import BackupManagement from "./pages/BackupManagement";
 import CrmLeads from "./pages/crm/Leads";
 import CrmLeadDetail from "./pages/crm/LeadDetail";
 import CrmCustomers from "./pages/crm/Customers";
@@ -68,6 +71,7 @@ import { notify } from "./lib/notificationsStore";
 import { RecurringStore } from "./lib/recurringStore";
 import { AccountingStore } from "./lib/accountingStore";
 import { EmailStore } from "./lib/emailStore";
+import { Invoice } from "./lib/accountingStore";
 import { CompanySettingsStore } from "./lib/companySettings";
 import Login from "./pages/auth/Login";
 import Signup from "./pages/auth/Signup";
@@ -78,19 +82,31 @@ import ForgotPassword from "./pages/auth/ForgotPassword";
 import ResetPassword from "./pages/auth/ResetPassword";
 import WhatsAppSettingsPage from "./pages/whatsapp/Settings";
 import WaConsole from "./pages/whatsapp/Console";
+import Analytics from "./pages/Analytics";
+import HighPriority from "./pages/HighPriority";
+import Settings from "./pages/Settings";
+import Workflow from "./pages/Workflow";
+import Documents from "./pages/Documents";
+import Communication from "./pages/Communication";
 
 const queryClient = new QueryClient();
+
+type SimplePdf = {
+  setFontSize: (size: number) => void;
+  text: (text: string, x: number, y: number) => void;
+  output: (type: "datauristring") => string;
+};
 
 const App = () => {
   useEffect(() => {
     // Simple clock-in when the app mounts (user session starts)
     UserStore.clockIn();
     const onBeforeUnload = () => {
-      try { UserStore.clockOut(); } catch {}
+      try { UserStore.clockOut(); } catch { void 0; }
     };
     const onVis = () => {
       if (document.visibilityState === "hidden") {
-        try { UserStore.clockOut(); } catch {}
+        try { UserStore.clockOut(); } catch { void 0; }
       }
     };
     window.addEventListener("beforeunload", onBeforeUnload);
@@ -103,17 +119,21 @@ const App = () => {
       const mins = role.security?.sessionTimeoutMinutes ?? 0;
       if (mins > 0) {
         idleTimer = window.setTimeout(() => {
-          try { UserStore.clockOut(); } catch {}
+          try { UserStore.clockOut(); } catch { void 0; }
         }, mins * 60 * 1000);
       }
     };
     const activity = () => resetTimer();
-    ["mousemove","keydown","scroll","click"].forEach(evt => window.addEventListener(evt, activity, { passive: true } as any));
+    ["mousemove","keydown","scroll","click"].forEach((evt) => {
+      window.addEventListener(evt, activity, { passive: true });
+    });
     resetTimer();
     return () => {
       window.removeEventListener("beforeunload", onBeforeUnload);
       document.removeEventListener("visibilitychange", onVis);
-      ["mousemove","keydown","scroll","click"].forEach(evt => window.removeEventListener(evt, activity as any));
+      ["mousemove","keydown","scroll","click"].forEach((evt) => {
+        window.removeEventListener(evt, activity);
+      });
       if (idleTimer) window.clearTimeout(idleTimer);
     };
   }, []);
@@ -139,7 +159,7 @@ const App = () => {
             createdAt: new Date().toISOString(),
             useShippingAddress: false,
           };
-          AccountingStore.upsertInvoice(inv as any);
+          AccountingStore.upsertInvoice(inv as Invoice);
           // Advance template schedule
           RecurringStore.upsert({ ...t, lastRunAt: new Date().toISOString(), nextRunAt: RecurringStore.computeNextRun(t), nextNumber: (t.nextNumber || 1) + 1 });
           // Auto-send email with generic subject and PDF attachment (company template reused conceptually)
@@ -151,11 +171,15 @@ const App = () => {
             const ensureScript = (src: string) => new Promise<void>((resolve, reject) => {
               const s = document.createElement('script'); s.src = src; s.async = true; s.onload = () => resolve(); s.onerror = () => reject(new Error('Failed to load '+src)); document.head.appendChild(s);
             });
-            const w: any = window as any;
+            const w = window as unknown as {
+              jspdf?: { jsPDF: new (...args: unknown[]) => SimplePdf };
+              jspdf_esm?: { jsPDF: new (...args: unknown[]) => SimplePdf };
+              jspdfjs?: { jsPDF: new (...args: unknown[]) => SimplePdf };
+            };
             if (!(w.jspdf || w.jspdf_esm || w.jspdfjs)) {
-              try { await ensureScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js'); } catch {}
+              try { await ensureScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js'); } catch { void 0; }
             }
-            const { jsPDF } = (w.jspdf || w.jspdf_esm || w.jspdfjs) as any;
+            const { jsPDF } = (w.jspdf || w.jspdf_esm || w.jspdfjs) as { jsPDF: new (...args: unknown[]) => SimplePdf };
             const pdf = new jsPDF('p','mm','a4');
             let y = 15;
             pdf.setFontSize(16); pdf.text(`Invoice ${inv.number}`, 15, y); y += 8;
@@ -163,7 +187,7 @@ const App = () => {
             pdf.text(`Bill To: ${t.customer.name}`, 15, y); y += 8;
             pdf.setFontSize(12); pdf.text('Items', 15, y); y += 6; pdf.setFontSize(11);
             let total = 0;
-            t.items.forEach((it: any) => { const line = `${it.name}  ${it.qty} x ${it.price.toFixed(2)}`; pdf.text(line, 20, y); y += 6; total += (it.qty||0)*(it.price||0); });
+            t.items.forEach((it) => { const line = `${it.name}  ${it.qty} x ${it.price.toFixed(2)}`; pdf.text(line, 20, y); y += 6; total += (it.qty||0)*(it.price||0); });
             y += 4; pdf.text(`Total: ${total.toFixed(2)} ${cs.currencyCode || ''}`, 15, y);
             const dataUrl = pdf.output('datauristring');
             await EmailStore.send({
@@ -172,40 +196,38 @@ const App = () => {
               subject,
               body,
               attachments: [{ id: `att_${Date.now()}`, name: `${inv.number}.pdf`, type: 'application/pdf', size: dataUrl.length, dataUrl }],
-            } as any);
+            });
           }
         }
       }
     };
     const id = window.setInterval(run, 60 * 1000);
-    window.addEventListener('acct.recurring-changed', run as any);
+    window.addEventListener('acct.recurring-changed', run as EventListener);
     window.addEventListener('focus', run);
     run();
-    return () => { window.clearInterval(id); window.removeEventListener('acct.recurring-changed', run as any); window.removeEventListener('focus', run); };
+    return () => { window.clearInterval(id); window.removeEventListener('acct.recurring-changed', run as EventListener); window.removeEventListener('focus', run); };
   }, []);
 
   useEffect(() => {
-    const read = (k: string, fb: any) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch { return fb; } };
-    const write = (k: string, v: any) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+    const read = <T,>(k: string, fb: T): T => { try { const v = localStorage.getItem(k); return v ? (JSON.parse(v) as T) : fb; } catch { return fb; } };
+    const write = (k: string, v: unknown) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { void 0; } };
     const KEY = "proj.reminders.sent";
-    const ensurePermission = async () => {
-      if (typeof Notification !== "undefined" && Notification.permission === "default") {
-        try { await Notification.requestPermission(); } catch {}
-      }
-    };
-    ensurePermission();
+    // Don't request permission automatically - requires user gesture
+    // Permission will be requested when user interacts with notification features
 
-    const notify = (title: string, body: string) => {
+    const pushBrowserNotify = (title: string, body: string) => {
       if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-        try { new Notification(title, { body }); return; } catch {}
+        try { new Notification(title, { body }); return; } catch { void 0; }
       }
-      try { alert(`${title}\n\n${body}`); } catch {}
+      try { alert(`${title}\n\n${body}`); } catch { void 0; }
     };
 
     const tick = () => {
       const sent = read(KEY, {} as Record<string, { w?: boolean; d?: boolean; h?: boolean }>);
       const now = Date.now();
       const windowMs = 60 * 1000; // 1 minute window
+      const projects = ProjectStore.listProjects();
+      const tasks = ProjectStore.listTasks();
       ProjectStore.listEvents().forEach(ev => {
         if (!ev.startAt) return;
         const t = new Date(ev.startAt).getTime();
@@ -219,7 +241,28 @@ const App = () => {
           if (Math.abs(now - at) <= windowMs) {
             const rec = sent[ev.id] || {};
             if (!rec[tag]) {
-              notify(`Upcoming ${ev.type || "event"}: ${ev.title}`, `Starts in ${label} at ${new Date(t).toLocaleString()}`);
+              const msgTitle = `Upcoming ${ev.type || "event"}: ${ev.title}`;
+              const msgBody = `Starts in ${label} at ${new Date(t).toLocaleString()}`;
+
+              // Route to an assignee when event is tied to a project or a task
+              let assigneeId: string | undefined;
+              let link: string | undefined;
+
+              if (ev.id.startsWith('ev_task_due_')) {
+                const taskId = ev.id.slice('ev_task_due_'.length);
+                const task = tasks.find(x => x.id === taskId);
+                assigneeId = task?.assignedToUserId;
+                link = '/projects/tasks';
+              } else {
+                const project = ev.projectId ? projects.find(p => p.id === ev.projectId) : undefined;
+                assigneeId = project?.assignedToUserId;
+                link = ev.projectId ? `/projects/${ev.projectId}` : undefined;
+              }
+
+              if (assigneeId) {
+                notify(assigneeId, "ticket", msgTitle, msgBody, link);
+              }
+              pushBrowserNotify(msgTitle, msgBody);
               sent[ev.id] = { ...rec, [tag]: true };
             }
           }
@@ -228,34 +271,29 @@ const App = () => {
       write(KEY, sent);
     };
     const id = window.setInterval(tick, 60 * 1000);
-    window.addEventListener('proj.events-changed', tick as any);
+    window.addEventListener('proj.events-changed', tick as EventListener);
     window.addEventListener('focus', tick);
     tick();
     return () => {
       window.clearInterval(id);
-      window.removeEventListener('proj.events-changed', tick as any);
+      window.removeEventListener('proj.events-changed', tick as EventListener);
       window.removeEventListener('focus', tick);
     };
   }, []);
 
   useEffect(() => {
-    const ensurePermission = async () => {
-      if (typeof Notification !== "undefined" && Notification.permission === "default") {
-        try { await Notification.requestPermission(); } catch {}
-      }
-    };
-    ensurePermission();
+    // Don't request permission automatically - requires user gesture
+    // Permission will be requested when user interacts with notification features
     const onNotify = (e: Event) => {
-      const anyE = e as CustomEvent<any>;
-      const n = anyE.detail as { title: string; description?: string; userId?: string } | undefined;
+      const n = (e as CustomEvent<unknown>).detail as { title: string; description?: string; userId?: string } | undefined;
       if (!n) return;
-      try { const cur = UserStore.get(); if (n.userId && cur?.id && n.userId !== cur.id) return; } catch {}
+      try { const cur = UserStore.get(); if (n.userId && cur?.id && n.userId !== cur.id) return; } catch { void 0; }
       const title = n.title;
       const body = n.description || "";
       if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-        try { new Notification(title, { body }); return; } catch {}
+        try { new Notification(title, { body }); return; } catch { void 0; }
       }
-      try { alert(`${title}${body ? `\n\n${body}` : ""}`); } catch {}
+      try { alert(`${title}${body ? `\n\n${body}` : ""}`); } catch { void 0; }
     };
     window.addEventListener("app:notify", onNotify as EventListener);
     return () => window.removeEventListener("app:notify", onNotify as EventListener);
@@ -263,8 +301,8 @@ const App = () => {
 
   // CRM Tasks: auto due reminders (1 day / 1 hour before)
   useEffect(() => {
-    const read = (k: string, fb: any) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch { return fb; } };
-    const write = (k: string, v: any) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+    const read = <T,>(k: string, fb: T): T => { try { const v = localStorage.getItem(k); return v ? (JSON.parse(v) as T) : fb; } catch { return fb; } };
+    const write = (k: string, v: unknown) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { void 0; } };
     const KEY = "crm.tasks.reminders.sent";
     const windowMs = 60 * 1000; // 1 minute window
     const tick = () => {
@@ -272,9 +310,9 @@ const App = () => {
       const now = Date.now();
       CrmTasksStore.list().filter(t => !!t.assigneeId && !!t.dueAt && !t.completed).forEach(t => {
         const due = new Date(t.dueAt as string).getTime();
-        const plan: Array<["d"|"h", number, string]> = [
-          ["d", due - 24*60*60*1000, "1 day"],
-          ["h", due - 60*60*1000,    "1 hour"],
+        const plan: Array<["d" | "h", number, string]> = [
+          ["d", due - 24 * 60 * 60 * 1000, "1 day"],
+          ["h", due - 60 * 60 * 1000, "1 hour"],
         ];
         plan.forEach(([tag, at, label]) => {
           if (Math.abs(now - at) <= windowMs) {
@@ -289,12 +327,12 @@ const App = () => {
       write(KEY, sent);
     };
     const id = window.setInterval(tick, 60 * 1000);
-    window.addEventListener('crm.tasks-changed', tick as any);
+    window.addEventListener('proj.events-changed', tick as EventListener);
     window.addEventListener('focus', tick);
     tick();
     return () => {
       window.clearInterval(id);
-      window.removeEventListener('crm.tasks-changed', tick as any);
+      window.removeEventListener('proj.events-changed', tick as EventListener);
       window.removeEventListener('focus', tick);
     };
   }, []);
@@ -321,18 +359,19 @@ const App = () => {
             <Route path="hrm/employees" element={<AccessGuard module="hrm.employees"><HRMEmployees /></AccessGuard>} />
             <Route path="hrm/departments" element={<AccessGuard module="hrm.departments"><HRMDepartments /></AccessGuard>} />
             <Route path="hrm/attendance" element={<AccessGuard module="hrm.attendance"><HRMAttendance /></AccessGuard>} />
-            <Route path="hrm/leave" element={<AccessGuard module="hrm.attendance"><HRMLeave /></AccessGuard>} />
+            <Route path="hrm/leave" element={<AccessGuard module="hrm.leave"><HRMLeave /></AccessGuard>} />
             <Route path="hrm/payroll" element={<AccessGuard module="hrm.payroll"><HRMPayroll /></AccessGuard>} />
+            <Route path="hrm/payroll/manage" element={<AccessGuard module="hrm.payroll"><HRMPayrollManage /></AccessGuard>} />
             <Route path="hrm/performance" element={<AccessGuard module="hrm.performance"><HRMPerformance /></AccessGuard>} />
-            <Route path="projects" element={<Projects />} />
-            <Route path="projects/:id" element={<ProjectDetails />} />
-            <Route path="projects/tasks" element={<ProjectTasks />} />
-            <Route path="projects/timesheet" element={<ProjectTimesheet />} />
-            <Route path="projects/bug" element={<ProjectBug />} />
-            <Route path="projects/calendar" element={<ProjectCalendar />} />
-            <Route path="projects/tracker" element={<ProjectTracker />} />
-            <Route path="projects/report" element={<ProjectReport />} />
-            <Route path="users/role" element={<UserRole />} />
+            <Route path="projects" element={<AccessGuard module="projects"><Projects /></AccessGuard>} />
+            <Route path="projects/:id" element={<AccessGuard module="projects"><ProjectDetails /></AccessGuard>} />
+            <Route path="projects/tasks" element={<AccessGuard module="projects"><ProjectTasks /></AccessGuard>} />
+            <Route path="projects/timesheet" element={<AccessGuard module="projects"><ProjectTimesheet /></AccessGuard>} />
+            <Route path="projects/bug" element={<AccessGuard module="projects"><ProjectBug /></AccessGuard>} />
+            <Route path="projects/calendar" element={<AccessGuard module="projects"><ProjectCalendar /></AccessGuard>} />
+            <Route path="projects/tracker" element={<AccessGuard module="projects"><ProjectTracker /></AccessGuard>} />
+            <Route path="projects/report" element={<AccessGuard module="projects"><ProjectReport /></AccessGuard>} />
+            <Route path="users/role" element={<AccessGuard module="settings"><UserRole /></AccessGuard>} />
             {/* Accounting */}
             <Route path="accounting" element={<Navigate to="/accounting/quotations" replace />} />
             <Route path="accounting/quotations" element={<AccessGuard module="accounting"><Quotations /></AccessGuard>} />
@@ -359,18 +398,19 @@ const App = () => {
             <Route path="accounting/expenses" element={<AccessGuard module="accounting"><Expenses /></AccessGuard>} />
             <Route path="accounting/reports" element={<AccessGuard module="accounting"><Reports /></AccessGuard>} />
             <Route path="accounting/settings" element={<AccessGuard module="settings"><AccountingSettings /></AccessGuard>} />
-            <Route path="settings/company" element={<AccountingSettings />} />
+            <Route path="settings/company" element={<AccessGuard module="settings"><AccountingSettings /></AccessGuard>} />
             <Route path="settings/company/email" element={<AccessGuard module="settings"><EmailSettings /></AccessGuard>} />
             {/* Misc */}
-            <Route path="users" element={<ManageUsers />} />
-            <Route path="products" element={<Placeholder />} />
-            <Route path="pos" element={<Placeholder />} />
+            <Route path="users" element={<AccessGuard module="settings"><ManageUsers /></AccessGuard>} />
+            <Route path="users/client" element={<AccessGuard module="settings"><Clients /></AccessGuard>} />
+            <Route path="products" element={<AccessGuard module="inventory"><Placeholder /></AccessGuard>} />
+            <Route path="pos" element={<AccessGuard module="inventory"><Placeholder /></AccessGuard>} />
             <Route path="support" element={<AccessGuard module="support"><SupportDashboard /></AccessGuard>} />
             <Route path="support/tickets" element={<AccessGuard module="support"><SupportTickets /></AccessGuard>} />
             <Route path="support/tickets/:id" element={<AccessGuard module="support"><SupportTicketDetail /></AccessGuard>} />
             <Route path="support/settings" element={<AccessGuard module="support"><SupportSettings /></AccessGuard>} />
-            <Route path="portal/support" element={<ClientPortalSupport />} />
-            <Route path="zoom" element={<Placeholder />} />
+            <Route path="portal/support" element={<AccessGuard module="support"><ClientPortalSupport /></AccessGuard>} />
+            <Route path="zoom" element={<AccessGuard module="dashboard"><Placeholder /></AccessGuard>} />
             <Route path="messenger" element={<AccessGuard module="messenger"><MessengerConversations /></AccessGuard>} />
             <Route path="messenger/:id" element={<AccessGuard module="messenger"><MessengerChat /></AccessGuard>} />
             <Route path="email" element={<AccessGuard module="email"><EmailInbox /></AccessGuard>} />
@@ -380,6 +420,20 @@ const App = () => {
             {/* WhatsApp */}
             <Route path="whatsapp/settings" element={<AccessGuard module="whatsapp"><WhatsAppSettingsPage /></AccessGuard>} />
             <Route path="whatsapp" element={<AccessGuard module="whatsapp"><WaConsole /></AccessGuard>} />
+            {/* Analytics & Reporting */}
+            <Route path="analytics" element={<AccessGuard module="dashboard"><Analytics /></AccessGuard>} />
+            {/* High Priority Center */}
+            <Route path="high-priority" element={<AccessGuard module="dashboard"><HighPriority /></AccessGuard>} />
+            {/* System Backup & Restore */}
+            <Route path="backup" element={<AccessGuard module="settings"><BackupManagement /></AccessGuard>} />
+            {/* Settings */}
+            <Route path="settings" element={<AccessGuard module="settings"><Settings /></AccessGuard>} />
+            {/* Workflow & Approvals */}
+            <Route path="workflow" element={<AccessGuard module="dashboard"><Workflow /></AccessGuard>} />
+            {/* Document Management */}
+            <Route path="documents" element={<AccessGuard module="dashboard"><Documents /></AccessGuard>} />
+            {/* Communication & Collaboration */}
+            <Route path="communication" element={<AccessGuard module="dashboard"><Communication /></AccessGuard>} />
             <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>

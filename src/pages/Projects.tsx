@@ -12,32 +12,55 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input";
 import { ProjectStore, type ProjectFile, type Milestone } from "@/lib/projectStore";
 import { CustomersStore } from "@/lib/customersStore";
+import { AuthStore } from "@/lib/authStore";
+import { ClientsStore } from "@/lib/clientsStore";
 import { Link } from "react-router-dom";
 
 const Projects = () => {
+  const acc = AuthStore.currentUser();
+  const myClientId = acc?.clientId;
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [customerId, setCustomerId] = useState("");
+  const [clientId, setClientId] = useState("");
+  const [typeKey, setTypeKey] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [dueAt, setDueAt] = useState("");
   const [description, setDescription] = useState("");
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [msTitle, setMsTitle] = useState("");
   const [files, setFiles] = useState<ProjectFile[]>([]);
-  const [list, setList] = useState(ProjectStore.listProjects());
+  const [list, setList] = useState(ProjectStore.listProjects().filter(p => (myClientId ? p.clientId === myClientId : true)));
   const add = () => {
     if (!name.trim()) return;
     const id = `p_${Date.now()}`;
-    ProjectStore.upsertProject({ id, name, customerId: customerId || undefined, startDate: startDate || undefined, endDate: endDate || undefined, description, milestones, files });
+    const nextClientId = myClientId || (clientId || undefined);
+    ProjectStore.upsertProject({
+      id,
+      name,
+      clientId: nextClientId,
+      customerId: customerId || undefined,
+      typeKey: typeKey || undefined,
+      dueAt: dueAt ? new Date(dueAt).toISOString() : undefined,
+      startDate: startDate || undefined,
+      endDate: endDate || undefined,
+      description,
+      milestones,
+      files,
+    });
     setName("");
     setCustomerId("");
+    setClientId("");
+    setTypeKey("");
     setStartDate("");
     setEndDate("");
+    setDueAt("");
     setDescription("");
     setMilestones([]);
     setFiles([]);
     setOpen(false);
-    setList(ProjectStore.listProjects());
+    setList(ProjectStore.listProjects().filter(p => (myClientId ? p.clientId === myClientId : true)));
   };
   const addMilestone = () => {
     if (!msTitle.trim()) return;
@@ -99,7 +122,16 @@ const Projects = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
         {list.map((project) => (
           <Link key={project.id} to={`/projects/${project.id}`} className="block">
-            <ProjectCard icon={project.name[0] || "P"} iconBg="#10b981" title={project.name} description="" status={"In Progress" as const} members={[]} startDate="" dueDate="" />
+            <ProjectCard
+              icon={project.name[0] || "P"}
+              iconBg="#10b981"
+              title={project.name}
+              description={project.description || ""}
+              status={project.status === "closed" ? ("Complete" as const) : project.status === "pending_approval" ? ("Pending" as const) : ("In Progress" as const)}
+              members={[]}
+              startDate={project.startDate || ""}
+              dueDate={project.dueAt ? new Date(project.dueAt).toLocaleDateString() : (project.endDate || "")}
+            />
           </Link>
         ))}
       </div>
@@ -115,6 +147,22 @@ const Projects = () => {
               <Input value={name} onChange={(e)=> setName(e.target.value)} />
             </div>
             <div className="grid md:grid-cols-3 gap-3">
+              {!myClientId && (
+                <div className="grid gap-1">
+                  <label className="text-xs text-muted-foreground">Client</label>
+                  <select className="h-10 rounded-md border bg-background px-3" value={clientId} onChange={(e)=> setClientId(e.target.value)}>
+                    <option value="">Select client</option>
+                    {ClientsStore.list().map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+              )}
+              <div className="grid gap-1">
+                <label className="text-xs text-muted-foreground">Project Type</label>
+                <select className="h-10 rounded-md border bg-background px-3" value={typeKey} onChange={(e)=> setTypeKey(e.target.value)}>
+                  <option value="">Select type</option>
+                  {ProjectStore.listTypes().map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+                </select>
+              </div>
               <div className="grid gap-1">
                 <label className="text-xs text-muted-foreground">Customer</label>
                 <select className="h-10 rounded-md border bg-background px-3" value={customerId} onChange={(e)=> setCustomerId(e.target.value)}>
@@ -126,9 +174,15 @@ const Projects = () => {
                 <label className="text-xs text-muted-foreground">Start Date</label>
                 <Input type="date" value={startDate} onChange={(e)=> setStartDate(e.target.value)} />
               </div>
+            </div>
+            <div className="grid md:grid-cols-2 gap-3">
               <div className="grid gap-1">
                 <label className="text-xs text-muted-foreground">End Date</label>
                 <Input type="date" value={endDate} onChange={(e)=> setEndDate(e.target.value)} />
+              </div>
+              <div className="grid gap-1">
+                <label className="text-xs text-muted-foreground">Due Date & Time (time limit)</label>
+                <Input type="datetime-local" value={dueAt} onChange={(e)=> setDueAt(e.target.value)} />
               </div>
             </div>
             <div className="grid gap-1">

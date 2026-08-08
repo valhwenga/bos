@@ -4,6 +4,14 @@ import { RolesStore } from "@/lib/rolesStore";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
+interface PendingUser {
+  id: string;
+  name: string;
+  email: string;
+  requestedAt: string;
+  _role?: string;
+}
+
 const PendingApprovals: React.FC = () => {
   const [tick, setTick] = useState(0);
   const pending = AuthStore.listPending();
@@ -40,7 +48,7 @@ const PendingApprovals: React.FC = () => {
                 <td className="p-3">{p.email}</td>
                 <td className="p-3">{new Date(p.requestedAt).toLocaleString()}</td>
                 <td className="p-3">
-                  <Select defaultValue={roleDefault} onValueChange={(v)=> (p as any)._role = v}>
+                  <Select defaultValue={roleDefault} onValueChange={(v) => (p as PendingUser)._role = v}>
                     <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {roles.map(r => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
@@ -48,7 +56,7 @@ const PendingApprovals: React.FC = () => {
                   </Select>
                 </td>
                 <td className="p-3 text-right">
-                  <Button onClick={()=> approve(p.id, (p as any)._role || roleDefault)}>Approve</Button>
+                  <Button onClick={() => approve(p.id, (p as PendingUser)._role || roleDefault)}>Approve</Button>
                 </td>
               </tr>
             ))}

@@ -18,7 +18,12 @@ const HRMDepartments = () => {
   const refresh = () => setList(HRMDepartmentsStore.list());
   const startAdd = () => { setEditing(null); setForm({ id: `D${Math.floor(Math.random()*900+100)}`, name: "", head: "", employees: 0, description: "", color: "bg-blue-500" }); setOpen(true); };
   const startEdit = (d: Department) => { setEditing(d); setForm(d); setOpen(true); };
-  const remove = (id: string) => { HRMDepartmentsStore.remove(id); refresh(); };
+  const remove = (id: string) => {
+    const ok = window.confirm("Delete this department? This action cannot be undone.");
+    if (!ok) return;
+    HRMDepartmentsStore.remove(id);
+    refresh();
+  };
   const save = () => { if(!form.name.trim()) return; HRMDepartmentsStore.upsert(form); setOpen(false); refresh(); };
   return (
     <div className="p-6">

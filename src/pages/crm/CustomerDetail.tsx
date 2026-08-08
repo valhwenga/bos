@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { CrmCustomersStore, type CrmCustomer, type ContactPerson } from "@/lib/crmCustomersStore";
 import { Button } from "@/components/ui/button";
@@ -12,8 +12,10 @@ const CustomerDetail = () => {
   const [c, setC] = useState<CrmCustomer | undefined>(undefined);
   const [newContact, setNewContact] = useState<ContactPerson>({ id: "", name: "", email: "", phone: "", role: "" });
 
-  const refresh = () => setC(id ? CrmCustomersStore.get(id) : undefined);
-  useEffect(()=> { refresh(); }, [id]);
+  const refresh = useCallback(() => {
+    setC(id ? CrmCustomersStore.get(id) : undefined);
+  }, [id]);
+  useEffect(()=> { refresh(); }, [refresh]);
 
   if (!c) return (
     <div className="p-6">
@@ -30,7 +32,11 @@ const CustomerDetail = () => {
     update({ contacts: [...(c.contacts||[]), cp] });
     setNewContact({ id: "", name: "", email: "", phone: "", role: "" });
   };
-  const removeContact = (pid: string) => update({ contacts: (c.contacts||[]).filter(x=> x.id!==pid) });
+  const removeContact = (pid: string) => {
+    const ok = window.confirm("Remove this contact person?");
+    if (!ok) return;
+    update({ contacts: (c.contacts||[]).filter(x=> x.id!==pid) });
+  };
 
   return (
     <div className="p-6 space-y-4">
@@ -39,7 +45,19 @@ const CustomerDetail = () => {
           <CardTitle>Customer Detail</CardTitle>
           <div className="flex items-center gap-2">
             {canAccess('crm','full') && (
-              <Button variant="destructive" onClick={()=> { if (c?.id) { CrmCustomersStore.remove(c.id); navigate(-1); } }}>Delete</Button>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  const ok = window.confirm("Delete this customer? This action cannot be undone.");
+                  if (!ok) return;
+                  if (c?.id) {
+                    CrmCustomersStore.remove(c.id);
+                    navigate(-1);
+                  }
+                }}
+              >
+                Delete
+              </Button>
             )}
             <Button variant="secondary" onClick={()=> navigate(-1)}>Back</Button>
           </div>

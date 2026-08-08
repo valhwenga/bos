@@ -36,7 +36,7 @@ const Timesheet: React.FC = () => {
               <label className="text-xs text-muted-foreground">Seconds</label>
               <Input type="number" value={seconds} onChange={(e)=> setSeconds(parseInt(e.target.value||"0"))} />
             </div>
-            <Button variant="elevated" onClick={add}>Log Time</Button>
+            <Button onClick={add}>Log Time</Button>
             <div className="ml-auto text-sm text-muted-foreground">Total: {totalHrs.toFixed(2)}h</div>
           </div>
           <div className="space-y-2">

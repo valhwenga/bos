@@ -4,21 +4,26 @@ import { useNavigate, useLocation, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CompanySettingsStore } from "@/lib/companySettings";
+import type { Location } from "react-router-dom";
+
+interface LoginLocationState {
+  from?: string;
+}
 
 const Login: React.FC = () => {
-  const [email, setEmail] = useState("admin@example.com");
-  const [password, setPassword] = useState("admin");
+  const [email, setEmail] = useState("admin@spiketech.co.za");
+  const [password, setPassword] = useState("Password@00");
   const [error, setError] = useState<string>("");
   const nav = useNavigate();
-  const loc = useLocation() as any;
+  const loc = useLocation() as Location<LoginLocationState>;
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     try {
       AuthStore.signIn(email, password);
       const to = loc.state?.from || "/";
       nav(to, { replace: true });
-    } catch (err: any) {
-      setError(err.message || "Login failed");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Login failed");
     }
   };
   const cs = CompanySettingsStore.get();
@@ -28,15 +33,15 @@ const Login: React.FC = () => {
         <div className="p-6 pb-3 text-center">
           <div className="flex items-center justify-center mb-2">
             {cs.logoDataUrl ? (
-              <img src={cs.logoDataUrl} alt="logo" className="h-10 w-auto drop-shadow-sm" />
+              <img src={cs.logoDataUrl} alt="logo" className="h-10 w-auto border-0 bg-transparent" />
             ) : (
               <div className="h-10 w-10 rounded-full bg-gradient-to-br from-[#5F33FF] to-[#7A60D9] text-white flex items-center justify-center text-sm font-semibold">
                 {(cs.name||'S').slice(0,2).toUpperCase()}
               </div>
             )}
           </div>
-          <div className="text-2xl font-semibold text-slate-900">Welcome Back</div>
-          <div className="text-slate-500 mt-1">Sign in to continue</div>
+          <div className="text-2xl font-semibold text-slate-900">Welcome to Spike</div>
+          <div className="text-slate-500 mt-1">Sign in to continue to your dashboard</div>
           <div className="mt-4 inline-flex rounded-full bg-slate-100 p-1 relative">
             <span className="absolute inset-0 pointer-events-none" />
             <Link to="/auth/login" className="px-4 py-1.5 text-sm rounded-full bg-white text-slate-900 shadow transition-transform duration-300">Sign In</Link>

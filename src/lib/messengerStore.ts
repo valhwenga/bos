@@ -41,7 +41,7 @@ export const MessengerStore = {
         if (uid === authorId) continue;
         notify(uid, "message", author ? `New message from ${author.name}` : "New message", body.slice(0, 120), `/messenger/${convId}`);
       }
-    } catch {}
+    } catch { void 0; }
     return m;
   },
   markRead(convId: string, userId: string) {

@@ -13,5 +13,5 @@ const w = (k: string, v: unknown) => localStorage.setItem(k, JSON.stringify(v));
 
 export const WhatsAppSettingsStore = {
   get(): WhatsAppSettings { return r<WhatsAppSettings>(K.settings, {}); },
-  set(s: WhatsAppSettings) { w(K.settings, s); try { window.dispatchEvent(new Event('wa.settings-changed')); } catch {} return s; }
+  set(s: WhatsAppSettings) { w(K.settings, s); try { window.dispatchEvent(new Event('wa.settings-changed')); } catch { void 0; } return s; }
 };

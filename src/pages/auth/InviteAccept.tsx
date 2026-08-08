@@ -17,8 +17,8 @@ const InviteAccept: React.FC = () => {
     try {
       AuthStore.acceptInvite(token, name, password);
       nav('/auth/login');
-    } catch (err: any) {
-      setError(err.message || 'Failed to accept invite');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to accept invite');
     }
   };
 

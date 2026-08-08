@@ -171,7 +171,18 @@ const CreditNotes: React.FC = () => {
                       <TableCell className="text-right">{cs.currencySymbol}{remaining.toFixed(2)}</TableCell>
                       <TableCell className="text-right space-x-2">
                         <Button size="sm" variant="outline" onClick={()=> { setActive(cn); setApplyOpen(true); }}>Apply</Button>
-                        <Button size="sm" variant="destructive" onClick={()=> { CreditNotesStore.remove(cn.id); setList(CreditNotesStore.list()); }}>Delete</Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => {
+                            const ok = window.confirm("Delete this credit note? This action cannot be undone.");
+                            if (!ok) return;
+                            CreditNotesStore.remove(cn.id);
+                            setList(CreditNotesStore.list());
+                          }}
+                        >
+                          Delete
+                        </Button>
                       </TableCell>
                     </TableRow>
                   );

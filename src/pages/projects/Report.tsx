@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ProjectStore, type Project, type Task, type TimeEntry } from "@/lib/projectStore";
 import { CustomersStore } from "@/lib/customersStore";
+import { AuthStore } from "@/lib/authStore";
 
 const Report: React.FC = () => {
   const projects = ProjectStore.listProjects();
@@ -12,6 +13,20 @@ const Report: React.FC = () => {
   const tasks: Task[] = ProjectStore.listTasks().filter(t=> !project || t.projectId === project.id);
   const time: TimeEntry[] = ProjectStore.listTime().filter(t=> !project || t.projectId === project.id);
   const customer = project?.customerId ? CustomersStore.list().find(c=> c.id === project.customerId) : undefined;
+  const accounts = AuthStore.listAccounts();
+
+  const durationLabel = (start?: string, end?: string) => {
+    if (!start || !end) return "—";
+    const a = new Date(start).getTime();
+    const b = new Date(end).getTime();
+    if (!isFinite(a) || !isFinite(b) || b < a) return "—";
+    const ms = b - a;
+    const hrs = Math.floor(ms / 3600000);
+    const mins = Math.floor((ms % 3600000) / 60000);
+    const days = Math.floor(ms / 86400000);
+    if (days >= 2) return `${days}d ${Math.floor((ms % 86400000) / 3600000)}h`;
+    return `${hrs}h ${mins}m`;
+  };
 
   const stats = useMemo(() => {
     const totalHrs = time.reduce((s, e) => s + e.seconds, 0) / 3600;
@@ -55,6 +70,22 @@ const Report: React.FC = () => {
             <div className="rounded-lg border bg-background p-4">
               <div className="text-sm text-muted-foreground">End Date</div>
               <div className="text-2xl font-semibold">{project?.endDate || "—"}</div>
+            </div>
+            <div className="rounded-lg border bg-background p-4">
+              <div className="text-sm text-muted-foreground">Assignee</div>
+              <div className="text-2xl font-semibold">
+                {project?.assignedToUserId ? (accounts.find(a => a.id === project.assignedToUserId)?.name || project.assignedToUserId) : "—"}
+              </div>
+            </div>
+            <div className="rounded-lg border bg-background p-4">
+              <div className="text-sm text-muted-foreground">Status</div>
+              <div className="text-2xl font-semibold">{(project?.status || "open").replace(/_/g, " ")}</div>
+            </div>
+            <div className="rounded-lg border bg-background p-4">
+              <div className="text-sm text-muted-foreground">Time to Complete</div>
+              <div className="text-2xl font-semibold">
+                {durationLabel(project?.assignedAt, project?.closedAt || project?.approvedAt)}
+              </div>
             </div>
             <div className="rounded-lg border bg-background p-4">
               <div className="text-sm text-muted-foreground">Total Hours</div>

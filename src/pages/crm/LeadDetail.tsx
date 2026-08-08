@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { CrmLeadsStore, type Lead, type LeadActivity, type LeadAttachment, type LeadStage } from "@/lib/crmLeadsStore";
 import { UsersStore } from "@/lib/usersStore";
@@ -27,8 +27,10 @@ const LeadDetail = () => {
   const users = UsersStore.list();
   const me = users[0]?.id;
 
-  const refresh = () => setLead(id ? CrmLeadsStore.get(id) : undefined);
-  useEffect(()=>{ refresh(); }, [id]);
+  const refresh = useCallback(() => {
+    setLead(id ? CrmLeadsStore.get(id) : undefined);
+  }, [id]);
+  useEffect(()=>{ refresh(); }, [refresh]);
   if (!lead) return (
     <div className="p-6">
       <Button variant="secondary" onClick={()=> navigate(-1)}>Back</Button>
@@ -49,7 +51,9 @@ const LeadDetail = () => {
         const cust = existing || CustomersStore.upsert({ id: existing?.id || `c_${Date.now()}`, name: next.company || next.name, email: next.email, address: next.address, phone: next.phone });
         // Create a deal as Closed Won for traceability
         CrmDealsStore.upsert({ id: `D_${Date.now()}`, title: `${next.company || next.name} - Won`, customerId: cust.id, leadId: next.id, value: 0, probability: 100, expectedClose: new Date().toISOString(), stage: 'closed_won', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
-      } catch {}
+      } catch {
+      // ignore errors
+    }
     }
   };
 
@@ -76,7 +80,17 @@ const LeadDetail = () => {
           <CardTitle>Lead Detail</CardTitle>
           <div className="flex items-center gap-2">
             {canAccess('crm','full') && (
-              <Button variant="destructive" onClick={()=> { CrmLeadsStore.remove(lead.id); navigate(-1); }}>Delete</Button>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  const ok = window.confirm("Delete this lead? This action cannot be undone.");
+                  if (!ok) return;
+                  CrmLeadsStore.remove(lead.id);
+                  navigate(-1);
+                }}
+              >
+                Delete
+              </Button>
             )}
             <Button variant="secondary" onClick={()=> navigate(-1)}>Back</Button>
           </div>

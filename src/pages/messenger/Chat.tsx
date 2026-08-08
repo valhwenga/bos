@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { MessengerStore, type ChatMessage, type Conversation } from "@/lib/messengerStore";
 import { UsersStore } from "@/lib/usersStore";
@@ -10,6 +10,7 @@ import { HRMStore } from "@/lib/hrmStore";
 
 const Chat = () => {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [c, setC] = useState<Conversation | undefined>(undefined);
   const [msgs, setMsgs] = useState<ChatMessage[]>([]);
   const [text, setText] = useState("");
@@ -20,18 +21,16 @@ const Chat = () => {
   const [files, setFiles] = useState<File[]>([]);
   const [attachmentsPreview, setAttachmentsPreview] = useState<{ id: string; name: string; type: string; size: number; dataUrl: string }[]>([]);
 
-  const refresh = () => { if(!id) return; setC(MessengerStore.getConversation(id)); setMsgs(MessengerStore.messagesFor(id)); MessengerStore.markRead(id, me); };
-  useEffect(()=>{ refresh(); }, [id]);
+  const refresh = useCallback(() => {
+    if (!id) return;
+    setC(MessengerStore.getConversation(id));
+    setMsgs(MessengerStore.messagesFor(id));
+    MessengerStore.markRead(id, me);
+  }, [id, me]);
+  useEffect(()=>{ refresh(); }, [refresh]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(()=>{ scrollRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs.length]);
-
-  if (!c) return (
-    <div className="p-6">
-      <Button variant="secondary" onClick={()=> history.back()}>Back</Button>
-      <div className="mt-4">Conversation not found.</div>
-    </div>
-  );
 
   const toDataUrl = (file: File): Promise<{ id: string; name: string; type: string; size: number; dataUrl: string }> => new Promise((resolve) => {
     const reader = new FileReader();
@@ -83,8 +82,8 @@ const Chat = () => {
 
   // Typing indicator broadcast/listen (simple local tab bus)
   useEffect(() => {
-    const onTyping = (e: any) => {
-      const d = e?.detail as { convId: string; userId: string };
+    const onTyping = (e: Event) => {
+      const d = (e as CustomEvent<unknown>)?.detail as { convId: string; userId: string } | undefined;
       if (!d || d.convId !== id || d.userId === me) return;
       setTypingUsers((m) => ({ ...m, [d.userId]: Date.now() }));
     };
@@ -101,8 +100,15 @@ const Chat = () => {
   }, [id, me]);
 
   const emitTyping = () => {
-    try { window.dispatchEvent(new CustomEvent("im:typing", { detail: { convId: id, userId: me } })); } catch {}
+    try { window.dispatchEvent(new CustomEvent("im:typing", { detail: { convId: id, userId: me } })); } catch { void 0; }
   };
+
+  if (!c) return (
+    <div className="p-6">
+      <Button variant="secondary" onClick={()=> navigate(-1)}>Back</Button>
+      <div className="mt-4">Conversation not found.</div>
+    </div>
+  );
 
   return (
     <div className="p-0 sm:p-6 flex flex-col h-[calc(100vh-80px)]">
@@ -116,7 +122,7 @@ const Chat = () => {
             <div className="text-[11px] sm:text-xs text-muted-foreground">{c.members.map(id=> users.find(u=>u.id===id)?.name||id).join(', ')}</div>
           </div>
         </div>
-        <Button variant="secondary" size="sm" onClick={()=> history.back()}>Back</Button>
+        <Button variant="secondary" size="sm" onClick={()=> navigate(-1)}>Back</Button>
       </div>
 
       <div className="flex-1 overflow-y-auto relative">

@@ -18,7 +18,7 @@ export const NotificationsStore = {
   list(): AppNotification[] { return r<AppNotification[]>(K.notifs, []); },
   forUser(userId: string) { return this.list().filter(n => n.userId === userId); },
   unreadCount(userId: string) { return this.forUser(userId).filter(n => !n.read).length; },
-  append(n: AppNotification) { const all = this.list(); all.unshift(n); w(K.notifs, all.slice(0, 500)); try { window.dispatchEvent(new CustomEvent("app:notify", { detail: n })); } catch {} return n; },
+  append(n: AppNotification) { const all = this.list(); all.unshift(n); w(K.notifs, all.slice(0, 500)); try { window.dispatchEvent(new CustomEvent("app:notify", { detail: n })); } catch { void 0; } return n; },
   markAllRead(userId: string) { const all = this.list().map(n => n.userId===userId ? { ...n, read: true } : n); w(K.notifs, all); },
   markRead(id: string) { const all = this.list(); const i = all.findIndex(n => n.id===id); if (i>=0) { all[i] = { ...all[i], read: true }; w(K.notifs, all); } },
 };

@@ -11,7 +11,9 @@ const SEED: Product[] = [
 ];
 
 export const ProductsStore = {
-  list(): Product[] { return r<Product[]>(K.products, SEED); },
+  list(): Product[] { 
+    return r<Product[]>(K.products, SEED);
+  },
   upsert(p: Product) { const all = this.list(); const i = all.findIndex(x=>x.id===p.id); if(i>=0) all[i]=p; else all.push(p); w(K.products, all); return p; },
   remove(id: string) { const all = this.list().filter(x=> x.id!==id); w(K.products, all); },
 };

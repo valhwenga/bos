@@ -38,7 +38,7 @@ const Compose = () => {
       attachments,
       threadId: undefined,
       read: true,
-    } as any);
+    });
     navigate(`/email/${msg.id}`);
   };
 

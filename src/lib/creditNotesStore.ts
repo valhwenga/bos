@@ -14,7 +14,7 @@ export type CreditNote = {
 const K = { credits: 'acct.credits' };
 const r = <T,>(k: string, f: T): T => { try { const v = localStorage.getItem(k); return v ? (JSON.parse(v) as T) : f; } catch { return f; } };
 const w = (k: string, v: unknown) => localStorage.setItem(k, JSON.stringify(v));
-const emit = (name: string) => { try { window.dispatchEvent(new Event(name)); } catch {} };
+const emit = (name: string) => { try { window.dispatchEvent(new Event(name)); } catch { void 0; } };
 
 export const CreditNotesStore = {
   list(): CreditNote[] { return r<CreditNote[]>(K.credits, []); },
