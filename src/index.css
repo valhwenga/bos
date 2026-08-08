@@ -2,107 +2,209 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
-*/
+/* ==========================================================================
+   BOS design tokens
+
+   Every colour, elevation, radius and motion value in the application should
+   resolve to something defined here. Components must not reach for Tailwind's
+   raw palette (bg-slate-100, text-green-600, #5F33FF) — those bypass theming
+   and are what broke dark mode. The eslint rule `no-raw-palette` enforces it.
+
+   Colours are stored as bare HSL channels so Tailwind can wrap them in
+   hsl(var(--token) / <alpha>) and opacity modifiers keep working.
+   ========================================================================== */
 
 @layer base {
   :root {
-    --background: 0 0% 98%;
-    --foreground: 220 13% 13%;
-
-    --card: 0 0% 100%;
-    --card-foreground: 220 13% 13%;
-
-    --popover: 0 0% 100%;
-    --popover-foreground: 220 13% 13%;
-
-    --primary: 165 100% 36%;
+    /* --- Brand ------------------------------------------------------------ */
+    --primary: 164 76% 30%;
     --primary-foreground: 0 0% 100%;
+    --primary-hover: 164 76% 26%;
+    --primary-soft: 164 44% 94%;
 
-    --secondary: 220 13% 95%;
-    --secondary-foreground: 220 13% 13%;
-
-    --muted: 220 13% 95%;
-    --muted-foreground: 220 9% 46%;
-
-    --accent: 165 100% 36%;
+    --accent: 164 76% 30%;
     --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 84% 60%;
+    /* --- Surfaces --------------------------------------------------------- */
+    /* Neutrals carry a slight green-blue bias so they sit with the brand
+       rather than reading as an unconsidered grey. */
+    --background: 165 20% 98%;
+    --foreground: 200 18% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 200 18% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 200 18% 12%;
+
+    /* A raised surface for nested panels sitting on --card. */
+    --surface-raised: 165 20% 97%;
+    --surface-sunken: 165 16% 95%;
+
+    --secondary: 165 16% 95%;
+    --secondary-foreground: 200 18% 18%;
+
+    --muted: 165 16% 95%;
+    --muted-foreground: 200 8% 43%;
+    /* Third-level text: timestamps, helper copy, table meta. */
+    --subtle-foreground: 200 7% 56%;
+
+    --border: 165 14% 89%;
+    --border-strong: 165 12% 80%;
+    --input: 165 14% 89%;
+    --ring: 164 76% 30%;
+
+    /* --- Semantic status --------------------------------------------------
+       Separate from the brand accent. These communicate state and must not be
+       swapped when the accent palette changes. */
+    --success: 152 58% 32%;
+    --success-foreground: 0 0% 100%;
+    --success-soft: 152 44% 93%;
+
+    --warning: 32 82% 40%;
+    --warning-foreground: 0 0% 100%;
+    --warning-soft: 38 78% 93%;
+
+    --danger: 358 66% 46%;
+    --danger-foreground: 0 0% 100%;
+    --danger-soft: 358 70% 95%;
+
+    --info: 212 76% 43%;
+    --info-foreground: 0 0% 100%;
+    --info-soft: 212 74% 94%;
+
+    /* shadcn compatibility: several primitives reference --destructive. */
+    --destructive: 358 66% 46%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 165 100% 36%;
+    /* --- Workflow status --------------------------------------------------
+       Consumed by StatusBadge. Derived from the semantic set above so status
+       colour stays consistent with the rest of the system. */
+    --status-hold: 32 82% 40%;
+    --status-progress: 212 76% 43%;
+    --status-complete: 152 58% 32%;
+    --status-canceled: 358 66% 46%;
+    --status-pending: 32 82% 40%;
+    --status-new: 212 76% 43%;
+    --status-won: 152 58% 32%;
+    --status-loss: 358 66% 46%;
 
-    --radius: 0.75rem;
-    
-    --status-hold: 45 93% 47%;
-    --status-progress: 199 89% 48%;
-    --status-complete: 165 100% 36%;
-    --status-canceled: 348 83% 47%;
-    --status-pending: 29 80% 44%;
-    --status-new: 165 100% 36%;
-    --status-won: 165 100% 36%;
-    --status-loss: 348 83% 47%;
-    
-    --sidebar-width: 240px;
-    --sidebar-collapsed-width: 60px;
+    /* --- Sidebar ---------------------------------------------------------- */
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 200 14% 30%;
+    --sidebar-primary: 164 76% 30%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 165 16% 95%;
+    --sidebar-accent-foreground: 200 18% 15%;
+    --sidebar-border: 165 14% 89%;
+    --sidebar-ring: 164 76% 30%;
 
-    --sidebar-background: 0 0% 98%;
+    --sidebar-width: 16rem;
+    --sidebar-width-collapsed: 3.5rem;
 
-    --sidebar-foreground: 240 5.3% 26.1%;
+    /* --- Radius ----------------------------------------------------------- */
+    /* Tighter than the previous 0.75rem; dense enterprise UI reads as more
+       precise with less rounding. */
+    --radius: 0.5rem;
 
-    --sidebar-primary: 240 5.9% 10%;
+    /* --- Elevation --------------------------------------------------------
+       Low-alpha, tinted toward the neutral hue rather than pure black. */
+    --shadow-xs: 0 1px 2px 0 hsl(200 18% 12% / 0.05);
+    --shadow-sm: 0 1px 3px 0 hsl(200 18% 12% / 0.07), 0 1px 2px -1px hsl(200 18% 12% / 0.05);
+    --shadow-md: 0 4px 12px -2px hsl(200 18% 12% / 0.08), 0 2px 4px -2px hsl(200 18% 12% / 0.05);
+    --shadow-lg: 0 12px 28px -6px hsl(200 18% 12% / 0.12), 0 4px 10px -4px hsl(200 18% 12% / 0.06);
+    --shadow-overlay: 0 24px 48px -12px hsl(200 18% 12% / 0.20);
 
-    --sidebar-primary-foreground: 0 0% 98%;
+    /* --- Motion ----------------------------------------------------------- */
+    --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+    --ease-emphasized: cubic-bezier(0.3, 0, 0, 1);
+    --duration-fast: 120ms;
+    --duration-normal: 200ms;
+    --duration-slow: 320ms;
 
-    --sidebar-accent: 240 4.8% 95.9%;
-
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
-    --sidebar-border: 220 13% 91%;
-
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* --- Typography ------------------------------------------------------- */
+    --font-sans: "Inter var", "Inter", ui-sans-serif, system-ui, -apple-system,
+      "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
   }
 
   .dark {
-    --background: 220 13% 13%;
-    --foreground: 0 0% 98%;
+    --primary: 162 62% 46%;
+    --primary-foreground: 200 30% 8%;
+    --primary-hover: 162 62% 52%;
+    --primary-soft: 164 40% 16%;
 
-    --card: 220 13% 16%;
-    --card-foreground: 0 0% 98%;
+    --accent: 162 62% 46%;
+    --accent-foreground: 200 30% 8%;
 
-    --popover: 220 13% 16%;
-    --popover-foreground: 0 0% 98%;
+    --background: 200 18% 8%;
+    --foreground: 165 12% 96%;
 
-    --primary: 165 100% 36%;
-    --primary-foreground: 0 0% 100%;
+    --card: 200 16% 11%;
+    --card-foreground: 165 12% 96%;
 
-    --secondary: 220 13% 20%;
-    --secondary-foreground: 0 0% 98%;
+    --popover: 200 16% 12%;
+    --popover-foreground: 165 12% 96%;
 
-    --muted: 220 13% 20%;
-    --muted-foreground: 220 9% 65%;
+    --surface-raised: 200 15% 14%;
+    --surface-sunken: 200 18% 6%;
 
-    --accent: 165 100% 36%;
-    --accent-foreground: 0 0% 100%;
+    --secondary: 200 14% 16%;
+    --secondary-foreground: 165 12% 94%;
 
-    --destructive: 0 62% 50%;
-    --destructive-foreground: 0 0% 100%;
+    --muted: 200 14% 16%;
+    --muted-foreground: 195 8% 64%;
+    --subtle-foreground: 195 7% 52%;
 
-    --border: 220 13% 20%;
-    --input: 220 13% 20%;
-    --ring: 165 100% 36%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --border: 200 12% 20%;
+    --border-strong: 200 10% 30%;
+    --input: 200 12% 22%;
+    --ring: 162 62% 46%;
+
+    /* Status colours lift and desaturate on a dark ground so they stay legible
+       without glowing. Soft variants become tinted darks, not tinted lights. */
+    --success: 152 48% 52%;
+    --success-foreground: 152 60% 8%;
+    --success-soft: 152 32% 16%;
+
+    --warning: 38 78% 58%;
+    --warning-foreground: 32 70% 10%;
+    --warning-soft: 36 34% 18%;
+
+    --danger: 358 70% 62%;
+    --danger-foreground: 358 60% 10%;
+    --danger-soft: 358 32% 20%;
+
+    --info: 212 78% 62%;
+    --info-foreground: 212 70% 10%;
+    --info-soft: 212 34% 20%;
+
+    --destructive: 358 70% 62%;
+    --destructive-foreground: 358 60% 10%;
+
+    --status-hold: 38 78% 58%;
+    --status-progress: 212 78% 62%;
+    --status-complete: 152 48% 52%;
+    --status-canceled: 358 70% 62%;
+    --status-pending: 38 78% 58%;
+    --status-new: 212 78% 62%;
+    --status-won: 152 48% 52%;
+    --status-loss: 358 70% 62%;
+
+    --sidebar-background: 200 16% 10%;
+    --sidebar-foreground: 195 10% 72%;
+    --sidebar-primary: 162 62% 46%;
+    --sidebar-primary-foreground: 200 30% 8%;
+    --sidebar-accent: 200 14% 16%;
+    --sidebar-accent-foreground: 165 12% 94%;
+    --sidebar-border: 200 12% 18%;
+    --sidebar-ring: 162 62% 46%;
+
+    --shadow-xs: 0 1px 2px 0 hsl(0 0% 0% / 0.30);
+    --shadow-sm: 0 1px 3px 0 hsl(0 0% 0% / 0.40), 0 1px 2px -1px hsl(0 0% 0% / 0.30);
+    --shadow-md: 0 4px 12px -2px hsl(0 0% 0% / 0.45), 0 2px 4px -2px hsl(0 0% 0% / 0.30);
+    --shadow-lg: 0 12px 28px -6px hsl(0 0% 0% / 0.55), 0 4px 10px -4px hsl(0 0% 0% / 0.35);
+    --shadow-overlay: 0 24px 48px -12px hsl(0 0% 0% / 0.65);
   }
 }
 
@@ -111,12 +213,63 @@ All colors MUST be HSL.
     @apply border-border;
   }
 
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
   body {
-    @apply bg-background text-foreground font-sans;
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: "cv11", "ss01";
+    font-variation-settings: normal;
+  }
+
+  /* Digits in tables, money columns and metrics must align. */
+  th, td, .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  h1, h2, h3, h4 {
+    text-wrap: balance;
+  }
+
+  /* A single, visible focus treatment everywhere. */
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
   }
 }
 
-/* Print rules: only render the subtree with id #print-root */
+@layer utilities {
+  /* Scrollbars that don't shout, in both themes. */
+  .scrollbar-subtle {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border-strong)) transparent;
+  }
+  .scrollbar-subtle::-webkit-scrollbar {
+    width: 0.5rem;
+    height: 0.5rem;
+  }
+  .scrollbar-subtle::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--border-strong));
+    border-radius: 9999px;
+  }
+  .scrollbar-subtle::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Print: only render the subtree with id #print-root */
 @media print {
   body * { visibility: hidden !important; }
   #print-root, #print-root * { visibility: visible !important; }

@@ -1,7 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Eye, Printer, CreditCard, Edit, Trash2 } from "lucide-react";
+import { Printer, CreditCard, Edit, Trash2, FileText, Wallet, AlertCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatCard } from "@/components/ui/stat-card";
 import { AccountingStore, Invoice } from "@/lib/accountingStore";
 import { Button } from "@/components/ui/button";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -397,94 +400,146 @@ const Invoices: React.FC = () => {
     }
   };
 
+  const statusTone: Record<Invoice["status"], string> = {
+    paid: "bg-success-soft text-success",
+    overdue: "bg-danger-soft text-danger",
+    sent: "bg-info-soft text-info",
+    draft: "bg-muted text-muted-foreground",
+  };
+
+  const columns: Column<Invoice>[] = [
+    {
+      id: "number",
+      header: "No.",
+      sortValue: (i) => i.number,
+      cell: (i) => <span className="font-medium">{i.number}</span>,
+    },
+    {
+      id: "customer",
+      header: "Customer",
+      sortValue: (i) => i.customer.name,
+      cell: (i) => i.customer.name,
+    },
+    {
+      id: "status",
+      header: "Status",
+      sortValue: (i) => i.status,
+      cell: (i) => (
+        <span className={`inline-flex rounded-sm px-1.5 py-0.5 text-xs font-medium capitalize ${statusTone[i.status]}`}>
+          {i.status}
+        </span>
+      ),
+    },
+    {
+      id: "due",
+      header: "Due",
+      align: "right",
+      hideOnMobile: true,
+      sortValue: (i) => i.dueDate ?? "",
+      cell: (i) => (
+        <span className="text-muted-foreground">
+          {i.dueDate ? new Date(i.dueDate).toLocaleDateString() : "—"}
+        </span>
+      ),
+    },
+    {
+      id: "paid",
+      header: "Paid",
+      align: "right",
+      sortValue: (i) => paidAmt(i),
+      cell: (i) => `${c.currencySymbol}${paidAmt(i).toFixed(2)}`,
+    },
+    {
+      id: "balance",
+      header: "Balance",
+      align: "right",
+      sortValue: (i) => balance(i),
+      cell: (i) => (
+        <span className={balance(i) > 0 ? "font-medium text-foreground" : "text-muted-foreground"}>
+          {c.currencySymbol}{balance(i).toFixed(2)}
+        </span>
+      ),
+    },
+    {
+      id: "actions",
+      header: <span className="sr-only">Actions</span>,
+      align: "right",
+      width: "1%",
+      cell: (i) => (
+        <div className="inline-flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => { setEditingInvoice(i); setEditOpen(true); }} aria-label={`Edit invoice ${i.number}`}>
+            <Edit className="h-3.5 w-3.5" />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => navigate(`/accounting/invoices/${i.id}/print`)} aria-label={`Print invoice ${i.number}`}>
+            <Printer className="h-3.5 w-3.5" />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => { setActiveInvoice(i); setPaymentOpen(true); }} aria-label={`Capture payment for ${i.number}`}>
+            <CreditCard className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 text-muted-foreground hover:text-danger"
+            aria-label={`Delete invoice ${i.number}`}
+            onClick={() => {
+              if (window.confirm(`Delete invoice ${i.number}? This cannot be undone.`)) {
+                AccountingStore.removeInvoice(i.id);
+                setInvoices(AccountingStore.listInvoices());
+                toast({ title: "Invoice deleted", description: `Invoice ${i.number} was deleted.` });
+              }
+            }}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
+  const outstanding = invoices.reduce((sum, i) => sum + balance(i), 0);
+  const overdueCount = invoices.filter((i) => i.status === "overdue").length;
+
   return (
-    <div className="p-6 space-y-4">
-      <Card className="shadow-[0_10px_0_rgba(0,0,0,0.08)]">
-        <CardHeader className="flex-row items-center justify-between">
-          <CardTitle>Invoices</CardTitle>
-          <Button onClick={()=> setOpen(true)}>New Invoice</Button>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-lg overflow-hidden border max-h-60 overflow-y-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>No.</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Paid</TableHead>
-                  <TableHead className="text-right">Adjusted Balance</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {invoices.map((i) => (
-                  <TableRow key={i.id}>
-                    <TableCell>{i.number}</TableCell>
-                    <TableCell>{i.customer.name}</TableCell>
-                    <TableCell>
-                      <Badge variant={i.status === 'paid' ? 'default' : i.status === 'overdue' ? 'destructive' : 'secondary'}>
-                        {i.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">{c.currencySymbol}{paidAmt(i).toFixed(2)}</TableCell>
-                    <TableCell className="text-right">{c.currencySymbol}{balance(i).toFixed(2)}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="inline-flex items-center justify-end gap-2">
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          onClick={() => { setEditingInvoice(i); setEditOpen(true); }}
-                          aria-label="Edit invoice"
-                          title="Edit invoice"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          onClick={() => navigate(`/accounting/invoices/${i.id}/print`)}
-                          aria-label="Print / download PDF"
-                          title="Print / download PDF"
-                        >
-                          <Printer className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="secondary"
-                          onClick={() => { setActiveInvoice(i); setPaymentOpen(true); }}
-                          aria-label="Capture payment"
-                          title="Capture payment"
-                        >
-                          <CreditCard className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="destructive"
-                          onClick={() => {
-                            if (window.confirm(`Are you sure you want to delete invoice ${i.number}? This action cannot be undone.`)) {
-                              AccountingStore.removeInvoice(i.id);
-                              setInvoices(AccountingStore.listInvoices());
-                              toast({ 
-                                title: "Invoice Deleted", 
-                                description: `Invoice ${i.number} has been deleted.`,
-                                variant: "destructive"
-                              });
-                            }
-                          }}
-                          aria-label="Delete invoice"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+    <div className="flex flex-col gap-6 p-6">
+      <PageHeader
+        title="Invoices"
+        description="Track what you have billed and what is still outstanding."
+        breadcrumbs={[{ label: "Accounting", to: "/accounting/quotations" }, { label: "Invoices" }]}
+        actions={<Button onClick={() => setOpen(true)}>New invoice</Button>}
+      >
+        <div className="grid gap-3 sm:grid-cols-3">
+          <StatCard label="Invoices" value={invoices.length} hint="All time" icon={FileText} />
+          <StatCard
+            label="Outstanding"
+            value={`${c.currencySymbol}${outstanding.toFixed(2)}`}
+            hint="Unpaid balance"
+            icon={Wallet}
+            tone={outstanding > 0 ? "warning" : "success"}
+          />
+          <StatCard
+            label="Overdue"
+            value={overdueCount}
+            hint={overdueCount ? "Needs chasing" : "Nothing overdue"}
+            icon={AlertCircle}
+            tone={overdueCount ? "danger" : "neutral"}
+          />
+        </div>
+      </PageHeader>
+
+      <DataTable
+        rows={invoices}
+        columns={columns}
+        rowKey={(i) => i.id}
+        searchAccessor={(i) => `${i.number} ${i.customer.name} ${i.status}`}
+        searchPlaceholder="Search by number, customer or status…"
+        onRowClick={(i) => navigate(`/accounting/invoices/${i.id}/print`)}
+        empty={{
+          title: "No invoices yet",
+          description: "Create your first invoice, or convert an accepted quotation.",
+          action: <Button onClick={() => setOpen(true)}>New invoice</Button>,
+        }}
+      />
+
       <NewInvoiceDialog open={open} onOpenChange={setOpen} onAdd={addInvoice} preselectedCustomerId={preselectedCustomerId || undefined} />
       <NewInvoiceDialog open={editOpen} onOpenChange={(v)=> { setEditOpen(v); if (!v) setEditingInvoice(undefined); }} onAdd={addInvoice} editingInvoice={editingInvoice} />
       <CapturePaymentDialog 
