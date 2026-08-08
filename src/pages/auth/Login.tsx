@@ -11,8 +11,8 @@ interface LoginLocationState {
 }
 
 const Login: React.FC = () => {
-  const [email, setEmail] = useState("admin@spiketech.co.za");
-  const [password, setPassword] = useState("Password@00");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string>("");
   const nav = useNavigate();
   const loc = useLocation() as Location<LoginLocationState>;

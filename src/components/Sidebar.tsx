@@ -12,6 +12,7 @@ import {
   MessageSquare,
   Mail,
   Settings as SettingsIcon,
+  BarChart3,
   ChevronRight,
   ChevronDown
 } from "lucide-react";
@@ -87,7 +88,6 @@ const navItems: NavItem[] = [
       { name: "User", path: "/users" },
       { name: "Role", path: "/users/role" },
       { name: "Client", path: "/users/client" },
-      { name: "Multi-Company", path: "/multi-company" },
     ]
   },
   { name: "Products System", path: "/products", icon: ShoppingCart, module: "inventory" },
@@ -139,14 +139,29 @@ const navItems: NavItem[] = [
       { name: "Compose", path: "/email/compose" },
     ]
   },
-  { 
-    name: "Company Settings", 
-    path: "/settings/company", 
+  {
+    name: "Operations",
+    path: "/analytics",
+    icon: BarChart3,
+    module: "dashboard",
+    children: [
+      { name: "Analytics", path: "/analytics" },
+      { name: "High Priority", path: "/high-priority" },
+      { name: "Workflow & Approvals", path: "/workflow" },
+      { name: "Documents", path: "/documents" },
+      { name: "Communication", path: "/communication" },
+    ]
+  },
+  {
+    name: "Company Settings",
+    path: "/settings/company",
     icon: SettingsIcon,
     module: "settings",
     children: [
       { name: "Company", path: "/settings/company" },
       { name: "Email (SMTP)", path: "/settings/company/email" },
+      { name: "System Settings", path: "/settings" },
+      { name: "Backup & Restore", path: "/backup" },
     ]
   },
 ];
@@ -186,6 +201,14 @@ export const Sidebar = () => {
 
   const moduleForPath = (path: string): ModuleKey | undefined => {
     if (path === "/" || path.startsWith("/zoom")) return "dashboard";
+    if (
+      path.startsWith("/analytics") ||
+      path.startsWith("/high-priority") ||
+      path.startsWith("/workflow") ||
+      path.startsWith("/documents") ||
+      path.startsWith("/communication")
+    ) return "dashboard";
+    if (path.startsWith("/backup")) return "settings";
     if (path.startsWith("/hrm/employees")) return "hrm.employees";
     if (path.startsWith("/hrm/departments")) return "hrm.departments";
     if (path.startsWith("/hrm/attendance")) return "hrm.attendance";

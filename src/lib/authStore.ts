@@ -54,66 +54,54 @@ const w = (k: string, v: unknown) => localStorage.setItem(k, JSON.stringify(v));
 const emit = (name: string) => { try { window.dispatchEvent(new Event(name)); } catch { void 0; }
 };
 
+/**
+ * Development seed accounts.
+ *
+ * `roleId` MUST match an id defined in rolesStore's SEED. These previously read
+ * 'admin' / 'manager' / 'employee' / 'viewer', none of which exist there, so
+ * every role lookup missed and every account silently resolved to Super Admin.
+ */
+const SEED_ACCOUNTS: ReadonlyArray<Omit<Account, "createdAt">> = [
+  { id: 'user_admin',    name: 'SpikeTech Administrator', email: 'admin@spiketech.co.za', password: 'Password@00', roleId: 'role_super_admin',   active: true },
+  { id: 'user_manager',  name: 'Office Manager',          email: 'manager@company.com',   password: 'password',    roleId: 'role_company_admin', active: true },
+  { id: 'user_employee', name: 'Sales Employee',          email: 'employee@company.com',  password: 'password',    roleId: 'role_employee',      active: true },
+  { id: 'user_viewer',   name: 'Report Viewer',           email: 'viewer@company.com',    password: 'password',    roleId: 'role_viewer',        active: true },
+];
+
 function seedAdmin() {
-  const accs = r<Account[]>(K.accounts, []);
-  if (accs.length === 0) {
-    // Create users directly in AuthStore for reliability
-    console.log('AuthStore.seedAdmin - Creating users directly...');
-    
-    const admin: Account = { 
-      id: 'user_admin', 
-      name: 'SpikeTech Administrator', 
-      email: 'admin@spiketech.co.za', 
-      password: 'Password@00', 
-      roleId: 'admin', 
-      createdAt: new Date().toISOString(), 
-      active: true 
-    };
-    
-    const manager: Account = { 
-      id: 'user_manager', 
-      name: 'Office Manager', 
-      email: 'manager@company.com', 
-      password: 'password', 
-      roleId: 'manager', 
-      createdAt: new Date().toISOString(), 
-      active: true 
-    };
-    
-    const employee: Account = { 
-      id: 'user_employee', 
-      name: 'Sales Employee', 
-      email: 'employee@company.com', 
-      password: 'password', 
-      roleId: 'employee', 
-      createdAt: new Date().toISOString(), 
-      active: true 
-    };
-    
-    const viewer: Account = { 
-      id: 'user_viewer', 
-      name: 'Report Viewer', 
-      email: 'viewer@company.com', 
-      password: 'password', 
-      roleId: 'viewer', 
-      createdAt: new Date().toISOString(), 
-      active: true 
-    };
-    
-    const accounts = [admin, manager, employee, viewer];
-    w(K.accounts, accounts);
-    
-    console.log('AuthStore.seedAdmin - Created accounts:', accounts);
-    console.log('AuthStore.seedAdmin - Available credentials:');
-    console.log('- Admin: admin@spiketech.co.za / Password@00');
-    console.log('- Manager: manager@company.com / password');
-    console.log('- Employee: employee@company.com / password');
-    console.log('- Viewer: viewer@company.com / password');
-  } else {
-    console.log('AuthStore.seedAdmin - Accounts already exist:', accs);
-  }
+  if (r<Account[]>(K.accounts, []).length > 0) return;
+  const createdAt = new Date().toISOString();
+  w(K.accounts, SEED_ACCOUNTS.map((a) => ({ ...a, createdAt })));
 }
 seedAdmin();
+
+/**
+ * Repairs sessions and accounts seeded before the role ids were corrected.
+ * Without this, existing browsers keep their unresolvable roleId and continue
+ * falling back to whatever getCurrentRole decides — now "no access".
+ */
+function migrateLegacyRoleIds() {
+  const legacy: Record<string, string> = {
+    admin: 'role_super_admin',
+    manager: 'role_company_admin',
+    employee: 'role_employee',
+    viewer: 'role_viewer',
+  };
+  try {
+    const accounts = r<Account[]>(K.accounts, []);
+    let changed = false;
+    for (const acc of accounts) {
+      if (legacy[acc.roleId]) { acc.roleId = legacy[acc.roleId]; changed = true; }
+    }
+    if (changed) w(K.accounts, accounts);
+
+    const currentRoleId = localStorage.getItem('auth.roleId');
+    if (currentRoleId && legacy[currentRoleId]) {
+      localStorage.setItem('auth.roleId', legacy[currentRoleId]);
+    }
+  } catch { void 0; }
+}
+migrateLegacyRoleIds();
 
 export const AuthStore = {
   listAccounts(): Account[] { return r<Account[]>(K.accounts, []); },
@@ -186,30 +174,17 @@ export const AuthStore = {
   },
 
   signIn(email: string, password: string) {
-    console.log('AuthStore.signIn - Attempting login for:', email);
-    
-    const acc = this.listAccounts().find(a=> 
-      a.email.toLowerCase()===email.toLowerCase() && 
-      a.password===password && 
+    const acc = this.listAccounts().find(a=>
+      a.email.toLowerCase()===email.toLowerCase() &&
+      a.password===password &&
       a.active
     );
-    
-    console.log('AuthStore.signIn - Found account:', acc);
-    
-    if (!acc) {
-      console.log('AuthStore.signIn - No account found');
-      throw new Error('Invalid credentials or not approved.');
-    }
-    
-    const sess: Session = { 
-      userId: acc.id, 
-      createdAt: new Date().toISOString() 
-    };
-    w(K.session, sess); 
-    localStorage.setItem('auth.roleId', acc.roleId); 
-    emit('auth-changed'); 
-    
-    console.log('AuthStore.signIn - Login successful for:', acc.name);
+    if (!acc) throw new Error('Invalid credentials or not approved.');
+
+    const sess: Session = { userId: acc.id, createdAt: new Date().toISOString() };
+    w(K.session, sess);
+    localStorage.setItem('auth.roleId', acc.roleId);
+    emit('auth-changed');
     return acc;
   },
   signOut() { localStorage.removeItem(K.session); emit('auth-changed'); },

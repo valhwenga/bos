@@ -8,7 +8,12 @@ import { AuthStore } from "@/lib/authStore";
 
 export const Header = () => {
   const navigate = useNavigate();
-  const user = UserStore.get();
+  const profile = UserStore.get();
+  // The signed-in account is the source of truth for identity; UserStore only
+  // holds profile extras (avatar, department) and is empty for seeded accounts,
+  // which is why this used to render "Hi, User" for everyone.
+  const account = AuthStore.currentUser();
+  const user = { ...profile, name: account?.name || profile.name, email: account?.email || profile.email };
   const initials = useMemo(() => (user.name || "U").split(" ").map(p=>p[0]).join("").slice(0,2).toUpperCase(), [user.name]);
   const onProfile = () => navigate("/users/profile");
   const onLogout = () => { try { AuthStore.signOut(); } catch { void 0; } try { UserStore.clockOut(); } catch { void 0; } navigate("/auth/login"); };

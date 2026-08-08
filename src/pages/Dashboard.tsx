@@ -20,8 +20,50 @@ import {
   MessageCircle, CheckCircle, AlertCircle
 } from "lucide-react";
 
+/**
+ * Ticks whenever stored data may have changed, so the summaries below
+ * recompute. They previously used an empty dependency array and therefore
+ * showed whatever was true when the page first mounted.
+ */
+const DATA_CHANGE_EVENTS = [
+  "storage",
+  "auth-changed",
+  "acct.recurring-changed",
+  "proj.events-changed",
+  "company-settings-changed",
+];
+
+function useDataVersion() {
+  const [version, setVersion] = useState(0);
+  useEffect(() => {
+    const bump = () => setVersion((v) => v + 1);
+    DATA_CHANGE_EVENTS.forEach((e) => window.addEventListener(e, bump));
+    window.addEventListener("focus", bump);
+    return () => {
+      DATA_CHANGE_EVENTS.forEach((e) => window.removeEventListener(e, bump));
+      window.removeEventListener("focus", bump);
+    };
+  }, []);
+  return version;
+}
+
+/** Isolated so the 1Hz clock doesn't re-render the whole dashboard. */
+const HeaderClock = () => {
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  return (
+    <>
+      <div className="text-lg font-bold">{now.toLocaleTimeString('en-US', { hour12: false })}</div>
+      <div className="text-xs text-gray-500">{now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</div>
+    </>
+  );
+};
+
 const Dashboard = () => {
-  const [currentTime, setCurrentTime] = useState(new Date());
+  const dataVersion = useDataVersion();
   const [currentUser, setCurrentUser] = useState<any>(null);
 
   // Calculate live stats
@@ -82,7 +124,7 @@ const Dashboard = () => {
       urgentTickets,
       upcomingDeadlines
     };
-  }, []);
+  }, [dataVersion]);
 
   // Get recent activities from all system stores
   const recentActivities = useMemo(() => {
@@ -219,19 +261,11 @@ const Dashboard = () => {
     return activities
       .sort((a, b) => b.timestamp - a.timestamp)
       .slice(0, 10);
-  }, []);
+  }, [dataVersion]);
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000);
-
-    // Load data
-    const user = SecurityStore.getCurrentSession();
-    setCurrentUser(user);
-
-    return () => clearInterval(timer);
-  }, []);
+    setCurrentUser(SecurityStore.getCurrentSession());
+  }, [dataVersion]);
 
   return (
     <div className="p-6 space-y-6">
@@ -258,8 +292,7 @@ const Dashboard = () => {
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4 text-blue-600" />
               <div>
-                <div className="text-lg font-bold">{currentTime.toLocaleTimeString('en-US', { hour12: false })}</div>
-                <div className="text-xs text-gray-500">{currentTime.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</div>
+                <HeaderClock />
               </div>
             </div>
           </Card>
@@ -299,7 +332,7 @@ const Dashboard = () => {
               <p className="text-2xl font-bold text-gray-900">
                 ${liveStats.totalRevenue.toLocaleString()}
               </p>
-              <p className="text-xs text-green-600">+12.5% from last month</p>
+              <p className="text-xs text-gray-500">from paid invoices</p>
             </div>
           </CardContent>
         </Card>

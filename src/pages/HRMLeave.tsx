@@ -15,7 +15,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { HRMLeaveStore, type Leave, type LeaveStatus } from "@/lib/hrmLeaveStore";
-import { canAccess, ModuleKey, getCurrentRole } from "@/lib/rolesStore";
+import type { ModuleKey } from "@/lib/rolesStore";
+import { canAccess, getCurrentRole } from "@/lib/accessControl";
 import { AuthStore } from "@/lib/authStore";
 import { UserStore } from "@/lib/userStore";
 import { countWorkingDays, updateLeaveBalances } from "@/lib/leaveBalance";

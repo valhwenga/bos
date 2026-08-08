@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Plus, TrendingUp, Target, Award, Calculator } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -22,36 +22,47 @@ import { Review360Form } from "@/components/Review360Form";
 
 const performanceDataSeed = HRMPerformanceStore.list();
 
-const performanceStats = [
-  {
-    title: "Average Rating",
-    value: "4.25",
-    subtitle: "Out of 5.0",
-    icon: Award,
-    color: "bg-blue-500",
-  },
-  {
-    title: "Goals Completed",
-    value: "45/60",
-    subtitle: "75% completion",
-    icon: Target,
-    color: "bg-green-500",
-  },
-  {
-    title: "Avg Productivity",
-    value: "85%",
-    subtitle: "+3% from last month",
-    icon: TrendingUp,
-    color: "bg-purple-500",
-  },
-  {
-    title: "Top Performers",
-    value: "3",
-    subtitle: "Excellent rating",
-    icon: Award,
-    color: "bg-orange-500",
-  },
-];
+/** Derives the summary tiles from actual review records rather than fixed copy. */
+function buildPerformanceStats(records: Performance[]) {
+  const count = records.length;
+  const avg = (pick: (r: Performance) => number) =>
+    count ? records.reduce((sum, r) => sum + (pick(r) || 0), 0) / count : 0;
+
+  const goalsCompleted = records.reduce((sum, r) => sum + (r.goalsCompleted || 0), 0);
+  const totalGoals = records.reduce((sum, r) => sum + (r.totalGoals || 0), 0);
+  const topPerformers = records.filter((r) => r.status === "Excellent").length;
+
+  return [
+    {
+      title: "Average Rating",
+      value: count ? avg((r) => r.rating).toFixed(2) : "—",
+      subtitle: count ? `Across ${count} review${count === 1 ? "" : "s"}` : "No reviews yet",
+      icon: Award,
+      color: "bg-blue-500",
+    },
+    {
+      title: "Goals Completed",
+      value: totalGoals ? `${goalsCompleted}/${totalGoals}` : "—",
+      subtitle: totalGoals ? `${Math.round((goalsCompleted / totalGoals) * 100)}% completion` : "No goals set",
+      icon: Target,
+      color: "bg-green-500",
+    },
+    {
+      title: "Avg Productivity",
+      value: count ? `${Math.round(avg((r) => r.productivity))}%` : "—",
+      subtitle: count ? "Current review cycle" : "No reviews yet",
+      icon: TrendingUp,
+      color: "bg-purple-500",
+    },
+    {
+      title: "Top Performers",
+      value: String(topPerformers),
+      subtitle: "Excellent rating",
+      icon: Award,
+      color: "bg-orange-500",
+    },
+  ];
+}
 
 const statusColors = {
   Excellent: "bg-green-500 text-white",
@@ -62,6 +73,7 @@ const statusColors = {
 
 const HRMPerformance = () => {
   const [data, setData] = useState<Performance[]>(HRMPerformanceStore.list());
+  const performanceStats = useMemo(() => buildPerformanceStats(data), [data]);
   const [open, setOpen] = useState(false);
   const [detail, setDetail] = useState<Performance | null>(null);
   const [showCalculation, setShowCalculation] = useState<{ breakdown: string[] } | null>(null);

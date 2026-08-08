@@ -142,6 +142,22 @@ const SEED: Role[] = [
     access: { ...baseAccess(NONE), dashboard: VIEW, projects: EDIT, "hrm.attendance": EDIT, "hrm.leave": EDIT, "hrm.employees": VIEW },
   },
   {
+    id: "role_viewer",
+    name: "Report Viewer",
+    level: "Team",
+    description: "Read-only access to operational data; cannot change anything",
+    access: {
+      ...baseAccess(NONE),
+      dashboard: VIEW,
+      accounting: VIEW,
+      projects: VIEW,
+      crm: VIEW,
+      support: VIEW,
+      "hrm.employees": VIEW,
+      "hrm.departments": VIEW,
+    },
+  },
+  {
     id: "role_client",
     name: "Client",
     level: "External",
@@ -174,26 +190,10 @@ export const RolesStore = {
   get(id: string) { return this.list().find(x=> x.id===id); }
 };
 
-/**
- * Check if the current user's role can access a module at a given level.
+/*
+ * `canAccess` and `getCurrentRole` deliberately do not live here.
+ *
+ * They previously existed in both this module and accessControl.ts with
+ * opposite failure modes, and which one a call site got depended on its import
+ * path. Import them from "@/lib/accessControl" — the single source of truth.
  */
-export function canAccess(module: ModuleKey, level: AccessLevel): boolean {
-  const roleId = localStorage.getItem('auth.roleId');
-  if (!roleId) return false;
-  const role = RolesStore.list().find(r => r.id === roleId);
-  if (!role) return false;
-  const userLevel = role.access[module];
-  if (userLevel === "full") return true;
-  if (userLevel === "none") return false;
-  const hierarchy = { none: 0, view: 1, edit: 2, full: 3 };
-  return hierarchy[userLevel] >= hierarchy[level];
-}
-
-/**
- * Get the current user's role object.
- */
-export function getCurrentRole(): Role | undefined {
-  const roleId = localStorage.getItem('auth.roleId');
-  if (!roleId) return undefined;
-  return RolesStore.list().find(r => r.id === roleId);
-}
