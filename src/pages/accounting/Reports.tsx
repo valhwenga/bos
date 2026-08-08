@@ -5,9 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AccountingStore, Invoice, Quotation, type Customer as AcctCustomer } from "@/lib/accountingStore";
 import { PaymentStore, type Payment } from "@/lib/paymentStore";
-import { SalesStore } from "@/lib/salesStore";
-import { CreditNotesStore } from "@/lib/creditNotesStore";
-import { ExpenseStore } from "@/lib/expenseStore";
+import { SalesStore, type Sale } from "@/lib/salesStore";
+import { CreditNotesStore, type CreditNote } from "@/lib/creditNotesStore";
+import { ExpenseStore, type Expense } from "@/lib/expenseStore";
 import { CompanySettingsStore } from "@/lib/companySettings";
 
 type ModuleKey = "quotations" | "invoices" | "payments" | "income" | "expenses" | "income_vs_expense";
@@ -237,7 +237,7 @@ const Reports: React.FC = () => {
                 (data as { list: Quotation[] }).list.forEach((q: Quotation) => { const sub=q.items.reduce((s, it) => s+it.qty*it.price,0); const discount=q.discountPct?(sub*q.discountPct)/100:0; const shipping=q.shipping||0; const grand=Math.max(0,sub-discount+shipping); const bal=Math.max(0, grand - PaymentStore.sumAmount(PaymentStore.byQuote(q.id))); col(12,q.number); col(60,q.customer.name); col(120,new Date(q.createdAt).toLocaleDateString()); col(155,grand.toFixed(2)); col(180,bal.toFixed(2)); row(); });
               } else if (module==='payments') {
                 col(12,'Date'); col(60,'Customer'); col(120,'Applied'); col(160,'Amount'); row();
-                (data as { list: Payment[] }).list.forEach((p: Payment) => { col(12,new Date(p.date).toLocaleDateString()); col(60,((allCustomers.find((c: Customer) => c.id===p.customerId)?.name)||p.customerId)); col(120,(p.invoiceId?`Invoice ${p.invoiceId}`:(p.quoteId?`Quote ${p.quoteId}`:'Unapplied'))); col(160,(p.amount||0).toFixed(2)); row(); });
+                (data as { list: Payment[] }).list.forEach((p: Payment) => { col(12,new Date(p.date).toLocaleDateString()); col(60,((allCustomers.find((c: AcctCustomer) => c.id===p.customerId)?.name)||p.customerId)); col(120,(p.invoiceId?`Invoice ${p.invoiceId}`:(p.quoteId?`Quote ${p.quoteId}`:'Unapplied'))); col(160,(p.amount||0).toFixed(2)); row(); });
               }
               // Footer with timestamp and page numbers
               try {

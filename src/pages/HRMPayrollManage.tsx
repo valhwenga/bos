@@ -182,15 +182,20 @@ const HRMPayrollManage = () => {
     }
   };
 
+  const sumAmounts = (parts: Record<string, number>) =>
+    Object.values(parts).reduce((total, amount) => total + (amount || 0), 0);
+
   const printPayslip = (entry: PayrollEntry) => {
+    // The payslip takes allowance and deduction totals; the entry itemises
+    // them (housing, transport, PAYE, UI, …), so collapse each side first.
+    // Overtime is paid on top of basic rather than being an allowance line.
     generatePayslipPdf({
       employee: entry.employee,
       employeeId: entry.employeeId,
       department: entry.department,
       basicSalary: entry.basicSalary,
-      allowances: entry.allowances,
-      deductions: entry.deductions,
-      overtime: entry.overtime,
+      allowances: sumAmounts(entry.allowances) + (entry.overtime?.amount || 0),
+      deductions: sumAmounts(entry.deductions),
       netSalary: entry.netSalary,
       status: entry.status,
       paymentDate: new Date().toLocaleDateString('en-GB')

@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CompanySettingsStore } from "@/lib/companySettings";
+import type { Employee, EmployeeDocument } from "@/lib/hrmStore";
 
 // Simple local HRM store to replace CompanyAwareHRMStore
 const LocalHRMStore = {

@@ -120,7 +120,7 @@ const CRMDeals = () => {
               </div>
               <div className="space-y-3 max-h[600px] overflow-y-auto">
                 {column.deals.map((deal) => (
-                  <DealCard key={deal.id} title={deal.title} status={(deal.status as string) || "New"} amount={`${sym}${(deal.amount||0).toLocaleString()}`} progress="" tasks={0} comments={0} members={[]} />
+                  <DealCard key={deal.id} title={deal.title} status={deal.status || "New"} amount={`${sym}${(deal.amount||0).toLocaleString()}`} progress="" tasks={0} comments={0} members={[]} />
                 ))}
               </div>
             </div>

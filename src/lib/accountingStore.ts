@@ -8,7 +8,8 @@ export type Quotation = {
   number: string;
   customer: Customer;
   items: LineItem[];
-  status: "draft" | "sent" | "accepted" | "declined";
+  /** "converted" means an invoice has been raised from this quote. */
+  status: "draft" | "sent" | "accepted" | "declined" | "converted";
   createdAt: string;
   notes?: string;
   reference?: string;
@@ -22,7 +23,7 @@ export type Quotation = {
   logoDataUrl?: string;
   signatureDataUrl?: string;
 };
-export type Invoice = { id: string; number: string; customer: Customer; items: LineItem[]; status: "draft" | "sent" | "paid" | "overdue"; createdAt: string; sourceQuoteId?: string; useShippingAddress?: boolean; discountPct?: number; shipping?: number; dueDate?: string; reference?: string; notes?: string };
+export type Invoice = { id: string; number: string; customer: Customer; items: LineItem[]; status: "draft" | "sent" | "paid" | "overdue"; createdAt: string; updatedAt?: string; sourceQuoteId?: string; useShippingAddress?: boolean; discountPct?: number; shipping?: number; dueDate?: string; reference?: string; notes?: string };
 
 const KEY = {
   quotes: "acct.quotes",
@@ -65,6 +66,10 @@ export const AccountingStore = {
     const filtered = all.filter((x) => x.id !== invoiceId);
     write(KEY.invoices, filtered);
   },
+  removeQuote(quoteId: string) {
+    const all = this.listQuotes();
+    write(KEY.quotes, all.filter((x) => x.id !== quoteId));
+  },
   convertQuoteToInvoice(quoteId: string): Invoice | undefined {
     const quotes = this.listQuotes();
     const q = quotes.find((x) => x.id === quoteId);
@@ -80,8 +85,10 @@ export const AccountingStore = {
       useShippingAddress: q.useShippingAddress,
     };
     this.upsertInvoice(invoice);
-    // Optionally mark quote as accepted
-    q.status = "accepted";
+    // Mark the quote converted, matching the conversion path in the Payments
+    // page. These two previously disagreed, leaving "accepted" quotes that had
+    // in fact already been invoiced.
+    q.status = "converted";
     this.upsertQuote(q);
     // Carry over deposits recorded against the quote to the new invoice
     try {

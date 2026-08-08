@@ -81,7 +81,7 @@ const Payments: React.FC = () => {
         number: `INV-${new Date().getFullYear()}-${Math.floor(Math.random()*9000+1000)}`,
         customer: quote.customer,
         items: quote.items,
-        status: "pending",
+        status: "sent",
         createdAt: new Date().toISOString(),
         dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 30 days from now
         notes: quote.notes,
@@ -238,7 +238,7 @@ const Payments: React.FC = () => {
                 <SelectContent>
                   <SelectItem value="">None</SelectItem>
                   {AccountingStore.listInvoices()
-                    .filter(inv => inv.customerId === selectedPayment?.customerId)
+                    .filter(inv => inv.customer.id === selectedPayment?.customerId)
                     .map(inv => (
                       <SelectItem key={inv.id} value={inv.id}>
                         Invoice {inv.number} - {inv.customer.name} ({cs.currencySymbol}{inv.items.reduce((sum, item) => sum + (item.qty * item.price), 0).toFixed(2)})
@@ -257,7 +257,7 @@ const Payments: React.FC = () => {
                 <SelectContent>
                   <SelectItem value="">None</SelectItem>
                   {AccountingStore.listQuotes()
-                    .filter(q => q.status !== "converted" && q.customerId === selectedPayment?.customerId)
+                    .filter(q => q.status !== "converted" && q.customer.id === selectedPayment?.customerId)
                     .map(q => (
                       <SelectItem key={q.id} value={q.id}>
                         Quote {q.number} - {q.customer.name} ({cs.currencySymbol}{q.items.reduce((sum, item) => sum + (item.qty * item.price), 0).toFixed(2)})

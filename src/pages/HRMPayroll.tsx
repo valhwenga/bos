@@ -185,6 +185,13 @@ const HRMPayroll = () => {
     return monthNames[idx] + " " + yy;
   };
 
+  /**
+   * Payroll rows key the employee as `id`; the payslip helpers expect
+   * `employeeId`. Bridge the two rather than reshaping either side.
+   */
+  const toPayslipRows = <T extends { id: string }>(rows: T[]) =>
+    rows.map((r) => ({ ...r, employeeId: r.id }));
+
   const displayedData = payrollData.filter((r) => {
     const [yy, mm] = selectedPeriod.split("-");
     const idx = Math.max(0, Math.min(11, parseInt(mm, 10) - 1));
@@ -343,7 +350,7 @@ const HRMPayroll = () => {
             <Play className="w-4 h-4 mr-2" />
             {processingPayroll ? 'Processing...' : 'Process Payroll'}
           </Button>
-          <Button size="sm" variant="outline" onClick={() => batchGeneratePayslips(displayedData)}>
+          <Button size="sm" variant="outline" onClick={() => batchGeneratePayslips(toPayslipRows(displayedData))}>
             <Download className="w-4 h-4 mr-2" />
             Batch PDF
           </Button>
@@ -351,7 +358,7 @@ const HRMPayroll = () => {
             <UserCheck className="w-4 h-4 mr-2" />
             Review
           </Button>
-          <Button size="sm" variant="outline" onClick={() => emailPayslips(displayedData)}>
+          <Button size="sm" variant="outline" onClick={() => emailPayslips(toPayslipRows(displayedData))}>
             <Send className="w-4 h-4 mr-2" />
             Email All
           </Button>

@@ -1,10 +1,22 @@
 export type DealStage = "Initial Contact" | "Qualification" | "Meeting" | "Proposal" | "Close";
+
+/** Kept in step with StatusBadge's accepted values. */
+export type DealStatus =
+  | "On Hold"
+  | "In Progress"
+  | "Complete"
+  | "Canceled"
+  | "Pending"
+  | "New"
+  | "Won"
+  | "Loss";
+
 export type Deal = {
   id: string;
   title: string;
   amount?: number;
   stage: DealStage;
-  status?: string;
+  status?: DealStatus;
 };
 
 const K = { deals: "crm.deals" };

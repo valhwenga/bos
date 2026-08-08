@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { ClientsStore, type Client } from "@/lib/clientsStore";
 import { AuditLogStore } from "@/lib/auditLogStore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { AuthStore } from "@/lib/authStore";
+import { AuthStore, type Account } from "@/lib/authStore";
 import { RolesStore } from "@/lib/rolesStore";
 
 const Clients = () => {
@@ -32,7 +32,7 @@ const Clients = () => {
 
   const accounts = AuthStore.listAccounts();
   const accountByClientId = useMemo(() => {
-    const map: Record<string, { id: string; clientId?: string; name?: string; email?: string }> = {};
+    const map: Record<string, Account> = {};
     accounts.forEach(a => { if (a.clientId) map[a.clientId] = a; });
     return map;
   }, [accounts]);

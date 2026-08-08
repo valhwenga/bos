@@ -48,7 +48,7 @@ const LeadDetail = () => {
       try {
         // Create customer if not exists by email/company name
         const existing = CustomersStore.list().find(c => (next.email && c.email && c.email.toLowerCase()===next.email.toLowerCase()) || (next.company && c.name.toLowerCase()===next.company.toLowerCase()));
-        const cust = existing || CustomersStore.upsert({ id: existing?.id || `c_${Date.now()}`, name: next.company || next.name, email: next.email, address: next.address, phone: next.phone });
+        const cust = existing || CustomersStore.upsert({ id: existing?.id || `c_${Date.now()}`, name: next.company || next.name, email: next.email, billingAddress: next.address ? { line1: next.address } : undefined, phone: next.phone });
         // Create a deal as Closed Won for traceability
         CrmDealsStore.upsert({ id: `D_${Date.now()}`, title: `${next.company || next.name} - Won`, customerId: cust.id, leadId: next.id, value: 0, probability: 100, expectedClose: new Date().toISOString(), stage: 'closed_won', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
       } catch {
@@ -96,7 +96,7 @@ const LeadDetail = () => {
           </div>
           <div className="flex items-center justify-end gap-2">
             <Button variant="outline" onClick={()=> navigate(-1)}>Close</Button>
-            <Button onClick={()=> { const c = CustomersStore.upsert({ id: `c_${Date.now()}`, name: lead.company || lead.name, email: lead.email, address: lead.address, phone: lead.phone }); update({ stage: 'won' }); }}>Convert to Customer</Button>
+            <Button onClick={()=> { const c = CustomersStore.upsert({ id: `c_${Date.now()}`, name: lead.company || lead.name, email: lead.email, billingAddress: lead.address ? { line1: lead.address } : undefined, phone: lead.phone }); update({ stage: 'won' }); }}>Convert to Customer</Button>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
