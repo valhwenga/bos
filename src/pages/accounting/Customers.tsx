@@ -6,6 +6,10 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ProvinceSelect } from "@/components/ProvinceSelect";
+import { Users, Mail, Pencil, Trash2 } from "lucide-react";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatCard } from "@/components/ui/stat-card";
 import { CustomersStore, type Customer, type CustomerAddress } from "@/lib/customersStore";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CompanySettingsStore } from "@/lib/companySettings";
@@ -131,7 +135,6 @@ const Customers: React.FC = () => {
   const [open, setOpen] = useState(false);
   const [edit, setEdit] = useState<Customer | undefined>(undefined);
   const [viewing, setViewing] = useState<Customer | undefined>(undefined);
-  const [q, setQ] = useState("");
   const [list, setList] = useState(CustomersStore.list());
 
   useEffect(() => {
@@ -140,10 +143,6 @@ const Customers: React.FC = () => {
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
   }, []);
-
-  const filtered = useMemo(() => list.filter(c =>
-    !q || c.name.toLowerCase().includes(q.toLowerCase()) || (c.companyName||"").toLowerCase().includes(q.toLowerCase()) || (c.email||"").toLowerCase().includes(q.toLowerCase())
-  ), [list, q]);
 
   const remove = (id: string) => { CustomersStore.remove(id); setList(CustomersStore.list()); };
 
@@ -250,56 +249,88 @@ const Customers: React.FC = () => {
     );
   };
 
+  const columns: Column<Customer>[] = [
+    {
+      id: "name",
+      header: "Name",
+      sortValue: (c) => c.name,
+      cell: (c) => <span className="font-medium text-foreground">{c.name}</span>,
+    },
+    { id: "company", header: "Company", hideOnMobile: true, sortValue: (c) => c.companyName ?? "", cell: (c) => c.companyName || <span className="text-subtle">—</span> },
+    {
+      id: "email",
+      header: "Email",
+      sortValue: (c) => c.email ?? "",
+      cell: (c) =>
+        c.email ? (
+          <a href={`mailto:${c.email}`} onClick={(e) => e.stopPropagation()} className="text-muted-foreground hover:text-foreground hover:underline">
+            {c.email}
+          </a>
+        ) : (
+          <span className="text-subtle">—</span>
+        ),
+    },
+    { id: "phone", header: "Phone", hideOnMobile: true, cell: (c) => c.phone || <span className="text-subtle">—</span> },
+    { id: "responsible", header: "Responsible", hideOnMobile: true, cell: (c) => c.responsible?.name || <span className="text-subtle">—</span> },
+    {
+      id: "actions",
+      header: <span className="sr-only">Actions</span>,
+      align: "right",
+      width: "1%",
+      cell: (c) => (
+        <div className="inline-flex items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()}>
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => { setEdit(c); setOpen(true); }} aria-label={`Edit ${c.name}`}>
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 text-muted-foreground hover:text-danger"
+            onClick={() => remove(c.id)}
+            aria-label={`Delete ${c.name}`}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
+  const withEmail = list.filter((c) => !!c.email).length;
+
   return (
-    <div className="p-6 space-y-4">
-      <Card className="shadow-[0_10px_0_rgba(0,0,0,0.08)]">
-        <CardHeader className="flex-row items-center justify-between">
-          <CardTitle>Customers</CardTitle>
-          <div className="flex items-center gap-2">
-            <Input placeholder="Search name/company/email" value={q} onChange={(e)=> setQ(e.target.value)} className="w-64" />
-            <Button onClick={()=> { setEdit(undefined); setOpen(true); }}>New Customer</Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-lg overflow-hidden border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Company</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Responsible</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map(c => (
-                  <TableRow key={c.id}>
-                    <TableCell>
-                      <Button 
-                        variant="link" 
-                        onClick={() => setViewing(c)} 
-                        className="text-left hover:underline p-0 h-auto"
-                      >
-                        {c.name}
-                      </Button>
-                    </TableCell>
-                    <TableCell>{c.companyName}</TableCell>
-                    <TableCell>{c.email}</TableCell>
-                    <TableCell>{c.phone}</TableCell>
-                    <TableCell>{c.responsible?.name}</TableCell>
-                    <TableCell className="text-right space-x-2">
-                      <Button size="sm" variant="secondary" onClick={()=> { setEdit(c); setOpen(true); }}>Edit</Button>
-                      <Button size="sm" variant="destructive" onClick={()=> remove(c.id)}>Delete</Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+    <div className="flex flex-col gap-6 p-6">
+      <PageHeader
+        title="Customers"
+        description="Everyone you bill. Select a row to see their full record."
+        breadcrumbs={[{ label: "Accounting", to: "/accounting/quotations" }, { label: "Customers" }]}
+        actions={<Button onClick={() => { setEdit(undefined); setOpen(true); }}>New customer</Button>}
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <StatCard label="Customers" value={list.length} hint="On your books" icon={Users} />
+          <StatCard
+            label="Contactable"
+            value={withEmail}
+            hint={list.length ? `${list.length - withEmail} missing an email` : "No customers yet"}
+            icon={Mail}
+            tone={list.length && withEmail < list.length ? "warning" : "neutral"}
+          />
+        </div>
+      </PageHeader>
+
+      <DataTable
+        rows={list}
+        columns={columns}
+        rowKey={(c) => c.id}
+        searchAccessor={(c) => `${c.name} ${c.companyName ?? ""} ${c.email ?? ""} ${c.phone ?? ""}`}
+        searchPlaceholder="Search by name, company or email…"
+        onRowClick={(c) => setViewing(c)}
+        empty={{
+          title: "No customers yet",
+          description: "Add a customer and they'll be selectable on quotes and invoices.",
+          action: <Button onClick={() => { setEdit(undefined); setOpen(true); }}>New customer</Button>,
+        }}
+      />
 
       <CustomerDialog open={open} onOpenChange={(v)=> { setOpen(v); if (!v) { setEdit(undefined); setList(CustomersStore.list()); } }} customer={edit} onSaved={()=> setList(CustomersStore.list())} />
       

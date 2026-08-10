@@ -56,15 +56,15 @@ export function AuditReport() {
   };
 
   const actionColors: Record<AuditAction, string> = {
-    create: "bg-green-500 text-white",
-    update: "bg-blue-500 text-white",
-    delete: "bg-red-500 text-white",
-    approve: "bg-emerald-500 text-white",
-    reject: "bg-orange-500 text-white",
-    login: "bg-purple-500 text-white",
-    logout: "bg-gray-500 text-white",
-    export: "bg-cyan-500 text-white",
-    view: "bg-indigo-500 text-white",
+    create: "bg-success text-success-foreground",
+    update: "bg-info text-info-foreground",
+    delete: "bg-danger text-danger-foreground",
+    approve: "bg-success text-success-foreground",
+    reject: "bg-warning text-warning-foreground",
+    login: "bg-primary text-primary-foreground",
+    logout: "bg-gray-500 text-primary-foreground",
+    export: "bg-info text-info-foreground",
+    view: "bg-info text-info-foreground",
   };
 
   return (

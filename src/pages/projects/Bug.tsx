@@ -33,7 +33,7 @@ const Bug: React.FC = () => {
             {bugs.map(b => (
               <div key={b.id} className="flex items-center justify-between border rounded-lg p-2 bg-background">
                 <div className="flex items-center gap-2">
-                  <span className={`inline-block w-2 h-2 rounded-full ${b.open ? "bg-amber-500" : "bg-emerald-500"}`} />
+                  <span className={`inline-block w-2 h-2 rounded-full ${b.open ? "bg-warning" : "bg-success"}`} />
                   <span className="text-sm">{b.title}</span>
                 </div>
                 <Button size="sm" variant="ghost" onClick={()=> toggle(b)}>{b.open ? "Close" : "Reopen"}</Button>

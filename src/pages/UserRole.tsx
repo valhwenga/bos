@@ -101,10 +101,10 @@ const UserRole = () => {
                   </td>
                   <td className="p-4">
                     <div className="flex items-center justify-end gap-2">
-                      <Button size="icon" variant="ghost" className="h-9 w-9 text-blue-600 hover:text-blue-700 hover:bg-blue-50" onClick={()=> startEdit(role)}>
+                      <Button size="icon" variant="ghost" className="h-9 w-9 text-info hover:text-info hover:bg-info-soft" onClick={()=> startEdit(role)}>
                         <Edit className="w-4 h-4" />
                       </Button>
-                      <Button size="icon" variant="ghost" className="h-9 w-9 text-red-600 hover:text-red-700 hover:bg-red-50" onClick={()=> remove(role.id)}>
+                      <Button size="icon" variant="ghost" className="h-9 w-9 text-danger hover:text-danger hover:bg-danger-soft" onClick={()=> remove(role.id)}>
                         <Trash className="w-4 h-4" />
                       </Button>
                     </div>

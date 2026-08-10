@@ -50,10 +50,10 @@ const Calendar: React.FC = () => {
   const modifiers = { hasTask: typeDates.task, hasMeeting: typeDates.meeting, hasReminder: typeDates.reminder, hasOther: typeDates.other };
   const typeBadge = (t?: CalendarEventType) => {
     switch (t) {
-      case "task": return "bg-blue-100 text-blue-800";
-      case "meeting": return "bg-emerald-100 text-emerald-800";
-      case "reminder": return "bg-amber-100 text-amber-800";
-      default: return "bg-slate-100 text-slate-800";
+      case "task": return "bg-info-soft text-info";
+      case "meeting": return "bg-success-soft text-success";
+      case "reminder": return "bg-warning-soft text-warning";
+      default: return "bg-muted text-foreground";
     }
   };
 

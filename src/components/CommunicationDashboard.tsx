@@ -137,21 +137,21 @@ const CommunicationDashboard: React.FC = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'scheduled': return 'bg-blue-500 text-white';
-      case 'in-progress': return 'bg-green-500 text-white';
-      case 'ended': return 'bg-gray-500 text-white';
-      case 'cancelled': return 'bg-red-500 text-white';
-      default: return 'bg-gray-500 text-white';
+      case 'scheduled': return 'bg-info text-info-foreground';
+      case 'in-progress': return 'bg-success text-success-foreground';
+      case 'ended': return 'bg-gray-500 text-primary-foreground';
+      case 'cancelled': return 'bg-danger text-danger-foreground';
+      default: return 'bg-gray-500 text-primary-foreground';
     }
   };
 
   const getNotificationColor = (type: string) => {
     switch (type) {
-      case 'message': return 'bg-blue-500 text-white';
-      case 'mention': return 'bg-purple-500 text-white';
-      case 'meeting': return 'bg-green-500 text-white';
-      case 'urgent': return 'bg-red-500 text-white';
-      default: return 'bg-gray-500 text-white';
+      case 'message': return 'bg-info text-info-foreground';
+      case 'mention': return 'bg-primary text-primary-foreground';
+      case 'meeting': return 'bg-success text-success-foreground';
+      case 'urgent': return 'bg-danger text-danger-foreground';
+      default: return 'bg-gray-500 text-primary-foreground';
     }
   };
 
@@ -255,9 +255,9 @@ const CommunicationDashboard: React.FC = () => {
 
   const getUserStatusColor = (status: string) => {
     switch (status) {
-      case 'online': return 'bg-green-500';
-      case 'away': return 'bg-yellow-500';
-      case 'busy': return 'bg-red-500';
+      case 'online': return 'bg-success';
+      case 'away': return 'bg-warning';
+      case 'busy': return 'bg-danger';
       case 'offline': return 'bg-gray-500';
       default: return 'bg-gray-500';
     }
@@ -303,9 +303,9 @@ const CommunicationDashboard: React.FC = () => {
               <div>
                 <p className="text-sm text-muted-foreground">Messages</p>
                 <p className="text-2xl font-bold">{analytics.totalMessages}</p>
-                <p className="text-xs text-blue-600">{analytics.totalConversations} conversations</p>
+                <p className="text-xs text-info">{analytics.totalConversations} conversations</p>
               </div>
-              <MessageSquare className="w-8 h-8 text-blue-500" />
+              <MessageSquare className="w-8 h-8 text-info" />
             </div>
           </CardContent>
         </Card>
@@ -316,9 +316,9 @@ const CommunicationDashboard: React.FC = () => {
               <div>
                 <p className="text-sm text-muted-foreground">Direct Messages</p>
                 <p className="text-2xl font-bold">{recentConversations.reduce((sum, conv) => sum + conv.unreadCount, 0)}</p>
-                <p className="text-xs text-green-600">{users.length} users</p>
+                <p className="text-xs text-success">{users.length} users</p>
               </div>
-              <Users className="w-8 h-8 text-green-500" />
+              <Users className="w-8 h-8 text-success" />
             </div>
           </CardContent>
         </Card>
@@ -329,9 +329,9 @@ const CommunicationDashboard: React.FC = () => {
               <div>
                 <p className="text-sm text-muted-foreground">Meetings</p>
                 <p className="text-2xl font-bold">{analytics.totalMeetings}</p>
-                <p className="text-xs text-green-600">{upcomingMeetings.length} upcoming</p>
+                <p className="text-xs text-success">{upcomingMeetings.length} upcoming</p>
               </div>
-              <Video className="w-8 h-8 text-green-500" />
+              <Video className="w-8 h-8 text-success" />
             </div>
           </CardContent>
         </Card>
@@ -342,9 +342,9 @@ const CommunicationDashboard: React.FC = () => {
               <div>
                 <p className="text-sm text-muted-foreground">Notifications</p>
                 <p className="text-2xl font-bold">{unreadNotifications.length}</p>
-                <p className="text-xs text-orange-600">unread</p>
+                <p className="text-xs text-warning">unread</p>
               </div>
-              <Bell className="w-8 h-8 text-orange-500" />
+              <Bell className="w-8 h-8 text-warning" />
             </div>
           </CardContent>
         </Card>
@@ -390,8 +390,8 @@ const CommunicationDashboard: React.FC = () => {
                   {conversations.map((conversation) => (
                     <div
                       key={conversation.id}
-                      className={`p-3 rounded-lg cursor-pointer hover:bg-gray-100 ${
-                        selectedConversation?.id === conversation.id ? 'bg-gray-100' : ''
+                      className={`p-3 rounded-lg cursor-pointer hover:bg-muted ${
+                        selectedConversation?.id === conversation.id ? 'bg-muted' : ''
                       }`}
                       onClick={() => setSelectedConversation(conversation)}
                     >
@@ -399,7 +399,7 @@ const CommunicationDashboard: React.FC = () => {
                         {getConversationIcon(conversation.type)}
                         <span className="font-medium text-sm">{conversation.name || 'Direct Message'}</span>
                         {conversation.isPinned && (
-                          <Pin className="w-3 h-3 text-gray-500" />
+                          <Pin className="w-3 h-3 text-muted-foreground" />
                         )}
                       </div>
                       
@@ -468,8 +468,8 @@ const CommunicationDashboard: React.FC = () => {
                           <div
                             className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
                               message.senderId === currentUser?.id
-                                ? 'bg-blue-500 text-white'
-                                : 'bg-gray-100 text-gray-900'
+                                ? 'bg-info text-info-foreground'
+                                : 'bg-muted text-foreground'
                             }`}
                           >
                             <p className="text-sm">{message.content}</p>
@@ -623,8 +623,8 @@ const CommunicationDashboard: React.FC = () => {
                       {recentConversations.map((conv) => (
                         <div
                           key={conv.user.id}
-                          className={`p-3 rounded-lg cursor-pointer hover:bg-gray-100 ${
-                            selectedUser?.id === conv.user.id ? 'bg-gray-100' : ''
+                          className={`p-3 rounded-lg cursor-pointer hover:bg-muted ${
+                            selectedUser?.id === conv.user.id ? 'bg-muted' : ''
                           }`}
                           onClick={() => handleSelectUser(conv.user)}
                         >
@@ -632,7 +632,7 @@ const CommunicationDashboard: React.FC = () => {
                             <div className="relative">
                               <div className={`w-2 h-2 rounded-full ${getUserStatusColor(conv.user.status)}`} />
                               {conv.unreadCount > 0 && (
-                                <div className="absolute -top-1 -right-1 w-4 h-4 bg-blue-500 text-white text-xs rounded-full flex items-center justify-center">
+                                <div className="absolute -top-1 -right-1 w-4 h-4 bg-info text-info-foreground text-xs rounded-full flex items-center justify-center">
                                   {conv.unreadCount}
                                 </div>
                               )}
@@ -652,9 +652,9 @@ const CommunicationDashboard: React.FC = () => {
                               {formatTime(conv.lastMessage.createdAt)}
                             </span>
                             {conv.lastMessage.isRead ? (
-                              <CheckCheck className="w-3 h-3 text-blue-500" />
+                              <CheckCheck className="w-3 h-3 text-info" />
                             ) : (
-                              <Check className="w-3 h-3 text-gray-400" />
+                              <Check className="w-3 h-3 text-subtle" />
                             )}
                           </div>
                         </div>
@@ -674,8 +674,8 @@ const CommunicationDashboard: React.FC = () => {
                     .map((user) => (
                       <div
                         key={user.id}
-                        className={`p-3 rounded-lg cursor-pointer hover:bg-gray-100 ${
-                          selectedUser?.id === user.id ? 'bg-gray-100' : ''
+                        className={`p-3 rounded-lg cursor-pointer hover:bg-muted ${
+                          selectedUser?.id === user.id ? 'bg-muted' : ''
                         }`}
                         onClick={() => handleSelectUser(user)}
                       >
@@ -751,8 +751,8 @@ const CommunicationDashboard: React.FC = () => {
                             <div
                               className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
                                 message.senderId === currentUser?.id
-                                  ? 'bg-blue-500 text-white'
-                                  : 'bg-gray-100 text-gray-900'
+                                  ? 'bg-info text-info-foreground'
+                                  : 'bg-muted text-foreground'
                               }`}
                             >
                               <p className="text-sm">{message.content}</p>
@@ -826,7 +826,7 @@ const CommunicationDashboard: React.FC = () => {
                   <div
                     key={notification.id}
                     className={`border rounded-lg p-4 ${
-                      !notification.isRead ? 'bg-blue-50 border-blue-200' : ''
+                      !notification.isRead ? 'bg-info-soft border-info' : ''
                     }`}
                   >
                     <div className="flex items-center justify-between mb-2">
@@ -836,7 +836,7 @@ const CommunicationDashboard: React.FC = () => {
                         </Badge>
                         <span className="font-medium">{notification.title}</span>
                         {!notification.isRead && (
-                          <div className="w-2 h-2 bg-blue-500 rounded-full" />
+                          <div className="w-2 h-2 bg-info rounded-full" />
                         )}
                       </div>
                       <span className="text-sm text-muted-foreground">
@@ -889,9 +889,9 @@ const CommunicationDashboard: React.FC = () => {
                     <div key={type} className="flex items-center justify-between">
                       <span className="capitalize">{type}</span>
                       <div className="flex items-center gap-2">
-                        <div className="w-24 bg-gray-200 rounded-full h-2">
+                        <div className="w-24 bg-muted rounded-full h-2">
                           <div
-                            className="bg-blue-500 h-2 rounded-full"
+                            className="bg-info h-2 rounded-full"
                             style={{
                               width: `${Math.min(100, (count / analytics.totalMessages) * 100)}%`
                             }}
@@ -918,9 +918,9 @@ const CommunicationDashboard: React.FC = () => {
                     <div key={status} className="flex items-center justify-between">
                       <span className="capitalize">{status.replace('-', ' ')}</span>
                       <div className="flex items-center gap-2">
-                        <div className="w-24 bg-gray-200 rounded-full h-2">
+                        <div className="w-24 bg-muted rounded-full h-2">
                           <div
-                            className="bg-green-500 h-2 rounded-full"
+                            className="bg-success h-2 rounded-full"
                             style={{
                               width: `${Math.min(100, (count / analytics.totalMeetings) * 100)}%`
                             }}
@@ -950,7 +950,7 @@ const CommunicationDashboard: React.FC = () => {
                 {users.map((user) => (
                   <div
                     key={user.id}
-                    className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50"
+                    className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-surface-raised"
                     onClick={() => handleStartConversation(user)}
                   >
                     <div className={`w-2 h-2 rounded-full ${getUserStatusColor(user.status)}`} />

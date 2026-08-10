@@ -91,7 +91,7 @@ const DocumentsPage: React.FC = () => {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
-              <FileText className="w-5 h-5 text-blue-500" />
+              <FileText className="w-5 h-5 text-info" />
               <div>
                 <p className="text-sm text-muted-foreground">Document Library</p>
                 <p className="font-semibold">Centralized Storage</p>
@@ -103,7 +103,7 @@ const DocumentsPage: React.FC = () => {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
-              <Upload className="w-5 h-5 text-green-500" />
+              <Upload className="w-5 h-5 text-success" />
               <div>
                 <p className="text-sm text-muted-foreground">File Upload</p>
                 <p className="font-semibold">Drag & Drop</p>
@@ -115,7 +115,7 @@ const DocumentsPage: React.FC = () => {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
-              <Share2 className="w-5 h-5 text-purple-500" />
+              <Share2 className="w-5 h-5 text-primary" />
               <div>
                 <p className="text-sm text-muted-foreground">Collaboration</p>
                 <p className="font-semibold">Share & Comment</p>
@@ -127,7 +127,7 @@ const DocumentsPage: React.FC = () => {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
-              <Archive className="w-5 h-5 text-orange-500" />
+              <Archive className="w-5 h-5 text-warning" />
               <div>
                 <p className="text-sm text-muted-foreground">Version Control</p>
                 <p className="font-semibold">Track Changes</p>

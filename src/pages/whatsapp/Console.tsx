@@ -108,7 +108,7 @@ const WaConsole: React.FC = () => {
                   <button key={t.id} onClick={()=> { setActive(t.id); WhatsAppStore.markRead(t.id); }} className={`w-full text-left p-2 rounded border ${active===t.id?'bg-secondary':''}`}>
                     <div className="flex items-center justify-between">
                       <span className="font-medium truncate">{nameForPhone(t.phone)}</span>
-                      {t.unread ? <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-600 text-white">{t.unread}</span> : null}
+                      {t.unread ? <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-success text-success-foreground">{t.unread}</span> : null}
                     </div>
                     <div className="text-xs text-muted-foreground truncate">{t.lastSnippet}</div>
                   </button>
@@ -153,7 +153,7 @@ const WaConsole: React.FC = () => {
                     <Button size="sm" variant="secondary" onClick={linkFirstCustomer}>Link customer</Button>
                   </div>
                   {!s.accessToken || !s.phoneNumberId ? (
-                    <div className="text-[11px] text-amber-600">No WhatsApp credentials; sends are simulated.</div>
+                    <div className="text-[11px] text-warning">No WhatsApp credentials; sends are simulated.</div>
                   ) : null}
                 </>
               ) : (

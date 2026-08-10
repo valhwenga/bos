@@ -73,11 +73,11 @@ export function EmployeeDocumentVault({ employeeId }: Props) {
   };
 
   const categoryColors: Record<EmployeeDocument["category"], string> = {
-    contract: "bg-blue-500 text-white",
-    id: "bg-green-500 text-white",
-    visa: "bg-purple-500 text-white",
-    tax: "bg-orange-500 text-white",
-    other: "bg-gray-500 text-white",
+    contract: "bg-info text-info-foreground",
+    id: "bg-success text-success-foreground",
+    visa: "bg-primary text-primary-foreground",
+    tax: "bg-warning text-warning-foreground",
+    other: "bg-gray-500 text-primary-foreground",
   };
 
   return (

@@ -189,9 +189,9 @@ const UserManagement: React.FC = () => {
                   <div className="flex items-center gap-4">
                     <div className="flex items-center gap-3">
                       <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                        user.isActive ? 'bg-green-100' : 'bg-gray-100'
+                        user.isActive ? 'bg-success-soft' : 'bg-muted'
                       }`}>
-                        <Shield className="w-5 h-5 text-green-600" />
+                        <Shield className="w-5 h-5 text-success" />
                       </div>
                       <div>
                         <div className="flex items-center gap-2">

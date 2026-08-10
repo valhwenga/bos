@@ -93,35 +93,35 @@ const payrollStats = [
     value: 416500,
     change: "+5.2%",
     icon: DollarSign,
-    color: "bg-blue-500",
+    color: "bg-info",
   },
   {
     title: "Paid This Month",
     value: 269500,
     change: "4 employees",
     icon: DollarSign,
-    color: "bg-green-500",
+    color: "bg-success",
   },
   {
     title: "Pending Payments",
     value: 129000,
     change: "2 employees",
     icon: DollarSign,
-    color: "bg-orange-500",
+    color: "bg-warning",
   },
   {
     title: "Total Deductions",
     value: 43500,
     change: "10.5%",
     icon: DollarSign,
-    color: "bg-purple-500",
+    color: "bg-primary",
   },
 ];
 
 const statusColors = {
-  Paid: "bg-primary text-white",
-  Pending: "bg-orange-500 text-white",
-  Failed: "bg-red-500 text-white",
+  Paid: "bg-primary text-primary-foreground",
+  Pending: "bg-warning text-warning-foreground",
+  Failed: "bg-danger text-danger-foreground",
 };
 
 const HRMPayroll = () => {
@@ -370,9 +370,9 @@ const HRMPayroll = () => {
           <Card key={index} className="p-5">
             <div className="flex items-center justify-between mb-2">
               <div className={`w-12 h-12 rounded-lg ${stat.color} flex items-center justify-center`}>
-                <stat.icon className="w-6 h-6 text-white" />
+                <stat.icon className="w-6 h-6 text-primary-foreground" />
               </div>
-              <span className="text-xs font-medium text-green-600">{stat.change}</span>
+              <span className="text-xs font-medium text-success">{stat.change}</span>
             </div>
             <p className="text-sm text-muted-foreground mb-1">{stat.title}</p>
             <p className="text-2xl font-bold">{cs.currencySymbol}{Number(stat.value).toLocaleString()}</p>
@@ -536,10 +536,10 @@ const HRMPayroll = () => {
                     <span className="text-sm font-medium">{cs.currencySymbol}{record.basicSalary.toLocaleString()}</span>
                   </td>
                   <td className="p-4">
-                    <span className="text-sm text-green-600">+{cs.currencySymbol}{record.allowances.toLocaleString()}</span>
+                    <span className="text-sm text-success">+{cs.currencySymbol}{record.allowances.toLocaleString()}</span>
                   </td>
                   <td className="p-4">
-                    <span className="text-sm text-red-600">-{cs.currencySymbol}{record.deductions.toLocaleString()}</span>
+                    <span className="text-sm text-danger">-{cs.currencySymbol}{record.deductions.toLocaleString()}</span>
                   </td>
                   <td className="p-4">
                     <span className="text-sm font-bold">{cs.currencySymbol}{record.netSalary.toLocaleString()}</span>
@@ -557,7 +557,7 @@ const HRMPayroll = () => {
                       <Button 
                         size="icon" 
                         variant="ghost" 
-                        className="h-9 w-9 text-blue-600 hover:text-blue-700 hover:bg-blue-50" 
+                        className="h-9 w-9 text-info hover:text-info hover:bg-info-soft" 
                         onClick={() => {
                           setSelectedEmployee(record);
                           setShowPayslipPreview(true);
@@ -565,7 +565,7 @@ const HRMPayroll = () => {
                       >
                         <Eye className="w-4 h-4" />
                       </Button>
-                      <Button size="icon" variant="ghost" className="h-9 w-9 text-green-600 hover:text-green-700 hover:bg-green-50" onClick={()=> emailPayslip(record)}>
+                      <Button size="icon" variant="ghost" className="h-9 w-9 text-success hover:text-success hover:bg-success-soft" onClick={()=> emailPayslip(record)}>
                         <Send className="w-4 h-4" />
                       </Button>
                       <Button size="icon" variant="ghost" className="h-9 w-9" onClick={()=> printPayslip(record)}>
@@ -601,9 +601,9 @@ const HRMPayroll = () => {
 
       {/* Professional Payslip Preview Dialog */}
       {showPayslipPreview && selectedEmployee && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-6xl w-full max-h-[90vh] overflow-auto">
-            <div className="sticky top-0 bg-white border-b p-4 flex justify-between items-center">
+        <div className="fixed inset-0 bg-foreground bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-card rounded-lg max-w-6xl w-full max-h-[90vh] overflow-auto">
+            <div className="sticky top-0 bg-card border-b p-4 flex justify-between items-center">
               <h2 className="text-xl font-semibold">Payslip Preview</h2>
               <div className="flex gap-2">
                 <Button onClick={() => generatePayslipPdf({

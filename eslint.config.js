@@ -43,53 +43,37 @@ const noRawPalette = [
  * new files are checked from the start, and once a file is migrated its entry
  * comes out and it can never regress.
  */
-const NOT_YET_MIGRATED = [
-      "src/components/AnalyticsDashboard.tsx",
-      "src/components/AuditReport.tsx",
-      "src/components/AvatarGroup.tsx",
-      "src/components/CommunicationDashboard.tsx",
-      "src/components/DocumentDashboard.tsx",
-      "src/components/EmergencyResponse.tsx",
-      "src/components/EmployeeDocumentVault.tsx",
-      "src/components/HighPriorityDashboard.tsx",
-      "src/components/PerformanceGoals.tsx",
+/**
+ * Rendered onto paper, not onto a theme. A printed invoice needs a white
+ * ground and dark ink regardless of the viewer's colour scheme, so these are
+ * a permanent exception rather than outstanding debt.
+ */
+const PRINT_SURFACES = [
       "src/components/ProfessionalPayslipPreview.tsx",
-      "src/components/SecureLogin.tsx",
-      "src/components/UserManagement.tsx",
-      "src/components/WorkflowDashboard.tsx",
-      "src/components/ui/toast.tsx",
-      "src/lib/hrmDepartmentsStore.ts",
-      "src/pages/Analytics.tsx",
-      "src/pages/CRMDeals.tsx",
-      "src/pages/Communication.tsx",
-      "src/pages/Dashboard.tsx",
-      "src/pages/Documents.tsx",
-      "src/pages/HRMAttendance.tsx",
-      "src/pages/HRMDepartments.tsx",
-      "src/pages/HRMEmployees.tsx",
-      "src/pages/HRMLeave.tsx",
-      "src/pages/HRMPayroll.tsx",
-      "src/pages/HRMPerformance.tsx",
-      "src/pages/NotFound.tsx",
-      "src/pages/Projects.tsx",
-      "src/pages/UserRole.tsx",
-      "src/pages/Workflow.tsx",
       "src/pages/accounting/InvoicePrint.tsx",
       "src/pages/accounting/QuotationPrint.tsx",
+];
+
+/**
+ * Files that still carry pre-token colours. This list may shrink, never grow:
+ * new files are checked from the start, and once a file is migrated its entry
+ * comes out and it can never regress.
+ */
+const NOT_YET_MIGRATED = [
+      "src/components/AuditReport.tsx",
+      "src/components/CommunicationDashboard.tsx",
+      "src/components/DocumentDashboard.tsx",
+      "src/components/EmployeeDocumentVault.tsx",
+      "src/components/HighPriorityDashboard.tsx",
+      "src/components/WorkflowDashboard.tsx",
+      "src/components/ui/toast.tsx",
+      "src/pages/HRMPayroll.tsx",
+      "src/pages/Projects.tsx",
       "src/pages/accounting/Reports.tsx",
       "src/pages/accounting/Settings.tsx",
-      "src/pages/auth/ForgotPassword.tsx",
-      "src/pages/auth/InviteAccept.tsx",
-      "src/pages/auth/Login.tsx",
-      "src/pages/auth/ResetPassword.tsx",
-      "src/pages/auth/Signup.tsx",
       "src/pages/messenger/Chat.tsx",
-      "src/pages/projects/Bug.tsx",
       "src/pages/projects/Calendar.tsx",
       "src/pages/support/Tickets.tsx",
-      "src/pages/users/Clients.tsx",
-      "src/pages/users/ManageUsers.tsx",
-      "src/pages/whatsapp/Console.tsx",
 ];
 
 export default tseslint.config(
@@ -117,6 +101,12 @@ export default tseslint.config(
     files: NOT_YET_MIGRATED,
     rules: {
       "no-restricted-syntax": ["warn", ...noRawPalette],
+    },
+  },
+  {
+    files: PRINT_SURFACES,
+    rules: {
+      "no-restricted-syntax": "off",
     },
   },
 );

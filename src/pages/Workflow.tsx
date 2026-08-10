@@ -89,7 +89,7 @@ const WorkflowPage: React.FC = () => {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
-              <Workflow className="w-5 h-5 text-blue-500" />
+              <Workflow className="w-5 h-5 text-info" />
               <div>
                 <p className="text-sm text-muted-foreground">Workflow Engine</p>
                 <p className="font-semibold">Automated Processes</p>
@@ -101,7 +101,7 @@ const WorkflowPage: React.FC = () => {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
-              <FileText className="w-5 h-5 text-green-500" />
+              <FileText className="w-5 h-5 text-success" />
               <div>
                 <p className="text-sm text-muted-foreground">Approval System</p>
                 <p className="font-semibold">Multi-level Approvals</p>
@@ -113,7 +113,7 @@ const WorkflowPage: React.FC = () => {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
-              <Settings className="w-5 h-5 text-purple-500" />
+              <Settings className="w-5 h-5 text-primary" />
               <div>
                 <p className="text-sm text-muted-foreground">Document Routing</p>
                 <p className="font-semibold">Smart Workflows</p>
@@ -125,7 +125,7 @@ const WorkflowPage: React.FC = () => {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-orange-500" />
+              <TrendingUp className="w-5 h-5 text-warning" />
               <div>
                 <p className="text-sm text-muted-foreground">Analytics</p>
                 <p className="font-semibold">Performance Tracking</p>

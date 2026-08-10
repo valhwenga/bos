@@ -78,23 +78,23 @@ const WorkflowDashboard: React.FC = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'completed': return 'bg-green-500 text-white';
-      case 'approved': return 'bg-green-500 text-white';
-      case 'in_progress': return 'bg-blue-500 text-white';
-      case 'pending': return 'bg-yellow-500 text-white';
-      case 'rejected': return 'bg-red-500 text-white';
-      case 'cancelled': return 'bg-gray-500 text-white';
-      default: return 'bg-gray-500 text-white';
+      case 'completed': return 'bg-success text-success-foreground';
+      case 'approved': return 'bg-success text-success-foreground';
+      case 'in_progress': return 'bg-info text-info-foreground';
+      case 'pending': return 'bg-warning text-warning-foreground';
+      case 'rejected': return 'bg-danger text-danger-foreground';
+      case 'cancelled': return 'bg-gray-500 text-primary-foreground';
+      default: return 'bg-gray-500 text-primary-foreground';
     }
   };
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case 'urgent': return 'bg-red-500 text-white';
-      case 'high': return 'bg-orange-500 text-white';
-      case 'medium': return 'bg-blue-500 text-white';
-      case 'low': return 'bg-gray-500 text-white';
-      default: return 'bg-gray-500 text-white';
+      case 'urgent': return 'bg-danger text-danger-foreground';
+      case 'high': return 'bg-warning text-warning-foreground';
+      case 'medium': return 'bg-info text-info-foreground';
+      case 'low': return 'bg-gray-500 text-primary-foreground';
+      default: return 'bg-gray-500 text-primary-foreground';
     }
   };
 
@@ -146,9 +146,9 @@ const WorkflowDashboard: React.FC = () => {
               <div>
                 <p className="text-sm text-muted-foreground">Total Workflows</p>
                 <p className="text-2xl font-bold">{analytics.totalWorkflows}</p>
-                <p className="text-xs text-green-600">{analytics.activeWorkflows} active</p>
+                <p className="text-xs text-success">{analytics.activeWorkflows} active</p>
               </div>
-              <WorkflowIcon className="w-8 h-8 text-blue-500" />
+              <WorkflowIcon className="w-8 h-8 text-info" />
             </div>
           </CardContent>
         </Card>
@@ -159,9 +159,9 @@ const WorkflowDashboard: React.FC = () => {
               <div>
                 <p className="text-sm text-muted-foreground">Pending Approvals</p>
                 <p className="text-2xl font-bold">{myApprovals.length}</p>
-                <p className="text-xs text-orange-600">{analytics.pendingApprovals} total</p>
+                <p className="text-xs text-warning">{analytics.pendingApprovals} total</p>
               </div>
-              <Clock className="w-8 h-8 text-orange-500" />
+              <Clock className="w-8 h-8 text-warning" />
             </div>
           </CardContent>
         </Card>
@@ -172,9 +172,9 @@ const WorkflowDashboard: React.FC = () => {
               <div>
                 <p className="text-sm text-muted-foreground">My Requests</p>
                 <p className="text-2xl font-bold">{myInstances.length}</p>
-                <p className="text-xs text-blue-600">{analytics.pendingInstances} pending</p>
+                <p className="text-xs text-info">{analytics.pendingInstances} pending</p>
               </div>
-              <FileText className="w-8 h-8 text-purple-500" />
+              <FileText className="w-8 h-8 text-primary" />
             </div>
           </CardContent>
         </Card>
@@ -185,9 +185,9 @@ const WorkflowDashboard: React.FC = () => {
               <div>
                 <p className="text-sm text-muted-foreground">Completed</p>
                 <p className="text-2xl font-bold">{analytics.completedInstances}</p>
-                <p className="text-xs text-green-600">{analytics.averageApprovalTime}h avg</p>
+                <p className="text-xs text-success">{analytics.averageApprovalTime}h avg</p>
               </div>
-              <CheckCircle className="w-8 h-8 text-green-500" />
+              <CheckCircle className="w-8 h-8 text-success" />
             </div>
           </CardContent>
         </Card>
@@ -391,9 +391,9 @@ const WorkflowDashboard: React.FC = () => {
                         <span className="capitalize">{category}</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <div className="w-24 bg-gray-200 rounded-full h-2">
+                        <div className="w-24 bg-muted rounded-full h-2">
                           <div
-                            className="bg-blue-500 h-2 rounded-full"
+                            className="bg-info h-2 rounded-full"
                             style={{
                               width: `${Math.min(100, (count / analytics.totalWorkflows) * 100)}%`
                             }}
@@ -422,11 +422,11 @@ const WorkflowDashboard: React.FC = () => {
                   </div>
                   <div className="flex justify-between">
                     <span>Completed</span>
-                    <span className="font-bold text-green-600">{analytics.completedInstances}</span>
+                    <span className="font-bold text-success">{analytics.completedInstances}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Pending</span>
-                    <span className="font-bold text-yellow-600">{analytics.pendingInstances}</span>
+                    <span className="font-bold text-warning">{analytics.pendingInstances}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Avg Approval Time</span>
@@ -434,7 +434,7 @@ const WorkflowDashboard: React.FC = () => {
                   </div>
                   <div className="flex justify-between">
                     <span>Pending Approvals</span>
-                    <span className="font-bold text-orange-600">{analytics.pendingApprovals}</span>
+                    <span className="font-bold text-warning">{analytics.pendingApprovals}</span>
                   </div>
                 </div>
               </CardContent>

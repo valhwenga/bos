@@ -197,7 +197,7 @@ const CommunicationPage: React.FC = () => {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
-              <MessageSquare className="w-5 h-5 text-blue-500" />
+              <MessageSquare className="w-5 h-5 text-info" />
               <div>
                 <p className="text-sm text-muted-foreground">Team Messaging</p>
                 <p className="font-semibold">Real-time Chat</p>
@@ -209,7 +209,7 @@ const CommunicationPage: React.FC = () => {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
-              <Video className="w-5 h-5 text-green-500" />
+              <Video className="w-5 h-5 text-success" />
               <div>
                 <p className="text-sm text-muted-foreground">Video Conferencing</p>
                 <p className="font-semibold">HD Meetings</p>
@@ -221,7 +221,7 @@ const CommunicationPage: React.FC = () => {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
-              <Users className="w-5 h-5 text-purple-500" />
+              <Users className="w-5 h-5 text-primary" />
               <div>
                 <p className="text-sm text-muted-foreground">Team Workspaces</p>
                 <p className="font-semibold">Collaboration Hub</p>
@@ -233,7 +233,7 @@ const CommunicationPage: React.FC = () => {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-orange-500" />
+              <Calendar className="w-5 h-5 text-warning" />
               <div>
                 <p className="text-sm text-muted-foreground">Team Calendar</p>
                 <p className="font-semibold">Schedule & Events</p>
@@ -247,7 +247,7 @@ const CommunicationPage: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={handleSendTestMessage}>
           <CardContent className="p-4 text-center">
-            <MessageSquare className="w-8 h-8 mx-auto mb-2 text-blue-500" />
+            <MessageSquare className="w-8 h-8 mx-auto mb-2 text-info" />
             <p className="font-medium">Send Message</p>
             <p className="text-xs text-muted-foreground">Quick chat</p>
           </CardContent>
@@ -255,7 +255,7 @@ const CommunicationPage: React.FC = () => {
 
         <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={handleStartInstantMeeting}>
           <CardContent className="p-4 text-center">
-            <Video className="w-8 h-8 mx-auto mb-2 text-green-500" />
+            <Video className="w-8 h-8 mx-auto mb-2 text-success" />
             <p className="font-medium">Instant Meeting</p>
             <p className="text-xs text-muted-foreground">Start now</p>
           </CardContent>
@@ -263,7 +263,7 @@ const CommunicationPage: React.FC = () => {
 
         <Card className="cursor-pointer hover:shadow-md transition-shadow">
           <CardContent className="p-4 text-center">
-            <Phone className="w-8 h-8 mx-auto mb-2 text-purple-500" />
+            <Phone className="w-8 h-8 mx-auto mb-2 text-primary" />
             <p className="font-medium">Voice Call</p>
             <p className="text-xs text-muted-foreground">Audio only</p>
           </CardContent>
@@ -271,7 +271,7 @@ const CommunicationPage: React.FC = () => {
 
         <Card className="cursor-pointer hover:shadow-md transition-shadow">
           <CardContent className="p-4 text-center">
-            <Bell className="w-8 h-8 mx-auto mb-2 text-orange-500" />
+            <Bell className="w-8 h-8 mx-auto mb-2 text-warning" />
             <p className="font-medium">Notifications</p>
             <p className="text-xs text-muted-foreground">View alerts</p>
           </CardContent>

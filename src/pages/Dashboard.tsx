@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useMemo } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Link, useNavigate } from "react-router-dom";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatCard } from "@/components/ui/stat-card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { CompanySettingsStore } from "@/lib/companySettings";
 import { AccountingStore } from "@/lib/accountingStore";
 import { PaymentStore } from "@/lib/paymentStore";
@@ -9,7 +10,7 @@ import { UsersStore } from "@/lib/usersStore";
 import { HRMDepartmentsStore } from "@/lib/hrmDepartmentsStore";
 import { ProjectStore } from "@/lib/projectStore";
 import { SupportStore } from "@/lib/supportStore";
-import { SecurityStore } from "@/lib/securityStore";
+import { AuthStore } from "@/lib/authStore";
 import { CommunicationStore } from "@/lib/communicationStore";
 import { CrmTasksStore } from "@/lib/crmTasksStore";
 import { CrmDealsStore } from "@/lib/crmDealsStore";
@@ -57,12 +58,13 @@ const HeaderClock = () => {
   return (
     <>
       <div className="text-lg font-bold">{now.toLocaleTimeString('en-US', { hour12: false })}</div>
-      <div className="text-xs text-gray-500">{now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</div>
+      <div className="text-xs text-muted-foreground">{now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</div>
     </>
   );
 };
 
 const Dashboard = () => {
+  const navigate = useNavigate();
   const dataVersion = useDataVersion();
   const [currentUser, setCurrentUser] = useState<any>(null);
 
@@ -263,218 +265,155 @@ const Dashboard = () => {
       .slice(0, 10);
   }, [dataVersion]);
 
+  // Identity comes from the signed-in account. SecurityStore is a separate,
+  // parallel user system and returns null for accounts created via AuthStore,
+  // which is why this greeted everyone anonymously.
   useEffect(() => {
-    setCurrentUser(SecurityStore.getCurrentSession());
+    setCurrentUser(AuthStore.currentUser());
   }, [dataVersion]);
 
-  return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">{CompanySettingsStore.get().name || "Company Dashboard"}</h1>
-          <p className="text-gray-500">Welcome back, {currentUser?.name || 'User'}</p>
-        </div>
-        
-        <div className="flex items-center gap-4">
-          {/* Notifications */}
-          <Button variant="outline" size="sm" className="relative">
-            <Bell className="w-4 h-4" />
-            {liveStats.urgentTickets > 0 && (
-              <Badge variant="destructive" className="absolute -top-2 -right-2 w-5 h-5 flex items-center justify-center p-0 text-xs">
-                {liveStats.urgentTickets}
-              </Badge>
-            )}
-          </Button>
-          
-          {/* Time Display */}
-          <Card className="p-3">
-            <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-blue-600" />
-              <div>
-                <HeaderClock />
-              </div>
-            </div>
-          </Card>
-        </div>
-      </div>
+  const company = CompanySettingsStore.get();
+  const currency = company.currencySymbol || "$";
+  const overdueCount = liveStats.upcomingDeadlines.overdue.length;
+  const dueSoonCount = liveStats.upcomingDeadlines.invoices.length;
 
-      {/* Alert Section */}
-      {(liveStats.upcomingDeadlines.overdue.length > 0 || liveStats.urgentTickets > 0) && (
-        <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-          <div className="flex items-center gap-2 mb-2">
-            <Bell className="w-5 h-5 text-red-600" />
-            <h3 className="font-semibold text-red-900">Urgent Items Require Attention</h3>
+  const quickActions = [
+    { label: "Analytics", icon: BarChart3, to: "/analytics" },
+    { label: "Communication", icon: MessageCircle, to: "/communication" },
+    { label: "Workflows", icon: Calendar, to: "/workflow" },
+    { label: "Documents", icon: FileText, to: "/documents" },
+    { label: "Invoices", icon: DollarSign, to: "/accounting/invoices" },
+    { label: "Backup", icon: Database, to: "/backup" },
+  ];
+
+  const ACTIVITY_TONE: Record<string, string> = {
+    green: "bg-success",
+    blue: "bg-info",
+    indigo: "bg-info",
+    orange: "bg-warning",
+    red: "bg-danger",
+    purple: "bg-primary",
+  };
+
+  return (
+    <div className="flex flex-col gap-6 p-6">
+      <PageHeader
+        title={`Good to see you, ${(currentUser?.name || "there").split(" ")[0]}`}
+        description={`Here's where ${company.name || "the business"} stands today.`}
+      />
+
+      {/* Only surfaces when something genuinely needs attention. */}
+      {(overdueCount > 0 || liveStats.urgentTickets > 0) && (
+        <div className="flex flex-col gap-2 rounded-md border border-danger/30 bg-danger-soft p-4">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 text-danger" aria-hidden="true" />
+            <h2 className="text-sm font-semibold text-foreground">Needs attention</h2>
           </div>
-          <div className="space-y-1 text-sm text-red-700">
-            {liveStats.upcomingDeadlines.overdue.length > 0 && (
-              <p>· {liveStats.upcomingDeadlines.overdue.length} overdue deadlines</p>
+          <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted-foreground">
+            {overdueCount > 0 && (
+              <Link to="/accounting/invoices" className="hover:text-foreground hover:underline">
+                {overdueCount} overdue invoice{overdueCount === 1 ? "" : "s"}
+              </Link>
             )}
             {liveStats.urgentTickets > 0 && (
-              <p>· {liveStats.urgentTickets} urgent support tickets</p>
+              <Link to="/support/tickets" className="hover:text-foreground hover:underline">
+                {liveStats.urgentTickets} urgent ticket{liveStats.urgentTickets === 1 ? "" : "s"}
+              </Link>
             )}
           </div>
         </div>
       )}
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card className="hover:shadow-lg transition-shadow">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <DollarSign className="w-6 h-6 text-blue-600" />
-              </div>
-              <TrendingUp className="w-4 h-4 text-green-500" />
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Total Revenue</p>
-              <p className="text-2xl font-bold text-gray-900">
-                ${liveStats.totalRevenue.toLocaleString()}
-              </p>
-              <p className="text-xs text-gray-500">from paid invoices</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="hover:shadow-lg transition-shadow">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-green-100 rounded-lg">
-                <Users className="w-6 h-6 text-green-600" />
-              </div>
-              <TrendingUp className="w-4 h-4 text-green-500" />
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Active Users</p>
-              <p className="text-2xl font-bold text-gray-900">{liveStats.activeUsers}</p>
-              <p className="text-xs text-gray-500">of {liveStats.totalEmployees} total</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="hover:shadow-lg transition-shadow">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-purple-100 rounded-lg">
-                <Package className="w-6 h-6 text-purple-600" />
-              </div>
-              <TrendingUp className="w-4 h-4 text-green-500" />
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Active Projects</p>
-              <p className="text-2xl font-bold text-gray-900">{liveStats.activeProjects}</p>
-              <p className="text-xs text-gray-500">{liveStats.completedProjects} completed</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="hover:shadow-lg transition-shadow">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-orange-100 rounded-lg">
-                <HeadphonesIcon className="w-6 h-6 text-orange-600" />
-              </div>
-              <TrendingUp className="w-4 h-4 text-green-500" />
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Support Tickets</p>
-              <p className="text-2xl font-bold text-gray-900">{liveStats.openTickets}</p>
-              <p className="text-xs text-red-500">{liveStats.urgentTickets} urgent</p>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Revenue"
+          value={`${currency}${liveStats.totalRevenue.toLocaleString()}`}
+          hint="From paid invoices"
+          icon={DollarSign}
+          tone="success"
+          onClick={() => navigate("/accounting/invoices")}
+        />
+        <StatCard
+          label="Active people"
+          value={liveStats.activeUsers}
+          hint={`of ${liveStats.totalEmployees} on the team`}
+          icon={Users}
+          onClick={() => navigate("/hrm/employees")}
+        />
+        <StatCard
+          label="Open projects"
+          value={liveStats.activeProjects}
+          hint={`${liveStats.completedProjects} completed`}
+          icon={Package}
+          tone="info"
+          onClick={() => navigate("/projects")}
+        />
+        <StatCard
+          label="Open tickets"
+          value={liveStats.openTickets}
+          hint={liveStats.urgentTickets ? `${liveStats.urgentTickets} urgent` : "None urgent"}
+          icon={HeadphonesIcon}
+          tone={liveStats.urgentTickets ? "danger" : "neutral"}
+          onClick={() => navigate("/support/tickets")}
+        />
       </div>
 
-      {/* Quick Actions */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Plus className="w-5 h-5" />
-              Quick Actions
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4">
-              <Button variant="outline" className="h-20 flex-col" onClick={() => window.location.href = '/analytics'}>
-                <BarChart3 className="w-6 h-6 mb-2" />
-                View Analytics
-              </Button>
-              <Button variant="outline" className="h-20 flex-col" onClick={() => window.location.href = '/communication'}>
-                <Users className="w-6 h-6 mb-2" />
-                Messages
-              </Button>
-              <Button variant="outline" className="h-20 flex-col" onClick={() => window.location.href = '/workflow'}>
-                <Calendar className="w-6 h-6 mb-2" />
-                Workflows
-              </Button>
-              <Button variant="outline" className="h-20 flex-col" onClick={() => window.location.href = '/documents'}>
-                <FileText className="w-6 h-6 mb-2" />
-                Documents
-              </Button>
-              <Button variant="outline" className="h-20 flex-col" onClick={() => {
-                // Create backup
-                import('@/lib/backupStore').then(({ BackupStore }) => {
-                  try {
-                    BackupStore.create();
-                    alert('Backup created successfully!');
-                  } catch (error) {
-                    alert('Failed to create backup');
-                  }
-                });
-              }}>
-                <Database className="w-6 h-6 mb-2" />
-                Create Backup
-              </Button>
-              <Button variant="outline" className="h-20 flex-col" onClick={() => window.location.href = '/backup'}>
-                <Shield className="w-6 h-6 mb-2" />
-                Backup & Restore
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid gap-4 lg:grid-cols-[1fr_1.1fr]">
+        <section className="flex flex-col gap-3 rounded-md border border-border bg-card p-4">
+          <div className="flex flex-col gap-0.5">
+            <h2 className="text-sm font-semibold text-foreground">Jump to</h2>
+            <p className="text-xs text-muted-foreground">Press ⌘K to search everything.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {quickActions.map(({ label, icon: Icon, to }) => (
+              <Link
+                key={to}
+                to={to}
+                className="flex flex-col items-center gap-2 rounded-md border border-border bg-surface-raised px-3 py-4 text-center text-sm text-foreground transition-colors duration-fast ease-standard hover:border-border-strong hover:bg-muted"
+              >
+                <Icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                {label}
+              </Link>
+            ))}
+          </div>
+        </section>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="w-5 h-5" />
-              Recent Activity
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {recentActivities.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <Clock className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>No recent activity</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {recentActivities.map((activity) => {
-                  const Icon = activity.icon;
-                  const colorClass = {
-                    blue: 'bg-blue-500',
-                    green: 'bg-green-500',
-                    orange: 'bg-orange-500',
-                    red: 'bg-red-500',
-                    purple: 'bg-purple-500',
-                    indigo: 'bg-indigo-500'
-                  }[activity.color] || 'bg-gray-500';
-
-                  return (
-                    <div key={activity.id} className="flex items-center gap-3">
-                      <div className={`w-2 h-2 ${colorClass} rounded-full`}></div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium">{activity.title}</p>
-                        <p className="text-xs text-gray-500">{activity.time}</p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+        <section className="flex flex-col gap-3 rounded-md border border-border bg-card p-4">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-foreground">Recent activity</h2>
+            {dueSoonCount > 0 && (
+              <span className="rounded-sm bg-warning-soft px-1.5 py-0.5 text-xs font-medium text-warning">
+                {dueSoonCount} due this week
+              </span>
             )}
-          </CardContent>
-        </Card>
+          </div>
+
+          {recentActivities.length === 0 ? (
+            <EmptyState
+              icon={Clock}
+              title="No activity yet"
+              description="Invoices, deals, tasks and tickets will appear here as your team works."
+            />
+          ) : (
+            <ul className="flex flex-col">
+              {recentActivities.map((activity) => (
+                <li
+                  key={activity.id}
+                  className="flex items-start gap-3 border-b border-border py-2.5 last:border-0"
+                >
+                  <span
+                    className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${ACTIVITY_TONE[activity.color] ?? "bg-muted-foreground"}`}
+                    aria-hidden="true"
+                  />
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <p className="truncate text-sm text-foreground">{activity.title}</p>
+                    <p className="text-xs text-muted-foreground">{activity.time}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </div>
     </div>
   );

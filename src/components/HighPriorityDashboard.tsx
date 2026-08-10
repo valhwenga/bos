@@ -62,31 +62,31 @@ const HighPriorityDashboard: React.FC = () => {
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case 'critical': return 'bg-red-500 text-white';
-      case 'high': return 'bg-orange-500 text-white';
-      case 'medium': return 'bg-yellow-500 text-white';
-      case 'low': return 'bg-blue-500 text-white';
-      default: return 'bg-gray-500 text-white';
+      case 'critical': return 'bg-danger text-danger-foreground';
+      case 'high': return 'bg-warning text-warning-foreground';
+      case 'medium': return 'bg-warning text-warning-foreground';
+      case 'low': return 'bg-info text-info-foreground';
+      default: return 'bg-gray-500 text-primary-foreground';
     }
   };
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'healthy': return <CheckCircle className="w-4 h-4 text-green-500" />;
-      case 'warning': return <AlertCircle className="w-4 h-4 text-yellow-500" />;
-      case 'critical': return <AlertTriangle className="w-4 h-4 text-red-500" />;
-      case 'offline': return <AlertOctagon className="w-4 h-4 text-gray-500" />;
-      default: return <Activity className="w-4 h-4 text-gray-500" />;
+      case 'healthy': return <CheckCircle className="w-4 h-4 text-success" />;
+      case 'warning': return <AlertCircle className="w-4 h-4 text-warning" />;
+      case 'critical': return <AlertTriangle className="w-4 h-4 text-danger" />;
+      case 'offline': return <AlertOctagon className="w-4 h-4 text-muted-foreground" />;
+      default: return <Activity className="w-4 h-4 text-muted-foreground" />;
     }
   };
 
   const getAlertIcon = (type: string) => {
     switch (type) {
-      case 'emergency': return <AlertTriangle className="w-4 h-4 text-red-500" />;
-      case 'warning': return <AlertCircle className="w-4 h-4 text-yellow-500" />;
-      case 'info': return <Activity className="w-4 h-4 text-blue-500" />;
-      case 'success': return <CheckCircle className="w-4 h-4 text-green-500" />;
-      default: return <Bell className="w-4 h-4 text-gray-500" />;
+      case 'emergency': return <AlertTriangle className="w-4 h-4 text-danger" />;
+      case 'warning': return <AlertCircle className="w-4 h-4 text-warning" />;
+      case 'info': return <Activity className="w-4 h-4 text-info" />;
+      case 'success': return <CheckCircle className="w-4 h-4 text-success" />;
+      default: return <Bell className="w-4 h-4 text-muted-foreground" />;
     }
   };
 
@@ -143,46 +143,46 @@ const HighPriorityDashboard: React.FC = () => {
     <div className="space-y-6">
       {/* Priority Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="border-red-200 bg-red-50">
+        <Card className="border-danger bg-danger-soft">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-red-700">Critical Tasks</p>
+                <p className="text-sm font-medium text-danger">Critical Tasks</p>
                 <p className="text-2xl font-bold text-red-900">{summary.criticalTasks}</p>
               </div>
-              <AlertTriangle className="w-8 h-8 text-red-500" />
+              <AlertTriangle className="w-8 h-8 text-danger" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-orange-200 bg-orange-50">
+        <Card className="border-warning bg-warning-soft">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-orange-700">High Priority</p>
+                <p className="text-sm font-medium text-warning">High Priority</p>
                 <p className="text-2xl font-bold text-orange-900">{summary.highTasks}</p>
               </div>
-              <Zap className="w-8 h-8 text-orange-500" />
+              <Zap className="w-8 h-8 text-warning" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-yellow-200 bg-yellow-50">
+        <Card className="border-warning bg-warning-soft">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-yellow-700">Unacknowledged</p>
+                <p className="text-sm font-medium text-warning">Unacknowledged</p>
                 <p className="text-2xl font-bold text-yellow-900">{summary.unacknowledgedAlerts}</p>
               </div>
-              <Bell className="w-8 h-8 text-yellow-500" />
+              <Bell className="w-8 h-8 text-warning" />
             </div>
           </CardContent>
         </Card>
 
         <Card className={`border-2 ${
-          summary.systemHealth === 'healthy' ? 'border-green-200 bg-green-50' :
-          summary.systemHealth === 'warning' ? 'border-yellow-200 bg-yellow-50' :
-          'border-red-200 bg-red-50'
+          summary.systemHealth === 'healthy' ? 'border-success bg-success-soft' :
+          summary.systemHealth === 'warning' ? 'border-warning bg-warning-soft' :
+          'border-danger bg-danger-soft'
         }`}>
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
@@ -198,9 +198,9 @@ const HighPriorityDashboard: React.FC = () => {
 
       {/* Critical Alerts */}
       {summary.criticalTasks > 0 && (
-        <Alert className="border-red-200 bg-red-50">
-          <AlertTriangle className="h-4 w-4 text-red-600" />
-          <AlertDescription className="text-red-800">
+        <Alert className="border-danger bg-danger-soft">
+          <AlertTriangle className="h-4 w-4 text-danger" />
+          <AlertDescription className="text-danger">
             <strong>Critical Alert:</strong> {summary.criticalTasks} critical tasks require immediate attention!
           </AlertDescription>
         </Alert>
@@ -329,7 +329,7 @@ const HighPriorityDashboard: React.FC = () => {
                     <p>Response: {check.responseTime}ms</p>
                   )}
                   {check.errorMessage && (
-                    <p className="text-red-600">{check.errorMessage}</p>
+                    <p className="text-danger">{check.errorMessage}</p>
                   )}
                   <p className="text-xs mt-1">
                     {new Date(check.lastChecked).toLocaleString()}

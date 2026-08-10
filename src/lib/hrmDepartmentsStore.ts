@@ -12,8 +12,8 @@ const r = <T,>(k: string, f: T): T => { try { const v = localStorage.getItem(k);
 const w = (k: string, v: unknown) => localStorage.setItem(k, JSON.stringify(v));
 
 const SEED: Department[] = [
-  { id: "D001", name: "Engineering", head: "John Anderson", employees: 24, description: "Software development and technical infrastructure", color: "bg-blue-500" },
-  { id: "D002", name: "Marketing", head: "Sarah Williams", employees: 12, description: "Brand management and digital marketing", color: "bg-purple-500" },
+  { id: "D001", name: "Engineering", head: "John Anderson", employees: 24, description: "Software development and technical infrastructure", color: "bg-info" },
+  { id: "D002", name: "Marketing", head: "Sarah Williams", employees: 12, description: "Brand management and digital marketing", color: "bg-primary" },
 ];
 
 export const HRMDepartmentsStore = {

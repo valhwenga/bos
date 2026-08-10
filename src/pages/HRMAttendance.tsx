@@ -17,9 +17,9 @@ type ViewMode = "today" | "all" | "date";
 type Row = { employee: string; id: string; department?: string; checkIn: string; checkOut: string; workHours: string; status: string; date: string };
 
 const statusColors = {
-  Present: "bg-primary text-white",
-  "In Progress": "bg-orange-500 text-white",
-  Absent: "bg-red-500 text-white",
+  Present: "bg-primary text-primary-foreground",
+  "In Progress": "bg-warning text-warning-foreground",
+  Absent: "bg-danger text-danger-foreground",
 };
 
 const HRMAttendance = () => {
@@ -170,7 +170,7 @@ const HRMAttendance = () => {
         <div className="bg-card rounded-lg border border-border p-5">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm text-muted-foreground">On Leave</span>
-            <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-lg bg-info/10 flex items-center justify-center">
               <span className="text-xl">🏖️</span>
             </div>
           </div>
@@ -181,7 +181,7 @@ const HRMAttendance = () => {
         <div className="bg-card rounded-lg border border-border p-5">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm text-muted-foreground">Late Arrivals</span>
-            <div className="w-10 h-10 rounded-lg bg-orange-500/10 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-lg bg-warning/10 flex items-center justify-center">
               <span className="text-xl">⏰</span>
             </div>
           </div>
@@ -192,7 +192,7 @@ const HRMAttendance = () => {
         <div className="bg-card rounded-lg border border-border p-5">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm text-muted-foreground">Absent</span>
-            <div className="w-10 h-10 rounded-lg bg-red-500/10 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-lg bg-danger/10 flex items-center justify-center">
               <span className="text-xl">✗</span>
             </div>
           </div>

@@ -109,7 +109,7 @@ const Reports: React.FC = () => {
         <CardHeader className="flex-row items-center justify-between">
           <CardTitle>Reports</CardTitle>
           <div className="flex items-center gap-2">
-            <select className="border rounded px-2 py-2 text-sm bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100" value={module} onChange={(e)=> setModule(e.target.value as ModuleKey)}>
+            <select className="border rounded px-2 py-2 text-sm bg-card text-foreground dark:bg-card dark:text-slate-100" value={module} onChange={(e)=> setModule(e.target.value as ModuleKey)}>
               <option value="income">Income (Accrual)</option>
               <option value="expenses">Expenses</option>
               <option value="income_vs_expense">Income vs Expense</option>

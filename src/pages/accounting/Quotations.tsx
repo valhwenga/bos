@@ -4,13 +4,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { AccountingStore, Quotation, LineItem } from "@/lib/accountingStore";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatCard } from "@/components/ui/stat-card";
 import { toast } from "@/components/ui/use-toast";
 import { CompanySettingsStore } from "@/lib/companySettings";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { ChevronsUpDown, Check, CreditCard, Eye, Printer, ArrowRightLeft, Edit, Trash2 } from "lucide-react";
+import { ChevronsUpDown, Check, CreditCard, Eye, Printer, ArrowRightLeft, Edit, Trash2, FileText, TrendingUp, CheckCircle2 } from "lucide-react";
 import { CustomersStore } from "@/lib/customersStore";
 import { ProductsStore } from "@/lib/productsStore";
 import { useNavigate } from "react-router-dom";
@@ -305,102 +308,125 @@ const Quotations: React.FC = () => {
     setPreviewOpen(true);
   };
 
+  const statusTone: Record<Quotation["status"], string> = {
+    accepted: "bg-success-soft text-success",
+    converted: "bg-info-soft text-info",
+    declined: "bg-danger-soft text-danger",
+    sent: "bg-warning-soft text-warning",
+    draft: "bg-muted text-muted-foreground",
+  };
+
+  const paidFor = (q: Quotation) => PaymentStore.sumAmount(PaymentStore.byQuote(q.id));
+
+  const columns: Column<Quotation>[] = [
+    { id: "number", header: "No.", sortValue: (q) => q.number, cell: (q) => <span className="font-medium">{q.number}</span> },
+    { id: "customer", header: "Customer", sortValue: (q) => q.customer.name, cell: (q) => q.customer.name },
+    {
+      id: "status",
+      header: "Status",
+      sortValue: (q) => q.status,
+      cell: (q) => (
+        <span className={`inline-flex rounded-sm px-1.5 py-0.5 text-xs font-medium capitalize ${statusTone[q.status]}`}>
+          {q.status}
+        </span>
+      ),
+    },
+    { id: "paid", header: "Paid", align: "right", hideOnMobile: true, sortValue: paidFor, cell: (q) => `${c.currencySymbol}${paidFor(q).toFixed(2)}` },
+    {
+      id: "balance",
+      header: "Balance",
+      align: "right",
+      sortValue: outstanding,
+      cell: (q) => (
+        <span className={outstanding(q) > 0 ? "font-medium text-foreground" : "text-muted-foreground"}>
+          {c.currencySymbol}{outstanding(q).toFixed(2)}
+        </span>
+      ),
+    },
+    {
+      id: "actions",
+      header: <span className="sr-only">Actions</span>,
+      align: "right",
+      width: "1%",
+      cell: (q) => (
+        <div className="inline-flex items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()}>
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => editQuote(q)} aria-label={`Edit ${q.number}`}>
+            <Edit className="h-3.5 w-3.5" />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => printQuote(q)} aria-label={`Print ${q.number}`}>
+            <Printer className="h-3.5 w-3.5" />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => { setActiveQuote(q); setCapOpen(true); }} aria-label={`Capture payment for ${q.number}`}>
+            <CreditCard className="h-3.5 w-3.5" />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => convert(q.id)} aria-label={`Convert ${q.number} to invoice`} title="Convert to invoice">
+            <ArrowRightLeft className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 text-muted-foreground hover:text-danger"
+            aria-label={`Delete ${q.number}`}
+            onClick={() => {
+              if (confirm(`Delete quotation ${q.number}? This cannot be undone.`)) {
+                AccountingStore.removeQuote(q.id);
+                setQuotes(AccountingStore.listQuotes());
+                toast({ title: "Quotation deleted", description: q.number });
+              }
+            }}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
+  const pipeline = quotes
+    .filter((q) => q.status !== "declined" && q.status !== "converted")
+    .reduce((sum, q) => sum + q.items.reduce((t, i) => t + i.qty * i.price, 0), 0);
+
   return (
-    <div className="p-6 space-y-4">
-      <Card className="shadow-[0_10px_0_rgba(0,0,0,0.08)]">
-        <CardHeader className="flex-row items-center justify-between">
-          <CardTitle>Quotations</CardTitle>
-          <Button onClick={()=> setOpen(true)}>New Quotation</Button>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="rounded-lg overflow-hidden border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>No.</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Paid</TableHead>
-                  <TableHead className="text-right">Balance</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {quotes.map((q) => (
-                  <TableRow key={q.id}>
-                    <TableCell>{q.number}</TableCell>
-                    <TableCell>{q.customer.name}</TableCell>
-                    <TableCell className="capitalize">{q.status}</TableCell>
-                    <TableCell className="text-right">{c.currencySymbol}{PaymentStore.sumAmount(PaymentStore.byQuote(q.id)).toFixed(2)}</TableCell>
-                    <TableCell className="text-right">{c.currencySymbol}{outstanding(q).toFixed(2)}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="inline-flex items-center justify-end gap-2">
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          onClick={() => editQuote(q)}
-                          aria-label="Edit quotation"
-                        >
-                          <Edit className="w-3 h-3" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          onClick={() => {
-                            if (confirm(`Delete quotation ${q.number}?`)) {
-                              AccountingStore.removeQuote(q.id);
-                              setQuotes(AccountingStore.listQuotes());
-                              toast({ title: "Quotation deleted", description: q.number });
-                            }
-                          }}
-                          aria-label="Delete quotation"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="secondary"
-                          onClick={() => { setActiveQuote(q); setCapOpen(true); }}
-                          aria-label="Capture payment"
-                          title="Capture payment"
-                        >
-                          <CreditCard className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="secondary"
-                          onClick={() => openPreview(q)}
-                          aria-label="Preview & send quotation"
-                          title="Preview & send quotation"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          onClick={() => printQuote(q)}
-                          aria-label="Print / download PDF"
-                          title="Print / download PDF"
-                        >
-                          <Printer className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          onClick={() => convert(q.id)}
-                          aria-label="Convert to invoice"
-                          title="Convert to invoice"
-                        >
-                          <ArrowRightLeft className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+    <div className="flex flex-col gap-6 p-6">
+      <PageHeader
+        title="Quotations"
+        description="Quotes you've sent, and what they're worth if they land."
+        breadcrumbs={[{ label: "Accounting", to: "/accounting/quotations" }, { label: "Quotations" }]}
+        actions={<Button onClick={() => setOpen(true)}>New quotation</Button>}
+      >
+        <div className="grid gap-3 sm:grid-cols-3">
+          <StatCard label="Quotations" value={quotes.length} hint="All time" icon={FileText} />
+          <StatCard
+            label="Open pipeline"
+            value={`${c.currencySymbol}${pipeline.toFixed(2)}`}
+            hint="Excludes declined and converted"
+            icon={TrendingUp}
+            tone="info"
+          />
+          <StatCard
+            label="Accepted"
+            value={quotes.filter((q) => q.status === "accepted").length}
+            hint="Ready to invoice"
+            icon={CheckCircle2}
+            tone="success"
+          />
+        </div>
+      </PageHeader>
+
+      <DataTable
+        rows={quotes}
+        columns={columns}
+        rowKey={(q) => q.id}
+        searchAccessor={(q) => `${q.number} ${q.customer.name} ${q.status}`}
+        searchPlaceholder="Search by number, customer or status…"
+        onRowClick={(q) => openPreview(q)}
+        empty={{
+          title: "No quotations yet",
+          description: "Send your first quote — accepted ones convert straight into invoices.",
+          action: <Button onClick={() => setOpen(true)}>New quotation</Button>,
+        }}
+      />
+
       <NewQuoteDialog open={open} onOpenChange={setOpen} onAdd={addQuote} />
       <CapturePaymentDialog open={capOpen} onOpenChange={(v)=> { setCapOpen(v); if (!v) { setActiveQuote(undefined); setQuotes(AccountingStore.listQuotes()); } }} context={{ quote: activeQuote }} onSaved={()=> { setQuotes(AccountingStore.listQuotes()); }} />
 

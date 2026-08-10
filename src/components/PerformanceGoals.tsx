@@ -76,15 +76,15 @@ export function PerformanceGoals({ employeeId }: Props) {
 
   const statusIcons = {
     not_started: <Clock className="w-4 h-4 text-muted-foreground" />,
-    in_progress: <Target className="w-4 h-4 text-blue-500" />,
-    completed: <CheckCircle className="w-4 h-4 text-green-500" />,
-    blocked: <XCircle className="w-4 h-4 text-red-500" />,
+    in_progress: <Target className="w-4 h-4 text-info" />,
+    completed: <CheckCircle className="w-4 h-4 text-success" />,
+    blocked: <XCircle className="w-4 h-4 text-danger" />,
   };
 
   const categoryColors = {
-    objective: "bg-purple-500 text-white",
-    key_result: "bg-blue-500 text-white",
-    smart: "bg-green-500 text-white",
+    objective: "bg-primary text-primary-foreground",
+    key_result: "bg-info text-info-foreground",
+    smart: "bg-success text-success-foreground",
   };
 
   return (

@@ -129,10 +129,10 @@ const Tickets = () => {
                   <td className="p-4 font-medium">{t.title}</td>
                   <td className="p-4 text-sm">{t.category}</td>
                   <td className="p-4 text-sm capitalize">
-                    <span className={`px-2 py-1 rounded text-xs ${t.priority==='urgent'?'bg-red-500 text-white':t.priority==='high'?'bg-orange-500 text-white':t.priority==='medium'?'bg-yellow-500 text-white':'bg-green-500 text-white'}`}>{t.priority}</span>
+                    <span className={`px-2 py-1 rounded text-xs ${t.priority==='urgent'?'bg-danger text-danger-foreground':t.priority==='high'?'bg-warning text-warning-foreground':t.priority==='medium'?'bg-warning text-warning-foreground':'bg-success text-success-foreground'}`}>{t.priority}</span>
                   </td>
                   <td className="p-4 text-sm capitalize">
-                    <span className={`px-2 py-1 rounded text-xs ${t.status==='pending_approval'?'bg-blue-500 text-white':t.status==='closed'?'bg-gray-500 text-white':t.status==='rejected'?'bg-red-600 text-white':t.status==='resolved'?'bg-emerald-600 text-white':t.status==='in_progress'?'bg-indigo-600 text-white':t.status==='waiting'?'bg-yellow-600 text-white':'bg-slate-500 text-white'}`}>{t.status.replace(/_/g,' ')}</span>
+                    <span className={`px-2 py-1 rounded text-xs ${t.status==='pending_approval'?'bg-info text-info-foreground':t.status==='closed'?'bg-gray-500 text-primary-foreground':t.status==='rejected'?'bg-danger text-danger-foreground':t.status==='resolved'?'bg-success text-success-foreground':t.status==='in_progress'?'bg-info text-info-foreground':t.status==='waiting'?'bg-warning text-warning-foreground':'bg-slate-500 text-primary-foreground'}`}>{t.status.replace(/_/g,' ')}</span>
                   </td>
                   <td className="p-4 text-sm">{t.dueAt ? new Date(t.dueAt).toLocaleString() : '-'}</td>
                   <td className="p-4 text-sm">{new Date(t.updatedAt).toLocaleString()}</td>

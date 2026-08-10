@@ -117,24 +117,24 @@ const SecureLogin: React.FC = () => {
 
   if (isLocked) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-surface-raised">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <div className="mx-auto mb-4 p-3 bg-red-100 rounded-full w-fit">
-              <Lock className="w-8 h-8 text-red-600" />
+            <div className="mx-auto mb-4 p-3 bg-danger-soft rounded-full w-fit">
+              <Lock className="w-8 h-8 text-danger" />
             </div>
-            <CardTitle className="text-red-700">Account Locked</CardTitle>
+            <CardTitle className="text-danger">Account Locked</CardTitle>
           </CardHeader>
           <CardContent className="text-center space-y-4">
-            <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-red-500" />
-            <p className="text-red-600">
+            <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-danger" />
+            <p className="text-danger">
               Too many failed login attempts. Your account has been locked for security reasons.
             </p>
-            <div className="p-4 bg-red-50 rounded-lg border border-red-200">
-              <p className="font-semibold text-red-800">
+            <div className="p-4 bg-danger-soft rounded-lg border border-danger">
+              <p className="font-semibold text-danger">
                 Try again in: {lockoutTime} minutes
               </p>
-              <p className="text-sm text-red-600">
+              <p className="text-sm text-danger">
                 For security, please wait before attempting to login again.
               </p>
             </div>
@@ -145,11 +145,11 @@ const SecureLogin: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+    <div className="min-h-screen flex items-center justify-center bg-surface-raised">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4 p-3 bg-blue-100 rounded-full w-fit">
-            <Shield className="w-8 h-8 text-blue-600" />
+          <div className="mx-auto mb-4 p-3 bg-info-soft rounded-full w-fit">
+            <Shield className="w-8 h-8 text-info" />
           </div>
           <CardTitle>Secure Login</CardTitle>
           <p className="text-sm text-muted-foreground">
@@ -202,20 +202,20 @@ const SecureLogin: React.FC = () => {
               {password && (
                 <div className="text-xs space-y-1 p-2 bg-muted rounded">
                   <p className="font-medium">Password Requirements:</p>
-                  <div className={`flex items-center gap-1 ${passwordValidation.valid ? 'text-green-600' : 'text-red-600'}`}>
-                    <div className={`w-3 h-3 rounded-full ${password.length >= settings.passwordMinLength ? 'bg-green-500' : 'bg-red-500'}`} />
+                  <div className={`flex items-center gap-1 ${passwordValidation.valid ? 'text-success' : 'text-danger'}`}>
+                    <div className={`w-3 h-3 rounded-full ${password.length >= settings.passwordMinLength ? 'bg-success' : 'bg-danger'}`} />
                     <span>At least {settings.passwordMinLength} characters</span>
                   </div>
-                  <div className={`flex items-center gap-1 ${/[A-Z]/.test(password) ? 'text-green-600' : 'text-red-600'}`}>
-                    <div className={`w-3 h-3 rounded-full ${/[A-Z]/.test(password) ? 'bg-green-500' : 'bg-red-500'}`} />
+                  <div className={`flex items-center gap-1 ${/[A-Z]/.test(password) ? 'text-success' : 'text-danger'}`}>
+                    <div className={`w-3 h-3 rounded-full ${/[A-Z]/.test(password) ? 'bg-success' : 'bg-danger'}`} />
                     <span>One uppercase letter</span>
                   </div>
-                  <div className={`flex items-center gap-1 ${/[a-z]/.test(password) ? 'text-green-600' : 'text-red-600'}`}>
-                    <div className={`w-3 h-3 rounded-full ${/[a-z]/.test(password) ? 'bg-green-500' : 'bg-red-500'}`} />
+                  <div className={`flex items-center gap-1 ${/[a-z]/.test(password) ? 'text-success' : 'text-danger'}`}>
+                    <div className={`w-3 h-3 rounded-full ${/[a-z]/.test(password) ? 'bg-success' : 'bg-danger'}`} />
                     <span>One lowercase letter</span>
                   </div>
-                  <div className={`flex items-center gap-1 ${/[0-9]/.test(password) ? 'text-green-600' : 'text-red-600'}`}>
-                    <div className={`w-3 h-3 rounded-full ${/[0-9]/.test(password) ? 'bg-green-500' : 'bg-red-500'}`} />
+                  <div className={`flex items-center gap-1 ${/[0-9]/.test(password) ? 'text-success' : 'text-danger'}`}>
+                    <div className={`w-3 h-3 rounded-full ${/[0-9]/.test(password) ? 'bg-success' : 'bg-danger'}`} />
                     <span>One number</span>
                   </div>
                 </div>
@@ -224,8 +224,8 @@ const SecureLogin: React.FC = () => {
 
             {/* Login Attempts Warning */}
             {loginAttempts > 0 && !isLocked && (
-              <div className="p-3 bg-yellow-50 border border-yellow-200 rounded">
-                <p className="text-sm text-yellow-700">
+              <div className="p-3 bg-warning-soft border border-warning rounded">
+                <p className="text-sm text-warning">
                   <strong>Warning:</strong> {loginAttempts} of {settings.maxLoginAttempts} attempts remaining.
                   Account will be locked after {settings.maxLoginAttempts} failed attempts.
                 </p>

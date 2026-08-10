@@ -19,25 +19,25 @@ const stats = [
     title: "Total Deals",
     value: 1404250.99,
     icon: DollarSign,
-    color: "bg-blue-500",
+    color: "bg-info",
   },
   {
     title: "This Month Total Deals",
     value: 0,
     icon: DollarSign,
-    color: "bg-green-500",
+    color: "bg-success",
   },
   {
     title: "This Week Total Deals",
     value: 0,
     icon: DollarSign,
-    color: "bg-orange-500",
+    color: "bg-warning",
   },
   {
     title: "Last 30 Days Total Deals",
     value: 0,
     icon: DollarSign,
-    color: "bg-pink-500",
+    color: "bg-primary",
   },
 ];
 const CRMDeals = () => {
@@ -101,7 +101,7 @@ const CRMDeals = () => {
                 <p className="text-2xl font-bold">{sym}{Number(stat.value).toLocaleString()}</p>
               </div>
               <div className={`w-12 h-12 rounded-full ${stat.color} flex items-center justify-center`}>
-                <stat.icon className="w-6 h-6 text-white" />
+                <stat.icon className="w-6 h-6 text-primary-foreground" />
               </div>
             </div>
           </Card>

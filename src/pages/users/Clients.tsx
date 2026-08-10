@@ -147,10 +147,10 @@ const Clients = () => {
                       ) : (
                         <Button size="sm" variant="secondary" onClick={()=> startCreateLogin(c)}>Create Login</Button>
                       )}
-                      <Button size="icon" variant="ghost" className="h-9 w-9 text-blue-600 hover:text-blue-700 hover:bg-blue-50" onClick={()=> startEdit(c)}>
+                      <Button size="icon" variant="ghost" className="h-9 w-9 text-info hover:text-info hover:bg-info-soft" onClick={()=> startEdit(c)}>
                         <Edit className="w-4 h-4" />
                       </Button>
-                      <Button size="icon" variant="ghost" className="h-9 w-9 text-red-600 hover:text-red-700 hover:bg-red-50" onClick={()=> remove(c.id)}>
+                      <Button size="icon" variant="ghost" className="h-9 w-9 text-danger hover:text-danger hover:bg-danger-soft" onClick={()=> remove(c.id)}>
                         <Trash className="w-4 h-4" />
                       </Button>
                     </div>
@@ -209,7 +209,7 @@ const Clients = () => {
           <DialogHeader>
             <DialogTitle>Create Client Login</DialogTitle>
           </DialogHeader>
-          {loginError && <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded p-2">{loginError}</div>}
+          {loginError && <div className="text-sm text-danger bg-danger-soft border border-danger rounded p-2">{loginError}</div>}
           <div className="grid md:grid-cols-2 gap-3">
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">Client</label>

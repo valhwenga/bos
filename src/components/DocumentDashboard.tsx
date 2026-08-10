@@ -310,12 +310,12 @@ const DocumentDashboard: React.FC = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'draft': return 'bg-gray-500 text-white';
-      case 'review': return 'bg-yellow-500 text-white';
-      case 'approved': return 'bg-green-500 text-white';
-      case 'archived': return 'bg-blue-500 text-white';
-      case 'deleted': return 'bg-red-500 text-white';
-      default: return 'bg-gray-500 text-white';
+      case 'draft': return 'bg-gray-500 text-primary-foreground';
+      case 'review': return 'bg-warning text-warning-foreground';
+      case 'approved': return 'bg-success text-success-foreground';
+      case 'archived': return 'bg-info text-info-foreground';
+      case 'deleted': return 'bg-danger text-danger-foreground';
+      default: return 'bg-gray-500 text-primary-foreground';
     }
   };
 
@@ -390,9 +390,9 @@ const DocumentDashboard: React.FC = () => {
               <div>
                 <p className="text-sm text-muted-foreground">Total Documents</p>
                 <p className="text-2xl font-bold">{analytics.totalDocuments}</p>
-                <p className="text-xs text-blue-600">{analytics.templatesCount} templates</p>
+                <p className="text-xs text-info">{analytics.templatesCount} templates</p>
               </div>
-              <FileText className="w-8 h-8 text-blue-500" />
+              <FileText className="w-8 h-8 text-info" />
             </div>
           </CardContent>
         </Card>
@@ -403,9 +403,9 @@ const DocumentDashboard: React.FC = () => {
               <div>
                 <p className="text-sm text-muted-foreground">My Documents</p>
                 <p className="text-2xl font-bold">{myDocuments.length}</p>
-                <p className="text-xs text-green-600">{myDocuments.filter(d => d.status === 'approved').length} approved</p>
+                <p className="text-xs text-success">{myDocuments.filter(d => d.status === 'approved').length} approved</p>
               </div>
-              <Users className="w-8 h-8 text-green-500" />
+              <Users className="w-8 h-8 text-success" />
             </div>
           </CardContent>
         </Card>
@@ -416,9 +416,9 @@ const DocumentDashboard: React.FC = () => {
               <div>
                 <p className="text-sm text-muted-foreground">Storage Used</p>
                 <p className="text-2xl font-bold">{formatFileSize(analytics.totalStorage)}</p>
-                <p className="text-xs text-orange-600">{analytics.mostViewed.length} popular</p>
+                <p className="text-xs text-warning">{analytics.mostViewed.length} popular</p>
               </div>
-              <BarChart3 className="w-8 h-8 text-orange-500" />
+              <BarChart3 className="w-8 h-8 text-warning" />
             </div>
           </CardContent>
         </Card>
@@ -429,9 +429,9 @@ const DocumentDashboard: React.FC = () => {
               <div>
                 <p className="text-sm text-muted-foreground">Shared</p>
                 <p className="text-2xl font-bold">{sharedDocuments.length}</p>
-                <p className="text-xs text-purple-600">{documents.filter(d => d.isLocked).length} locked</p>
+                <p className="text-xs text-primary">{documents.filter(d => d.isLocked).length} locked</p>
               </div>
-              <Share2 className="w-8 h-8 text-purple-500" />
+              <Share2 className="w-8 h-8 text-primary" />
             </div>
           </CardContent>
         </Card>
@@ -542,11 +542,11 @@ const DocumentDashboard: React.FC = () => {
                     {folders.map((folder) => (
                       <div
                         key={folder.id}
-                        className="border rounded-lg p-4 cursor-pointer hover:bg-gray-50 transition-colors"
+                        className="border rounded-lg p-4 cursor-pointer hover:bg-surface-raised transition-colors"
                         onClick={() => navigateToFolder(folder)}
                       >
                         <div className="flex items-center gap-3">
-                          <FolderOpen className="w-8 h-8 text-blue-500" />
+                          <FolderOpen className="w-8 h-8 text-info" />
                           <div className="flex-1">
                             <p className="font-medium">{folder.name}</p>
                             <p className="text-sm text-muted-foreground">
@@ -736,7 +736,7 @@ const DocumentDashboard: React.FC = () => {
               <div className="space-y-4">
                 {analytics.recentActivity.map((activity) => (
                   <div key={activity.id} className="flex items-center gap-4 p-3 border rounded">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full" />
+                    <div className="w-2 h-2 bg-info rounded-full" />
                     <div className="flex-1">
                       <p className="text-sm font-medium">{activity.details}</p>
                       <p className="text-xs text-muted-foreground">
@@ -772,9 +772,9 @@ const DocumentDashboard: React.FC = () => {
                         <span className="capitalize">{category}</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <div className="w-24 bg-gray-200 rounded-full h-2">
+                        <div className="w-24 bg-muted rounded-full h-2">
                           <div
-                            className="bg-blue-500 h-2 rounded-full"
+                            className="bg-info h-2 rounded-full"
                             style={{
                               width: `${Math.min(100, (count / analytics.totalDocuments) * 100)}%`
                             }}
@@ -804,7 +804,7 @@ const DocumentDashboard: React.FC = () => {
                         <span className="text-sm">{document.name}</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Eye className="w-4 h-4 text-blue-500" />
+                        <Eye className="w-4 h-4 text-info" />
                         <span className="text-sm font-bold">{document.viewCount}</span>
                       </div>
                     </div>

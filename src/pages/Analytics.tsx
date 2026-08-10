@@ -74,7 +74,7 @@ const AnalyticsPage: React.FC = () => {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
-              <BarChart3 className="w-5 h-5 text-blue-500" />
+              <BarChart3 className="w-5 h-5 text-info" />
               <div>
                 <p className="text-sm text-muted-foreground">Revenue Analytics</p>
                 <p className="font-semibold">Trends & Forecasts</p>
@@ -86,7 +86,7 @@ const AnalyticsPage: React.FC = () => {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-green-500" />
+              <TrendingUp className="w-5 h-5 text-success" />
               <div>
                 <p className="text-sm text-muted-foreground">Customer Insights</p>
                 <p className="font-semibold">Growth & Retention</p>
@@ -98,7 +98,7 @@ const AnalyticsPage: React.FC = () => {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
-              <FileText className="w-5 h-5 text-purple-500" />
+              <FileText className="w-5 h-5 text-primary" />
               <div>
                 <p className="text-sm text-muted-foreground">Financial Health</p>
                 <p className="font-semibold">KPIs & Metrics</p>
@@ -110,7 +110,7 @@ const AnalyticsPage: React.FC = () => {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
-              <Settings className="w-5 h-5 text-orange-500" />
+              <Settings className="w-5 h-5 text-warning" />
               <div>
                 <p className="text-sm text-muted-foreground">Custom Reports</p>
                 <p className="font-semibold">Build & Schedule</p>

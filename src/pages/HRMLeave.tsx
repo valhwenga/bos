@@ -27,9 +27,9 @@ import { LeaveBalanceDisplay } from "@/components/LeaveBalanceDisplay";
 import { HolidayCalendar } from "@/components/HolidayCalendar";
 
 const statusColors = {
-  Pending: "bg-orange-500 text-white",
-  Approved: "bg-primary text-white",
-  Rejected: "bg-red-500 text-white",
+  Pending: "bg-warning text-warning-foreground",
+  Approved: "bg-primary text-primary-foreground",
+  Rejected: "bg-danger text-danger-foreground",
 };
 
 export default function HRMLeave() {
@@ -85,10 +85,10 @@ export default function HRMLeave() {
     const approved = all.filter(l => l.status === "Approved").length;
     const rejected = all.filter(l => l.status === "Rejected").length;
     return [
-      { type: "Total Requests", count: all.length, icon: "📝", color: "bg-blue-500" },
-      { type: "Pending", count: pending, icon: "⏳", color: "bg-orange-500" },
-      { type: "Approved", count: approved, icon: "✅", color: "bg-green-500" },
-      { type: "Rejected", count: rejected, icon: "❌", color: "bg-red-500" },
+      { type: "Total Requests", count: all.length, icon: "📝", color: "bg-info" },
+      { type: "Pending", count: pending, icon: "⏳", color: "bg-warning" },
+      { type: "Approved", count: approved, icon: "✅", color: "bg-success" },
+      { type: "Rejected", count: rejected, icon: "❌", color: "bg-danger" },
     ];
   }, [visibleLeaves]);
 
@@ -275,10 +275,10 @@ export default function HRMLeave() {
                       </Button>
                     {request.status === "Pending" && canActOnLeave(request) && (
                       <div className="flex items-center justify-end gap-2">
-                        <Button size="icon" variant="ghost" className="h-9 w-9 text-green-600 hover:text-green-700 hover:bg-green-50" onClick={()=> approve(request)}>
+                        <Button size="icon" variant="ghost" className="h-9 w-9 text-success hover:text-success hover:bg-success-soft" onClick={()=> approve(request)}>
                           <Check className="w-4 h-4" />
                         </Button>
-                        <Button size="icon" variant="ghost" className="h-9 w-9 text-red-600 hover:text-red-700 hover:bg-red-50" onClick={()=> reject(request)}>
+                        <Button size="icon" variant="ghost" className="h-9 w-9 text-danger hover:text-danger hover:bg-danger-soft" onClick={()=> reject(request)}>
                           <X className="w-4 h-4" />
                         </Button>
                       </div>

@@ -161,10 +161,10 @@ const EmergencyResponse: React.FC = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'healthy': return 'text-green-600 bg-green-50';
-      case 'warning': return 'text-yellow-600 bg-yellow-50';
-      case 'critical': return 'text-red-600 bg-red-50';
-      default: return 'text-gray-600 bg-gray-50';
+      case 'healthy': return 'text-success bg-success-soft';
+      case 'warning': return 'text-warning bg-warning-soft';
+      case 'critical': return 'text-danger bg-danger-soft';
+      default: return 'text-muted-foreground bg-surface-raised';
     }
   };
 
@@ -181,9 +181,9 @@ const EmergencyResponse: React.FC = () => {
     <div className="space-y-6">
       {/* Emergency Mode Banner */}
       {emergencyMode && (
-        <Alert className="border-red-200 bg-red-50">
-          <AlertTriangle className="h-4 w-4 text-red-600" />
-          <AlertDescription className="text-red-800">
+        <Alert className="border-danger bg-danger-soft">
+          <AlertTriangle className="h-4 w-4 text-danger" />
+          <AlertDescription className="text-danger">
             <strong>EMERGENCY MODE ACTIVE</strong> - System emergency protocols are currently active. 
             All operations should be performed with extreme caution.
           </AlertDescription>
@@ -191,7 +191,7 @@ const EmergencyResponse: React.FC = () => {
       )}
 
       {/* Emergency Controls */}
-      <Card className={emergencyMode ? 'border-red-200 bg-red-50' : ''}>
+      <Card className={emergencyMode ? 'border-danger bg-danger-soft' : ''}>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Shield className="w-5 h-5" />
@@ -304,7 +304,7 @@ const EmergencyResponse: React.FC = () => {
             </div>
           </div>
 
-          <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+          <div className="mt-4 p-4 bg-surface-raised rounded-lg">
             <div className="flex items-center justify-between">
               <div>
                 <p className="font-medium">Last Emergency Backup</p>
@@ -333,7 +333,7 @@ const EmergencyResponse: React.FC = () => {
           <div className="space-y-4">
             <div className="p-4 border rounded-lg">
               <h4 className="font-medium mb-2 flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-red-500" />
+                <AlertTriangle className="w-4 h-4 text-danger" />
                 Critical System Failure
               </h4>
               <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
@@ -347,7 +347,7 @@ const EmergencyResponse: React.FC = () => {
 
             <div className="p-4 border rounded-lg">
               <h4 className="font-medium mb-2 flex items-center gap-2">
-                <Shield className="w-4 h-4 text-orange-500" />
+                <Shield className="w-4 h-4 text-warning" />
                 Security Breach
               </h4>
               <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
@@ -361,7 +361,7 @@ const EmergencyResponse: React.FC = () => {
 
             <div className="p-4 border rounded-lg">
               <h4 className="font-medium mb-2 flex items-center gap-2">
-                <Database className="w-4 h-4 text-yellow-500" />
+                <Database className="w-4 h-4 text-warning" />
                 Data Corruption
               </h4>
               <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">

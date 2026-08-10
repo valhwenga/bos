@@ -38,37 +38,37 @@ function buildPerformanceStats(records: Performance[]) {
       value: count ? avg((r) => r.rating).toFixed(2) : "—",
       subtitle: count ? `Across ${count} review${count === 1 ? "" : "s"}` : "No reviews yet",
       icon: Award,
-      color: "bg-blue-500",
+      color: "bg-info",
     },
     {
       title: "Goals Completed",
       value: totalGoals ? `${goalsCompleted}/${totalGoals}` : "—",
       subtitle: totalGoals ? `${Math.round((goalsCompleted / totalGoals) * 100)}% completion` : "No goals set",
       icon: Target,
-      color: "bg-green-500",
+      color: "bg-success",
     },
     {
       title: "Avg Productivity",
       value: count ? `${Math.round(avg((r) => r.productivity))}%` : "—",
       subtitle: count ? "Current review cycle" : "No reviews yet",
       icon: TrendingUp,
-      color: "bg-purple-500",
+      color: "bg-primary",
     },
     {
       title: "Top Performers",
       value: String(topPerformers),
       subtitle: "Excellent rating",
       icon: Award,
-      color: "bg-orange-500",
+      color: "bg-warning",
     },
   ];
 }
 
 const statusColors = {
-  Excellent: "bg-green-500 text-white",
-  Good: "bg-blue-500 text-white",
-  Average: "bg-orange-500 text-white",
-  "Needs Improvement": "bg-red-500 text-white",
+  Excellent: "bg-success text-success-foreground",
+  Good: "bg-info text-info-foreground",
+  Average: "bg-warning text-warning-foreground",
+  "Needs Improvement": "bg-danger text-danger-foreground",
 };
 
 const HRMPerformance = () => {
@@ -145,7 +145,7 @@ const HRMPerformance = () => {
           <Card key={index} className="p-5">
             <div className="flex items-center justify-between mb-3">
               <div className={`w-12 h-12 rounded-lg ${stat.color} flex items-center justify-center`}>
-                <stat.icon className="w-6 h-6 text-white" />
+                <stat.icon className="w-6 h-6 text-primary-foreground" />
               </div>
             </div>
             <p className="text-sm text-muted-foreground mb-1">{stat.title}</p>

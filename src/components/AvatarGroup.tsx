@@ -14,12 +14,12 @@ const sizeClasses = {
 };
 
 const colors = [
-  "bg-blue-500",
-  "bg-green-500",
-  "bg-purple-500",
-  "bg-pink-500",
-  "bg-orange-500",
-  "bg-teal-500",
+  "bg-info",
+  "bg-success",
+  "bg-primary",
+  "bg-primary",
+  "bg-warning",
+  "bg-success",
 ];
 
 export const AvatarGroup = ({ members, max = 3, size = "md" }: AvatarGroupProps) => {
@@ -36,7 +36,7 @@ export const AvatarGroup = ({ members, max = 3, size = "md" }: AvatarGroupProps)
             "border-2 border-card ring-0"
           )}
         >
-          <AvatarFallback className={cn("text-white font-medium", member.color || colors[index % colors.length])}>
+          <AvatarFallback className={cn("text-primary-foreground font-medium", member.color || colors[index % colors.length])}>
             {member.name
               .split(" ")
               .map((n) => n[0])

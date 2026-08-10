@@ -13,10 +13,10 @@ const HRMDepartments = () => {
   const [list, setList] = useState<Department[]>(HRMDepartmentsStore.list());
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Department | null>(null);
-  const [form, setForm] = useState<Department>({ id: "", name: "", head: "", employees: 0, description: "", color: "bg-blue-500" });
+  const [form, setForm] = useState<Department>({ id: "", name: "", head: "", employees: 0, description: "", color: "bg-info" });
 
   const refresh = () => setList(HRMDepartmentsStore.list());
-  const startAdd = () => { setEditing(null); setForm({ id: `D${Math.floor(Math.random()*900+100)}`, name: "", head: "", employees: 0, description: "", color: "bg-blue-500" }); setOpen(true); };
+  const startAdd = () => { setEditing(null); setForm({ id: `D${Math.floor(Math.random()*900+100)}`, name: "", head: "", employees: 0, description: "", color: "bg-info" }); setOpen(true); };
   const startEdit = (d: Department) => { setEditing(d); setForm(d); setOpen(true); };
   const remove = (id: string) => {
     const ok = window.confirm("Delete this department? This action cannot be undone.");
@@ -50,7 +50,7 @@ const HRMDepartments = () => {
           <Card key={dept.id} className="p-5 hover:shadow-lg transition-shadow">
             <div className="flex items-start justify-between mb-4">
               <div className={`w-12 h-12 rounded-lg ${dept.color} flex items-center justify-center`}>
-                <Users className="w-6 h-6 text-white" />
+                <Users className="w-6 h-6 text-primary-foreground" />
               </div>
               <div className="flex gap-2">
                 <Button size="icon" variant="ghost" className="h-8 w-8" onClick={()=> startEdit(dept)}>
