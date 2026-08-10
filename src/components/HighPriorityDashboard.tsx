@@ -66,7 +66,7 @@ const HighPriorityDashboard: React.FC = () => {
       case 'high': return 'bg-warning text-warning-foreground';
       case 'medium': return 'bg-warning text-warning-foreground';
       case 'low': return 'bg-info text-info-foreground';
-      default: return 'bg-gray-500 text-primary-foreground';
+      default: return 'bg-secondary text-secondary-foreground';
     }
   };
 
@@ -148,7 +148,7 @@ const HighPriorityDashboard: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-danger">Critical Tasks</p>
-                <p className="text-2xl font-bold text-red-900">{summary.criticalTasks}</p>
+                <p className="text-2xl font-bold text-danger">{summary.criticalTasks}</p>
               </div>
               <AlertTriangle className="w-8 h-8 text-danger" />
             </div>
@@ -160,7 +160,7 @@ const HighPriorityDashboard: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-warning">High Priority</p>
-                <p className="text-2xl font-bold text-orange-900">{summary.highTasks}</p>
+                <p className="text-2xl font-bold text-warning">{summary.highTasks}</p>
               </div>
               <Zap className="w-8 h-8 text-warning" />
             </div>
@@ -172,7 +172,7 @@ const HighPriorityDashboard: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-warning">Unacknowledged</p>
-                <p className="text-2xl font-bold text-yellow-900">{summary.unacknowledgedAlerts}</p>
+                <p className="text-2xl font-bold text-warning">{summary.unacknowledgedAlerts}</p>
               </div>
               <Bell className="w-8 h-8 text-warning" />
             </div>

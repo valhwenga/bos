@@ -124,11 +124,11 @@ const Settings: React.FC = () => {
             </div>
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">Primary Color</label>
-              <Input type="color" value={s?.primaryColor || "#5F33FF"} onChange={(e)=> setS({ ...s, primaryColor: e.target.value })} />
+              <Input type="color" value={s?.primaryColor || "#128768"} onChange={(e)=> setS({ ...s, primaryColor: e.target.value })} />
             </div>
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">Secondary Color</label>
-              <Input type="color" value={s?.secondaryColor || "#7A60D9"} onChange={(e)=> setS({ ...s, secondaryColor: e.target.value })} />
+              <Input type="color" value={s?.secondaryColor || "#1BA37E"} onChange={(e)=> setS({ ...s, secondaryColor: e.target.value })} />
             </div>
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">Logo</label>

@@ -12,7 +12,6 @@ import {
 
 interface ProjectCardProps {
   icon: string;
-  iconBg: string;
   title: string;
   description: string;
   status: "On Hold" | "In Progress" | "Complete" | "Canceled" | "Pending" | "New" | "Won" | "Loss";
@@ -23,7 +22,6 @@ interface ProjectCardProps {
 
 export const ProjectCard = ({
   icon,
-  iconBg,
   title,
   description,
   status,
@@ -34,10 +32,7 @@ export const ProjectCard = ({
   return (
     <Card className="p-5 hover:shadow-lg transition-shadow">
       <div className="flex items-start justify-between mb-4">
-        <div
-          className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-lg"
-          style={{ backgroundColor: iconBg }}
-        >
+        <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary text-lg font-semibold text-primary-foreground">
           {icon}
         </div>
         <DropdownMenu>

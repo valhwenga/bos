@@ -44,36 +44,17 @@ const noRawPalette = [
  * comes out and it can never regress.
  */
 /**
- * Rendered onto paper, not onto a theme. A printed invoice needs a white
- * ground and dark ink regardless of the viewer's colour scheme, so these are
- * a permanent exception rather than outstanding debt.
+ * Rendered onto paper, not onto a theme. A printed invoice needs a white ground
+ * and dark ink whatever colour scheme the viewer happens to be using, so the
+ * neutral scales here are correct rather than outstanding debt.
+ *
+ * Brand colour in these files is NOT hardcoded: it resolves from
+ * var(--brand), set on the document root from Company Settings.
  */
 const PRINT_SURFACES = [
       "src/components/ProfessionalPayslipPreview.tsx",
       "src/pages/accounting/InvoicePrint.tsx",
       "src/pages/accounting/QuotationPrint.tsx",
-];
-
-/**
- * Files that still carry pre-token colours. This list may shrink, never grow:
- * new files are checked from the start, and once a file is migrated its entry
- * comes out and it can never regress.
- */
-const NOT_YET_MIGRATED = [
-      "src/components/AuditReport.tsx",
-      "src/components/CommunicationDashboard.tsx",
-      "src/components/DocumentDashboard.tsx",
-      "src/components/EmployeeDocumentVault.tsx",
-      "src/components/HighPriorityDashboard.tsx",
-      "src/components/WorkflowDashboard.tsx",
-      "src/components/ui/toast.tsx",
-      "src/pages/HRMPayroll.tsx",
-      "src/pages/Projects.tsx",
-      "src/pages/accounting/Reports.tsx",
-      "src/pages/accounting/Settings.tsx",
-      "src/pages/messenger/Chat.tsx",
-      "src/pages/projects/Calendar.tsx",
-      "src/pages/support/Tickets.tsx",
 ];
 
 export default tseslint.config(
@@ -94,13 +75,6 @@ export default tseslint.config(
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
       "@typescript-eslint/no-unused-vars": "off",
       "no-restricted-syntax": ["error", ...noRawPalette],
-    },
-  },
-  {
-    // Downgraded to a warning only for files that predate the token system.
-    files: NOT_YET_MIGRATED,
-    rules: {
-      "no-restricted-syntax": ["warn", ...noRawPalette],
     },
   },
   {

@@ -96,6 +96,10 @@ const InvoicePrint = () => {
         <head>
           <title>${inv.number || 'invoice'}.pdf</title>
           <style>
+            :root {
+              --brand: ${c.primaryColor || '#128768'};
+              --brand-2: ${c.secondaryColor || '#1BA37E'};
+            }
             @page {
               size: A4;
               margin: 0;
@@ -118,11 +122,11 @@ const InvoicePrint = () => {
             }
             .top-edge {
               height: 6px;
-              background: #5F33FF;
+              background: var(--brand);
             }
             .border-container {
-              border-left: 4px solid #5F33FF;
-              border-right: 4px solid #5F33FF;
+              border-left: 4px solid var(--brand);
+              border-right: 4px solid var(--brand);
             }
             .header {
               background: white;
@@ -220,7 +224,7 @@ const InvoicePrint = () => {
               border-collapse: collapse;
             }
             th {
-              background: #5F33FF;
+              background: var(--brand);
               color: white;
               padding: 12px;
               text-align: left;
@@ -237,7 +241,7 @@ const InvoicePrint = () => {
               text-align: right;
             }
             .total-row {
-              background: #5F33FF;
+              background: var(--brand);
               color: white;
               font-weight: bold;
             }
@@ -473,7 +477,18 @@ const InvoicePrint = () => {
         </div>
       </div>
 
-      <div id="print-root" className={`relative mx-auto bg-white shadow ${inv.items.length <= 5 ? 'print:fit-to-a4' : ''}`} style={{ width: '210mm', minHeight: '297mm' }}>
+      <div
+        id="print-root"
+        className={`relative mx-auto bg-white shadow ${inv.items.length <= 5 ? 'print:fit-to-a4' : ''}`}
+        style={{
+          width: '210mm',
+          minHeight: '297mm',
+          // The document's brand colour comes from Company Settings; this used
+          // to be a hardcoded purple, so the setting had no visible effect.
+          ['--brand' as string]: c.primaryColor || '#128768',
+          ['--brand-2' as string]: c.secondaryColor || '#1BA37E',
+        }}
+      >
         {/* Watermark */}
         {c.logoDataUrl && (
           <img src={c.logoDataUrl} aria-hidden className="pointer-events-none select-none opacity-[0.035] absolute -right-16 -bottom-10 w-[300mm] max-w-none -z-10" />
@@ -481,10 +496,10 @@ const InvoicePrint = () => {
         {/* Document padding wrapper */}
         <div className={`relative z-10 ${inv.items.length <= 5 ? 'pb-4 print:pb-2' : 'pb-10'}`}>
           {/* Top colored edge */}
-          <div className="h-2 bg-gradient-to-r from-[#5F33FF] to-[#7A60D9]"></div>
+          <div className="h-2 bg-gradient-to-r from-[color:var(--brand)] to-[color:var(--brand-2)]"></div>
           
           {/* Main content with colored edges */}
-          <div className="border-x-4 border-[#5F33FF]">
+          <div className="border-x-4 border-[color:var(--brand)]">
             {/* Clean Header with Logo */}
             <div className="bg-white border-b border-gray-200">
               <div className="p-10 flex items-start justify-between">
@@ -534,11 +549,11 @@ const InvoicePrint = () => {
 
           {/* Bill To Section */}
             <div className="px-10 mt-8">
-              <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg p-6 border border-purple-100">
+              <div className="bg-gradient-to-r from-[color:var(--brand)]/[0.06] to-[color:var(--brand-2)]/[0.06] rounded-lg p-6 border border-[color:var(--brand)]/20">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Left Column - Bill To */}
                   <div>
-                    <div className="text-sm font-semibold text-purple-700 uppercase tracking-wide mb-3">Bill To</div>
+                    <div className="text-sm font-semibold text-[color:var(--brand)] uppercase tracking-wide mb-3">Bill To</div>
                     <div className="text-gray-900">
                       <div className="font-semibold text-lg">{inv.customer.companyName || inv.customer.name}</div>
                       <div className="text-gray-700">{inv.customer.name}</div>
@@ -552,7 +567,7 @@ const InvoicePrint = () => {
                   {/* Right Column - Address */}
                   {billTo?.addr && (
                     <div>
-                      <div className="text-sm font-semibold text-purple-700 uppercase tracking-wide mb-3">Address</div>
+                      <div className="text-sm font-semibold text-[color:var(--brand)] uppercase tracking-wide mb-3">Address</div>
                       <div className="text-gray-600 whitespace-pre-line">
                         {(billTo.addr.line1||"")}
                         {billTo.addr.line2 ? `\n${billTo.addr.line2}`: ""}
@@ -569,7 +584,7 @@ const InvoicePrint = () => {
           <div className="px-10">
             <div className="rounded border border-gray-200 overflow-hidden">
               <table className="w-full text-sm">
-                <thead className="bg-gradient-to-r from-[#5F33FF] to-[#7A60D9] text-white">
+                <thead className="bg-gradient-to-r from-[color:var(--brand)] to-[color:var(--brand-2)] text-white">
                   <tr>
                     <th className="text-left p-4 font-semibold" colSpan={2}>Description</th>
                     <th className="text-right p-4 font-semibold">Unit Price</th>
@@ -591,7 +606,7 @@ const InvoicePrint = () => {
                   ))}
                 </tbody>
                 <tfoot>
-                  <tr className="border-t-2 border-[#5F33FF] bg-gradient-to-r from-[#5F33FF] to-[#7A60D9]">
+                  <tr className="border-t-2 border-[color:var(--brand)] bg-gradient-to-r from-[color:var(--brand)] to-[color:var(--brand-2)]">
                     <td className="p-4" colSpan={3}></td>
                     <td className="p-4 text-right text-base font-extrabold text-white whitespace-nowrap">GRAND TOTAL</td>
                     <td className="p-4 text-right text-base font-extrabold text-white">{currency(totals.grand, c.currencySymbol)}</td>
@@ -617,7 +632,7 @@ const InvoicePrint = () => {
               <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-8">
                 {/* Banking Details Box */}
                 <div>
-                  <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg px-8 py-6 border border-purple-100">
+                  <div className="bg-gradient-to-r from-[color:var(--brand)]/[0.06] to-[color:var(--brand-2)]/[0.06] rounded-lg px-8 py-6 border border-[color:var(--brand)]/20">
                     <div className="font-medium mb-2">Banking Details</div>
                     <div className="text-xs text-gray-700 space-y-1">
                       {c.bankName && <div><span className="font-semibold">Bank:</span> {c.bankName}</div>}
@@ -631,7 +646,7 @@ const InvoicePrint = () => {
                 
                 {/* Balance Due Box */}
                 <div>
-                  <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg px-8 py-6 border border-purple-100">
+                  <div className="bg-gradient-to-r from-[color:var(--brand)]/[0.06] to-[color:var(--brand-2)]/[0.06] rounded-lg px-8 py-6 border border-[color:var(--brand)]/20">
                     <div className="space-y-2">
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-600 whitespace-nowrap">Sub Total</span>
@@ -653,7 +668,7 @@ const InvoicePrint = () => {
                         <span className="text-gray-600 whitespace-nowrap">Tax (VAT)</span>
                         <span className="font-medium">{currency(totals.tax, c.currencySymbol)}</span>
                       </div>
-                      <div className="border-t border-purple-200 pt-2 mt-2">
+                      <div className="border-t border-[color:var(--brand)]/20 pt-2 mt-2">
                         <div className="flex justify-between font-semibold text-gray-900">
                           <span className="whitespace-nowrap">TOTAL</span>
                           <span>{currency(totals.grand, c.currencySymbol)}</span>
@@ -663,7 +678,7 @@ const InvoicePrint = () => {
                         <span className="text-gray-600 whitespace-nowrap">Deposits</span>
                         <span className="font-medium">{currency(paid, c.currencySymbol)}</span>
                       </div>
-                      <div className="border-t border-purple-200 pt-2 mt-2">
+                      <div className="border-t border-[color:var(--brand)]/20 pt-2 mt-2">
                         <div className="flex justify-between font-bold text-lg text-gray-900">
                           <span className="whitespace-nowrap">BALANCE DUE</span>
                           <span>{currency(balance, c.currencySymbol)}</span>
@@ -695,7 +710,7 @@ const InvoicePrint = () => {
           </div>
           
           {/* Bottom colored edge */}
-          <div className="h-2 bg-gradient-to-r from-[#5F33FF] to-[#7A60D9]"></div>
+          <div className="h-2 bg-gradient-to-r from-[color:var(--brand)] to-[color:var(--brand-2)]"></div>
         </div>
       </div>
 

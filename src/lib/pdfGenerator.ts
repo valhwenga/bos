@@ -58,8 +58,8 @@ export const PDF_DIMENSIONS = {
 } as const;
 
 export const PDF_COLORS = {
-  primary: '#5F33FF',
-  secondary: '#7A60D9',
+  primary: '#128768',
+  secondary: '#1BA37E',
   background: '#faf5ff',
   border: '#e9d5ff',
   text: '#111827',

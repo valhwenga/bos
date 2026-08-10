@@ -139,9 +139,9 @@ const CommunicationDashboard: React.FC = () => {
     switch (status) {
       case 'scheduled': return 'bg-info text-info-foreground';
       case 'in-progress': return 'bg-success text-success-foreground';
-      case 'ended': return 'bg-gray-500 text-primary-foreground';
+      case 'ended': return 'bg-secondary text-secondary-foreground';
       case 'cancelled': return 'bg-danger text-danger-foreground';
-      default: return 'bg-gray-500 text-primary-foreground';
+      default: return 'bg-secondary text-secondary-foreground';
     }
   };
 
@@ -151,7 +151,7 @@ const CommunicationDashboard: React.FC = () => {
       case 'mention': return 'bg-primary text-primary-foreground';
       case 'meeting': return 'bg-success text-success-foreground';
       case 'urgent': return 'bg-danger text-danger-foreground';
-      default: return 'bg-gray-500 text-primary-foreground';
+      default: return 'bg-secondary text-secondary-foreground';
     }
   };
 
@@ -258,8 +258,8 @@ const CommunicationDashboard: React.FC = () => {
       case 'online': return 'bg-success';
       case 'away': return 'bg-warning';
       case 'busy': return 'bg-danger';
-      case 'offline': return 'bg-gray-500';
-      default: return 'bg-gray-500';
+      case 'offline': return 'bg-muted-foreground';
+      default: return 'bg-muted-foreground';
     }
   };
 

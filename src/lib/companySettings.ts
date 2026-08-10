@@ -7,8 +7,8 @@ export type CompanySettings = {
   taxRatePct?: number; // e.g., 15 means 15%
   currencyCode: string; // e.g., USD
   currencySymbol: string; // e.g., $
-  primaryColor?: string; // e.g., #5F33FF
-  secondaryColor?: string; // e.g., #7A60D9
+  primaryColor?: string; // brand colour used on printed documents
+  secondaryColor?: string; // companion shade for document accents
   bankName?: string;
   bankAccount?: string;
   branchCode?: string;
@@ -33,8 +33,8 @@ const DEFAULTS: CompanySettings = {
   taxRatePct: 0,
   currencyCode: "USD",
   currencySymbol: "$",
-  primaryColor: "#5F33FF",
-  secondaryColor: "#7A60D9",
+  primaryColor: "#128768",
+  secondaryColor: "#1BA37E",
   bankName: "Bank Name",
   bankAccount: "000123456789",
   branchCode: "123456",
@@ -48,8 +48,14 @@ const DEFAULTS: CompanySettings = {
 };
 
 export const CompanySettingsStore = {
-  get(): CompanySettings { 
-    return r(K.settings, DEFAULTS);
+  /**
+   * Merges over DEFAULTS rather than returning the stored object as-is. A
+   * settings record saved before a field existed would otherwise come back
+   * without it, and the missing value renders as "undefined" on invoices and
+   * payslips — so every new setting would break documents for existing users.
+   */
+  get(): CompanySettings {
+    return { ...DEFAULTS, ...r<Partial<CompanySettings>>(K.settings, {}) };
   },
   
   set(s: CompanySettings) { 

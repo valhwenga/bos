@@ -33,7 +33,14 @@ const ProfessionalPayslipPreview: React.FC<ProfessionalPayslipPreviewProps> = ({
   const secondaryColor = cs.secondaryColor || "#64748b";
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div
+      className="max-w-4xl mx-auto"
+      style={{
+        // Same brand source as the invoice and quotation documents.
+        ['--brand' as string]: cs.primaryColor || '#128768',
+        ['--brand-2' as string]: cs.secondaryColor || '#1BA37E',
+      }}
+    >
       {/* Professional Header */}
       <div className="bg-white border-2 border-gray-200 rounded-lg overflow-hidden shadow-lg">
         {/* Header Section */}
@@ -183,7 +190,7 @@ const ProfessionalPayslipPreview: React.FC<ProfessionalPayslipPreviewProps> = ({
 
           {/* Net Pay Highlight */}
           <div className="mt-6">
-            <div className="bg-green-600 text-white p-4 rounded-lg text-center">
+            <div className="bg-[color:var(--brand)] text-white p-4 rounded-lg text-center">
               <p className="text-sm font-medium mb-1">NET PAY</p>
               <p className="text-2xl font-bold">
                 {cs.currencySymbol || "R"}{payroll.netSalary.toLocaleString()}

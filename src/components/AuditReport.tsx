@@ -62,7 +62,7 @@ export function AuditReport() {
     approve: "bg-success text-success-foreground",
     reject: "bg-warning text-warning-foreground",
     login: "bg-primary text-primary-foreground",
-    logout: "bg-gray-500 text-primary-foreground",
+    logout: "bg-secondary text-secondary-foreground",
     export: "bg-info text-info-foreground",
     view: "bg-info text-info-foreground",
   };

@@ -79,10 +79,10 @@ const Calendar: React.FC = () => {
               onSelect={(d) => d && setSelected(d)}
               modifiers={modifiers}
               modifiersClassNames={{
-                hasTask: "rounded-md ring-2 ring-blue-500",
-                hasMeeting: "rounded-md ring-2 ring-emerald-500",
-                hasReminder: "rounded-md ring-2 ring-amber-500",
-                hasOther: "rounded-md ring-2 ring-slate-500",
+                hasTask: "rounded-md ring-2 ring-info",
+                hasMeeting: "rounded-md ring-2 ring-success",
+                hasReminder: "rounded-md ring-2 ring-warning",
+                hasOther: "rounded-md ring-2 ring-muted-foreground",
               }}
             />
           </div>

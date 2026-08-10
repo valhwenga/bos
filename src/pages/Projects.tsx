@@ -124,7 +124,6 @@ const Projects = () => {
           <Link key={project.id} to={`/projects/${project.id}`} className="block">
             <ProjectCard
               icon={project.name[0] || "P"}
-              iconBg="#10b981"
               title={project.name}
               description={project.description || ""}
               status={project.status === "closed" ? ("Complete" as const) : project.status === "pending_approval" ? ("Pending" as const) : ("In Progress" as const)}

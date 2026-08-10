@@ -77,7 +77,7 @@ export function EmployeeDocumentVault({ employeeId }: Props) {
     id: "bg-success text-success-foreground",
     visa: "bg-primary text-primary-foreground",
     tax: "bg-warning text-warning-foreground",
-    other: "bg-gray-500 text-primary-foreground",
+    other: "bg-secondary text-secondary-foreground",
   };
 
   return (

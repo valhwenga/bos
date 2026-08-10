@@ -83,8 +83,8 @@ const WorkflowDashboard: React.FC = () => {
       case 'in_progress': return 'bg-info text-info-foreground';
       case 'pending': return 'bg-warning text-warning-foreground';
       case 'rejected': return 'bg-danger text-danger-foreground';
-      case 'cancelled': return 'bg-gray-500 text-primary-foreground';
-      default: return 'bg-gray-500 text-primary-foreground';
+      case 'cancelled': return 'bg-secondary text-secondary-foreground';
+      default: return 'bg-secondary text-secondary-foreground';
     }
   };
 
@@ -93,8 +93,8 @@ const WorkflowDashboard: React.FC = () => {
       case 'urgent': return 'bg-danger text-danger-foreground';
       case 'high': return 'bg-warning text-warning-foreground';
       case 'medium': return 'bg-info text-info-foreground';
-      case 'low': return 'bg-gray-500 text-primary-foreground';
-      default: return 'bg-gray-500 text-primary-foreground';
+      case 'low': return 'bg-secondary text-secondary-foreground';
+      default: return 'bg-secondary text-secondary-foreground';
     }
   };
 

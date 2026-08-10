@@ -310,12 +310,12 @@ const DocumentDashboard: React.FC = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'draft': return 'bg-gray-500 text-primary-foreground';
+      case 'draft': return 'bg-secondary text-secondary-foreground';
       case 'review': return 'bg-warning text-warning-foreground';
       case 'approved': return 'bg-success text-success-foreground';
       case 'archived': return 'bg-info text-info-foreground';
       case 'deleted': return 'bg-danger text-danger-foreground';
-      default: return 'bg-gray-500 text-primary-foreground';
+      default: return 'bg-secondary text-secondary-foreground';
     }
   };
 
