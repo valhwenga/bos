@@ -108,9 +108,9 @@ export function DataTable<T>({
   return (
     <div className={cn("flex flex-col gap-3", className)}>
       {showToolbar && (
-        <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {searchAccessor && (
-            <div className="relative min-w-0 flex-1 sm:max-w-xs">
+            <div className="relative w-full min-w-0 sm:w-auto sm:flex-1 sm:max-w-xs">
               <Search
                 className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
                 aria-hidden="true"
@@ -134,7 +134,8 @@ export function DataTable<T>({
               )}
             </div>
           )}
-          {toolbar && <div className="flex items-center gap-2">{toolbar}</div>}
+          {/* Filters wrap and share the row rather than being pushed off it. */}
+          {toolbar && <div className="flex flex-1 flex-wrap items-center gap-2 sm:justify-end">{toolbar}</div>}
         </div>
       )}
 

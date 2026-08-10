@@ -4,6 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Trash2, ShoppingBag, TrendingUp } from "lucide-react";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatCard } from "@/components/ui/stat-card";
 import { SalesStore, type Sale, type SaleItem } from "@/lib/salesStore";
 import { ProductsStore } from "@/lib/productsStore";
 import { CompanySettingsStore } from "@/lib/companySettings";
@@ -100,53 +104,70 @@ const Sales: React.FC = () => {
 
   const total = useMemo(() => (s: Sale) => s.items.reduce((sum, i) => sum + i.qty * i.price, 0), []);
 
+  const columns: Column<Sale>[] = [
+    { id: "number", header: "No.", sortValue: (s) => s.number, cell: (s) => <span className="font-medium">{s.number}</span> },
+    { id: "date", header: "Date", sortValue: (s) => s.date, cell: (s) => new Date(s.date).toLocaleDateString() },
+    { id: "customer", header: "Customer", sortValue: (s) => s.customerName ?? "", cell: (s) => s.customerName || <span className="text-subtle">—</span> },
+    {
+      id: "total",
+      header: "Total",
+      align: "right",
+      sortValue: total,
+      cell: (s) => <span className="font-medium">{cs.currencySymbol}{total(s).toFixed(2)}</span>,
+    },
+    {
+      id: "actions",
+      header: <span className="sr-only">Actions</span>,
+      align: "right",
+      width: "1%",
+      cell: (s) => (
+        <div onClick={(e) => e.stopPropagation()}>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 text-muted-foreground hover:text-danger"
+            aria-label={`Delete sale ${s.number}`}
+            onClick={() => {
+              if (!window.confirm(`Delete sale ${s.number}? This cannot be undone.`)) return;
+              SalesStore.remove(s.id);
+              setList(SalesStore.list());
+            }}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
+  const revenue = list.reduce((sum, s) => sum + total(s), 0);
+
   return (
-    <div className="p-6 space-y-4">
-      <Card className="shadow-[0_10px_0_rgba(0,0,0,0.08)]">
-        <CardHeader className="flex-row items-center justify-between">
-          <CardTitle>Sales</CardTitle>
-          <Button onClick={()=> setOpen(true)}>New Sale</Button>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-lg overflow-hidden border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>No.</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {list.map(s => (
-                  <TableRow key={s.id}>
-                    <TableCell>{s.number}</TableCell>
-                    <TableCell>{new Date(s.date).toLocaleDateString()}</TableCell>
-                    <TableCell>{s.customerName || '-'}</TableCell>
-                    <TableCell className="text-right">{cs.currencySymbol}{total(s).toFixed(2)}</TableCell>
-                    <TableCell className="text-right space-x-2">
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => {
-                          const ok = window.confirm("Delete this sale? This action cannot be undone.");
-                          if (!ok) return;
-                          SalesStore.remove(s.id);
-                          setList(SalesStore.list());
-                        }}
-                      >
-                        Delete
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+    <div className="flex flex-col gap-6 p-6">
+      <PageHeader
+        title="Sales"
+        description="Direct sales recorded outside the quote-to-invoice flow."
+        breadcrumbs={[{ label: "Accounting", to: "/accounting/quotations" }, { label: "Sales" }]}
+        actions={<Button onClick={() => setOpen(true)}>New sale</Button>}
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <StatCard label="Sales" value={list.length} hint="All time" icon={ShoppingBag} />
+          <StatCard label="Value" value={`${cs.currencySymbol}${revenue.toFixed(2)}`} hint="Sum of all sales" icon={TrendingUp} tone="success" />
+        </div>
+      </PageHeader>
+
+      <DataTable
+        rows={list}
+        columns={columns}
+        rowKey={(s) => s.id}
+        searchAccessor={(s) => `${s.number} ${s.customerName ?? ""}`}
+        searchPlaceholder="Search by number or customer…"
+        empty={{
+          title: "No sales recorded",
+          description: "Record a direct sale when there's no quote or invoice behind it.",
+          action: <Button onClick={() => setOpen(true)}>New sale</Button>,
+        }}
+      />
 
       <SalesDialog open={open} onOpenChange={(v)=> { setOpen(v); if (!v) setList(SalesStore.list()); }} onSaved={()=> setList(SalesStore.list())} />
     </div>

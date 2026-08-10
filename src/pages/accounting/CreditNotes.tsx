@@ -4,6 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Trash2, FileMinus, Wallet } from "lucide-react";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatCard } from "@/components/ui/stat-card";
 import { CreditNotesStore, type CreditNote } from "@/lib/creditNotesStore";
 import { AccountingStore } from "@/lib/accountingStore";
 import { CompanySettingsStore } from "@/lib/companySettings";
@@ -136,62 +140,87 @@ const CreditNotes: React.FC = () => {
 
   const appliedSum = (cn: CreditNote) => (cn.applied||[]).reduce((s,a)=> s+a.amount, 0);
 
+  const remainingFor = (cn: CreditNote) => Math.max(0, (cn.amount || 0) - appliedSum(cn));
+
+  const columns: Column<CreditNote>[] = [
+    { id: "number", header: "No.", sortValue: (cn) => cn.number, cell: (cn) => <span className="font-medium">{cn.number}</span> },
+    { id: "date", header: "Date", sortValue: (cn) => cn.date, cell: (cn) => new Date(cn.date).toLocaleDateString() },
+    { id: "customer", header: "Customer", sortValue: (cn) => cn.customerName ?? "", cell: (cn) => cn.customerName || cn.customerId },
+    { id: "amount", header: "Amount", align: "right", hideOnMobile: true, sortValue: (cn) => cn.amount ?? 0, cell: (cn) => `${cs.currencySymbol}${(cn.amount || 0).toFixed(2)}` },
+    { id: "applied", header: "Applied", align: "right", hideOnMobile: true, sortValue: appliedSum, cell: (cn) => `${cs.currencySymbol}${appliedSum(cn).toFixed(2)}` },
+    {
+      id: "remaining",
+      header: "Remaining",
+      align: "right",
+      sortValue: remainingFor,
+      cell: (cn) => (
+        <span className={remainingFor(cn) > 0 ? "font-medium text-foreground" : "text-muted-foreground"}>
+          {cs.currencySymbol}{remainingFor(cn).toFixed(2)}
+        </span>
+      ),
+    },
+    {
+      id: "actions",
+      header: <span className="sr-only">Actions</span>,
+      align: "right",
+      width: "1%",
+      cell: (cn) => (
+        <div className="inline-flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+          <Button size="sm" variant="outline" className="h-8" onClick={() => { setActive(cn); setApplyOpen(true); }}>
+            Apply
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 text-muted-foreground hover:text-danger"
+            aria-label={`Delete credit note ${cn.number}`}
+            onClick={() => {
+              if (!window.confirm(`Delete credit note ${cn.number}? This cannot be undone.`)) return;
+              CreditNotesStore.remove(cn.id);
+              setList(CreditNotesStore.list());
+            }}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
+  const unapplied = list.reduce((sum, cn) => sum + remainingFor(cn), 0);
+
   return (
-    <div className="p-6 space-y-4">
-      <Card className="shadow-[0_10px_0_rgba(0,0,0,0.08)]">
-        <CardHeader className="flex-row items-center justify-between">
-          <CardTitle>Credit Notes</CardTitle>
-          <Button onClick={()=> setOpen(true)}>New Credit</Button>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-lg overflow-hidden border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>No.</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead className="text-right">Applied</TableHead>
-                  <TableHead className="text-right">Remaining</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {list.map(cn => {
-                  const applied = appliedSum(cn);
-                  const remaining = Math.max(0, (cn.amount||0) - applied);
-                  return (
-                    <TableRow key={cn.id}>
-                      <TableCell>{cn.number}</TableCell>
-                      <TableCell>{new Date(cn.date).toLocaleDateString()}</TableCell>
-                      <TableCell>{cn.customerName || cn.customerId}</TableCell>
-                      <TableCell className="text-right">{cs.currencySymbol}{(cn.amount||0).toFixed(2)}</TableCell>
-                      <TableCell className="text-right">{cs.currencySymbol}{applied.toFixed(2)}</TableCell>
-                      <TableCell className="text-right">{cs.currencySymbol}{remaining.toFixed(2)}</TableCell>
-                      <TableCell className="text-right space-x-2">
-                        <Button size="sm" variant="outline" onClick={()=> { setActive(cn); setApplyOpen(true); }}>Apply</Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => {
-                            const ok = window.confirm("Delete this credit note? This action cannot be undone.");
-                            if (!ok) return;
-                            CreditNotesStore.remove(cn.id);
-                            setList(CreditNotesStore.list());
-                          }}
-                        >
-                          Delete
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+    <div className="flex flex-col gap-6 p-6">
+      <PageHeader
+        title="Credit notes"
+        description="Credits owed back to customers, and how much of each is still unused."
+        breadcrumbs={[{ label: "Accounting", to: "/accounting/quotations" }, { label: "Credit notes" }]}
+        actions={<Button onClick={() => setOpen(true)}>New credit note</Button>}
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <StatCard label="Credit notes" value={list.length} hint="All time" icon={FileMinus} />
+          <StatCard
+            label="Unapplied credit"
+            value={`${cs.currencySymbol}${unapplied.toFixed(2)}`}
+            hint={unapplied > 0 ? "Still owed to customers" : "All credit applied"}
+            icon={Wallet}
+            tone={unapplied > 0 ? "warning" : "success"}
+          />
+        </div>
+      </PageHeader>
+
+      <DataTable
+        rows={list}
+        columns={columns}
+        rowKey={(cn) => cn.id}
+        searchAccessor={(cn) => `${cn.number} ${cn.customerName ?? ""} ${cn.customerId ?? ""}`}
+        searchPlaceholder="Search by number or customer…"
+        empty={{
+          title: "No credit notes",
+          description: "Raise a credit note when you need to refund or discount an issued invoice.",
+          action: <Button onClick={() => setOpen(true)}>New credit note</Button>,
+        }}
+      />
 
       <NewCreditDialog open={open} onOpenChange={(v)=> { setOpen(v); if (!v) setList(CreditNotesStore.list()); }} onSaved={()=> setList(CreditNotesStore.list())} />
       <ApplyDialog open={applyOpen} onOpenChange={(v)=> { setApplyOpen(v); if (!v) { setActive(undefined); setList(CreditNotesStore.list()); } }} credit={active} onSaved={()=> setList(CreditNotesStore.list())} />

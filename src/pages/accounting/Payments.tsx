@@ -6,6 +6,10 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import CapturePaymentDialog from "@/components/accounting/CapturePaymentDialog";
+import { Trash2, Receipt, Wallet, AlertCircle } from "lucide-react";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatCard } from "@/components/ui/stat-card";
 import { Payment, PaymentMethod, PaymentStore } from "@/lib/paymentStore";
 import { AccountingStore, Invoice, Quotation } from "@/lib/accountingStore";
 import { CompanySettingsStore } from "@/lib/companySettings";
@@ -127,30 +131,117 @@ const Payments: React.FC = () => {
     };
   }, []);
 
+  const columns: Column<Payment>[] = [
+    {
+      id: "date",
+      header: "Date",
+      sortValue: (p) => p.date,
+      cell: (p) => new Date(p.date).toLocaleDateString(),
+    },
+    {
+      id: "customer",
+      header: "Customer",
+      sortValue: (p) => customers.find((cu) => cu.id === p.customerId)?.name ?? "",
+      cell: (p) => <span className="font-medium">{customers.find((cu) => cu.id === p.customerId)?.name || p.customerId}</span>,
+    },
+    {
+      id: "applied",
+      header: "Applied to",
+      hideOnMobile: true,
+      cell: (p) =>
+        p.invoiceId ? (
+          <span className="text-info">Invoice {p.invoiceId}</span>
+        ) : p.quoteId ? (
+          <span className="text-muted-foreground">Quote {p.quoteId}</span>
+        ) : (
+          <span className="rounded-sm bg-warning-soft px-1.5 py-0.5 text-xs font-medium text-warning">Unapplied</span>
+        ),
+    },
+    { id: "method", header: "Method", hideOnMobile: true, sortValue: (p) => p.method ?? "", cell: (p) => p.method || "—" },
+    { id: "reference", header: "Reference", hideOnMobile: true, cell: (p) => p.reference || <span className="text-subtle">—</span> },
+    {
+      id: "amount",
+      header: "Amount",
+      align: "right",
+      sortValue: (p) => p.amount ?? 0,
+      cell: (p) => <span className="font-medium">{cs.currencySymbol}{(p.amount || 0).toFixed(2)}</span>,
+    },
+    {
+      id: "actions",
+      header: <span className="sr-only">Actions</span>,
+      align: "right",
+      width: "1%",
+      cell: (p) => (
+        <div onClick={(e) => e.stopPropagation()}>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 text-muted-foreground hover:text-danger"
+            onClick={() => del(p.id)}
+            aria-label="Delete payment"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
+  const received = filtered.reduce((sum, p) => sum + (p.amount || 0), 0);
+  const unapplied = filtered.filter((p) => !p.invoiceId && !p.quoteId).length;
+
   return (
-    <div className="p-6 space-y-4">
-      <Card className="shadow-[0_10px_0_rgba(0,0,0,0.08)]">
-        <CardHeader className="flex-row items-center justify-between">
-          <CardTitle>Payments</CardTitle>
-          <div className="flex gap-2">
-            <Input placeholder="Search ref/notes" value={q} onChange={(e)=> setQ(e.target.value)} className="w-56" />
+    <div className="flex flex-col gap-6 p-6">
+      <PageHeader
+        title="Payments"
+        description="Money received, and what each payment has been applied to."
+        breadcrumbs={[{ label: "Accounting", to: "/accounting/quotations" }, { label: "Payments" }]}
+        actions={
+          <>
+            <Button variant="outline" onClick={convertAcceptedQuotes}>Convert accepted quotes</Button>
+            <Button onClick={() => setOpen(true)}>Add payment</Button>
+          </>
+        }
+      >
+        <div className="grid gap-3 sm:grid-cols-3">
+          <StatCard label="Payments" value={filtered.length} hint="Matching current filters" icon={Receipt} />
+          <StatCard label="Received" value={`${cs.currencySymbol}${received.toFixed(2)}`} hint="Sum of shown payments" icon={Wallet} tone="success" />
+          <StatCard
+            label="Unapplied"
+            value={unapplied}
+            hint={unapplied ? "Not linked to a document" : "All allocated"}
+            icon={AlertCircle}
+            tone={unapplied ? "warning" : "neutral"}
+          />
+        </div>
+      </PageHeader>
+
+      <DataTable
+        rows={filtered}
+        columns={columns}
+        rowKey={(p) => p.id}
+        searchAccessor={(p) => `${p.reference ?? ""} ${p.notes ?? ""} ${p.method ?? ""} ${customers.find((cu) => cu.id === p.customerId)?.name ?? ""}`}
+        searchPlaceholder="Search reference, notes or customer…"
+        onRowClick={(p) => { setSelectedPayment(p); setApplyOpen(true); }}
+        toolbar={
+          <>
             <Select value={customerId} onValueChange={setCustomerId}>
-              <SelectTrigger className="w-44"><SelectValue placeholder="All customers" /></SelectTrigger>
+              <SelectTrigger className="h-9 w-40"><SelectValue placeholder="All customers" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All customers</SelectItem>
-                {customers.map(cu=> <SelectItem key={cu.id} value={cu.id}>{cu.name}</SelectItem>)}
+                {customers.map((cu) => <SelectItem key={cu.id} value={cu.id}>{cu.name}</SelectItem>)}
               </SelectContent>
             </Select>
-            <Select value={type} onValueChange={(v)=> setType(v as (typeof type))}>
-              <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+            <Select value={type} onValueChange={(v) => setType(v as typeof type)}>
+              <SelectTrigger className="h-9 w-32"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="all">All types</SelectItem>
                 <SelectItem value="invoice">Invoices</SelectItem>
                 <SelectItem value="quote">Quotes</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={method} onValueChange={(v)=> setMethod(v as (typeof method))}>
-              <SelectTrigger className="w-44"><SelectValue placeholder="Method" /></SelectTrigger>
+            <Select value={method} onValueChange={(v) => setMethod(v as typeof method)}>
+              <SelectTrigger className="h-9 w-40"><SelectValue placeholder="Method" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All methods</SelectItem>
                 <SelectItem value="Cash">Cash</SelectItem>
@@ -159,56 +250,15 @@ const Payments: React.FC = () => {
                 <SelectItem value="Other">Other</SelectItem>
               </SelectContent>
             </Select>
-            <Button onClick={()=> setOpen(true)}>Add Payment</Button>
-            <Button variant="secondary" onClick={convertAcceptedQuotes}>Convert Accepted Quotes</Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-lg overflow-hidden border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Applied To</TableHead>
-                  <TableHead>Method</TableHead>
-                  <TableHead>Reference</TableHead>
-                  <TableHead>Notes</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map(p=> {
-                  const customer = customers.find(cu=> cu.id===p.customerId);
-                  const applied = p.invoiceId ? `Invoice ${p.invoiceId}` : (p.quoteId ? `Quote ${p.quoteId}` : "Unapplied");
-                  return (
-                    <TableRow 
-                      key={p.id} 
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => {
-                        setSelectedPayment(p);
-                        setApplyOpen(true);
-                      }}
-                    >
-                      <TableCell>{new Date(p.date).toLocaleDateString()}</TableCell>
-                      <TableCell>{customer?.name || p.customerId}</TableCell>
-                      <TableCell>{applied}</TableCell>
-                      <TableCell>{p.method}</TableCell>
-                      <TableCell>{p.reference}</TableCell>
-                      <TableCell className="max-w-[260px] truncate" title={p.notes}>{p.notes}</TableCell>
-                      <TableCell className="text-right">{cs.currencySymbol}{(p.amount||0).toFixed(2)}</TableCell>
-                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                        <Button size="sm" variant="destructive" onClick={()=> del(p.id)}>Delete</Button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+          </>
+        }
+        empty={{
+          title: "No payments recorded",
+          description: "Capture a payment against an invoice or quote and it will appear here.",
+          action: <Button onClick={() => setOpen(true)}>Add payment</Button>,
+        }}
+      />
+
       <CapturePaymentDialog open={open} onOpenChange={(v)=> { setOpen(v); if (!v) setPayments(PaymentStore.list()); }} onSaved={()=> setPayments(PaymentStore.list())} />
       
       <Dialog open={applyOpen} onOpenChange={(v) => { setApplyOpen(v); if (!v) { setSelectedPayment(null); setTargetInvoiceId(""); setTargetQuoteId(""); } }}>

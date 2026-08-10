@@ -4,6 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Pencil, Trash2, Repeat, Play, Pause } from "lucide-react";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatCard } from "@/components/ui/stat-card";
 import { RecurringStore, type RecurringTemplate, type RecurringCadence } from "@/lib/recurringStore";
 import { CustomersStore } from "@/lib/customersStore";
 import { CompanySettingsStore } from "@/lib/companySettings";
@@ -218,63 +222,112 @@ const Recurring: React.FC = () => {
     setList(RecurringStore.list());
   };
 
+  const columns: Column<RecurringTemplate>[] = [
+    { id: "name", header: "Name", sortValue: (t) => t.name, cell: (t) => <span className="font-medium">{t.name}</span> },
+    { id: "customer", header: "Customer", sortValue: (t) => t.customer.name, cell: (t) => t.customer.name },
+    {
+      id: "cadence",
+      header: "Cadence",
+      hideOnMobile: true,
+      sortValue: (t) => t.cadence,
+      cell: (t) => (
+        <span className="capitalize text-muted-foreground">
+          {t.cadence}{t.cadence === "customDays" ? ` (${t.intervalDays}d)` : ""}
+        </span>
+      ),
+    },
+    {
+      id: "next",
+      header: "Next run",
+      sortValue: (t) => t.nextRunAt ?? "",
+      cell: (t) => (t.nextRunAt ? new Date(t.nextRunAt).toLocaleString() : <span className="text-subtle">—</span>),
+    },
+    {
+      id: "status",
+      header: "Status",
+      sortValue: (t) => (t.active ? "active" : "paused"),
+      cell: (t) => (
+        <span className={`inline-flex rounded-sm px-1.5 py-0.5 text-xs font-medium ${t.active ? "bg-success-soft text-success" : "bg-muted text-muted-foreground"}`}>
+          {t.active ? "Active" : "Paused"}
+        </span>
+      ),
+    },
+    {
+      id: "amount",
+      header: "Amount",
+      align: "right",
+      sortValue: total,
+      cell: (t) => <span className="font-medium">{cs.currencySymbol}{total(t).toFixed(2)}</span>,
+    },
+    {
+      id: "actions",
+      header: <span className="sr-only">Actions</span>,
+      align: "right",
+      width: "1%",
+      cell: (t) => (
+        <div className="inline-flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8"
+            onClick={() => { RecurringStore.upsert({ ...t, active: !t.active }); setList(RecurringStore.list()); }}
+          >
+            {t.active ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+            <span className="sr-only">{t.active ? "Pause" : "Resume"}</span>
+          </Button>
+          <Button size="sm" variant="outline" className="h-8" onClick={() => runNow(t)}>Run now</Button>
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => { setEditing(t); setOpen(true); }} aria-label={`Edit ${t.name}`}>
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 text-muted-foreground hover:text-danger"
+            aria-label={`Delete ${t.name}`}
+            onClick={() => {
+              if (!window.confirm(`Delete recurring template "${t.name}"? This cannot be undone.`)) return;
+              RecurringStore.remove(t.id);
+              setList(RecurringStore.list());
+            }}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
+  const activeCount = list.filter((t) => t.active).length;
+  const monthlyValue = list.filter((t) => t.active).reduce((sum, t) => sum + total(t), 0);
+
   return (
-    <div className="p-6 space-y-4">
-      <Card className="shadow-[0_10px_0_rgba(0,0,0,0.08)]">
-        <CardHeader className="flex-row items-center justify-between">
-          <CardTitle>Recurring Invoices</CardTitle>
-          <Button onClick={()=> { setEditing(undefined); setOpen(true); }}>New Template</Button>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-lg overflow-hidden border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Cadence</TableHead>
-                  <TableHead>Next Run</TableHead>
-                  <TableHead>Active</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {list.map(t => (
-                  <TableRow key={t.id}>
-                    <TableCell>{t.name}</TableCell>
-                    <TableCell>{t.customer.name}</TableCell>
-                    <TableCell className="capitalize">{t.cadence}{t.cadence==='customDays' ? ` (${t.intervalDays}d)` : ''}</TableCell>
-                    <TableCell>{t.nextRunAt ? new Date(t.nextRunAt).toLocaleString() : '-'}</TableCell>
-                    <TableCell>
-                      <Button size="sm" variant={t.active ? 'secondary' : 'outline'} onClick={()=> { RecurringStore.upsert({ ...t, active: !t.active }); setList(RecurringStore.list()); }}>
-                        {t.active ? 'Pause' : 'Resume'}
-                      </Button>
-                    </TableCell>
-                    <TableCell className="text-right">{cs.currencySymbol}{total(t).toFixed(2)}</TableCell>
-                    <TableCell className="text-right space-x-2">
-                      <Button size="sm" variant="outline" onClick={()=> { setEditing(t); setOpen(true); }}>Edit</Button>
-                      <Button size="sm" onClick={()=> runNow(t)}>Run Now</Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => {
-                          const ok = window.confirm("Delete this recurring template? This action cannot be undone.");
-                          if (!ok) return;
-                          RecurringStore.remove(t.id);
-                          setList(RecurringStore.list());
-                        }}
-                      >
-                        Delete
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+    <div className="flex flex-col gap-6 p-6">
+      <PageHeader
+        title="Recurring invoices"
+        description="Templates that raise invoices automatically on a schedule."
+        breadcrumbs={[{ label: "Accounting", to: "/accounting/quotations" }, { label: "Recurring" }]}
+        actions={<Button onClick={() => { setEditing(undefined); setOpen(true); }}>New template</Button>}
+      >
+        <div className="grid gap-3 sm:grid-cols-3">
+          <StatCard label="Templates" value={list.length} hint="All time" icon={Repeat} />
+          <StatCard label="Active" value={activeCount} hint={activeCount ? "Currently scheduled" : "None running"} icon={Play} tone={activeCount ? "success" : "neutral"} />
+          <StatCard label="Per cycle" value={`${cs.currencySymbol}${monthlyValue.toFixed(2)}`} hint="Value of active templates" />
+        </div>
+      </PageHeader>
+
+      <DataTable
+        rows={list}
+        columns={columns}
+        rowKey={(t) => t.id}
+        searchAccessor={(t) => `${t.name} ${t.customer.name} ${t.cadence}`}
+        searchPlaceholder="Search templates…"
+        onRowClick={(t) => { setEditing(t); setOpen(true); }}
+        empty={{
+          title: "No recurring templates",
+          description: "Set one up and invoices will be raised — and optionally emailed — on schedule.",
+          action: <Button onClick={() => { setEditing(undefined); setOpen(true); }}>New template</Button>,
+        }}
+      />
 
       <NewRecurringDialog open={open} onOpenChange={(v)=> { setOpen(v); if (!v) { setEditing(undefined); setList(RecurringStore.list()); } }} onSaved={()=> setList(RecurringStore.list())} editing={editing} />
     </div>
