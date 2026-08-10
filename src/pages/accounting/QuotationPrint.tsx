@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { AccountingStore, Quotation } from "@/lib/accountingStore";
 import { CompanySettingsStore } from "@/lib/companySettings";
+import { a4PrintCss } from "@/lib/printStyles";
 import { Button } from "@/components/ui/button";
 import { PaymentStore } from "@/lib/paymentStore";
 import { PDF_COLORS, PDF_CONFIG, generatePDFHTML } from "@/lib/pdfGenerator";
@@ -165,7 +166,7 @@ const QuotationPrint = () => {
 
       <div
         id="print-root"
-        className={`relative mx-auto bg-white shadow ${q.items.length <= 5 ? 'print:fit-to-a4' : ''}`}
+        className="doc relative mx-auto bg-white shadow print:shadow-none"
         style={{
           width: '210mm',
           minHeight: '297mm',
@@ -180,15 +181,15 @@ const QuotationPrint = () => {
           <img src={c.logoDataUrl} aria-hidden className="pointer-events-none select-none opacity-[0.035] absolute -right-16 -bottom-10 w-[300mm] max-w-none -z-10" />
         )}
         {/* Document padding wrapper */}
-        <div className={`relative z-10 ${q.items.length <= 5 ? 'pb-4 print:pb-2' : 'pb-10'}`}>
+        <div className="doc__body relative z-10 flex flex-col">
           {/* Top colored edge */}
           <div className="h-2 bg-gradient-to-r from-[color:var(--brand)] to-[color:var(--brand-2)]"></div>
           
           {/* Main content with colored edges */}
-          <div className="border-x-4 border-[color:var(--brand)]">
+          <div className="flex flex-1 flex-col border-x-4 border-[color:var(--brand)]">
             {/* Clean Header with Logo */}
             <div className="bg-white border-b border-gray-200">
-              <div className="p-10 flex items-start justify-between">
+              <div className="px-10 py-7 flex items-start justify-between">
                 <div className="flex-1">
                   {c.logoDataUrl && (
                     <div className="mb-4 bg-white p-5 rounded-lg inline-block">
@@ -240,7 +241,7 @@ const QuotationPrint = () => {
             </div>
 
             {/* Bill To Section */}
-            <div className="px-10 mt-8">
+            <div className="px-10 mt-5">
               <div className="bg-gradient-to-r from-[color:var(--brand)]/[0.06] to-[color:var(--brand-2)]/[0.06] rounded-lg p-6 border border-[color:var(--brand)]/20">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Left Column - Bill To */}
@@ -308,8 +309,8 @@ const QuotationPrint = () => {
             </div>
           </div>
 
-          {/* Summary Section */}
-          <div className="px-10 mt-8">
+          {/* Summary — mt-auto pins this to the bottom of the sheet. */}
+          <div className="doc__footer avoid-break mt-auto px-10 pt-8">
             <div className="text-sm text-gray-600">
               <div className="mb-4 font-medium">Thank You For Your Business!</div>
               <div className="mb-4 font-medium">Quotation Terms:</div>
@@ -323,7 +324,7 @@ const QuotationPrint = () => {
       {/* Bottom colored edge */}
       <div className="h-2 bg-gradient-to-r from-[color:var(--brand)] to-[color:var(--brand-2)]"></div>
     </div>
-    <style dangerouslySetInnerHTML={{ __html: `@page { size: A4; margin: 12mm; } @media print { body { -webkit-print-color-adjust: exact; } .print\\:hidden{display:none;} .print\\:shadow-none{box-shadow:none} .print\\:border-0{border:0} html, body { height: auto; }` }} />
+    <style>{a4PrintCss(c.primaryColor || '#128768', c.secondaryColor || '#1BA37E')}</style>
     </>
   );
 };

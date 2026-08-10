@@ -32,11 +32,11 @@ const computeTotals = (q: Quotation) => {
   return { sub, discount, shipping, tax, grand };
 };
 
-const NewQuoteDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void; onAdd: (q: Quotation) => void }>= ({ open, onOpenChange, onAdd }) => {
+const NewQuoteDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void; onAdd: (q: Quotation) => void; editing?: Quotation }>= ({ open, onOpenChange, onAdd, editing }) => {
   const customers = CustomersStore.list();
   const [customerId, setCustomerId] = useState<string>(customers[0]?.id || "");
-  const [estimateNo] = useState(`Q-${new Date().getFullYear()}-${Math.floor(Math.random()*9000+1000)}`);
-  const [estimateDate] = useState(new Date().toISOString().slice(0,10));
+  const [estimateNo, setEstimateNo] = useState(`Q-${new Date().getFullYear()}-${Math.floor(Math.random()*9000+1000)}`);
+  const [estimateDate, setEstimateDate] = useState(new Date().toISOString().slice(0,10));
   const [expiryDate, setExpiryDate] = useState("");
   const [reference, setReference] = useState("");
   const [salesperson, setSalesperson] = useState("");
@@ -50,6 +50,43 @@ const NewQuoteDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void;
   const [items, setItems] = useState<LineItem[]>([{ id: `li_${Date.now()}`, name: products[0]?.name || "Item", qty: 1, price: products[0]?.price || 0, description: products[0]?.description || "" }]);
   const [custOpen, setCustOpen] = useState(false);
 
+  // Populate from the record being edited, or reset for a new quotation.
+  useEffect(() => {
+    if (!open) return;
+    if (editing) {
+      setCustomerId(editing.customer?.id || customers[0]?.id || "");
+      setEstimateNo(editing.number);
+      setEstimateDate(editing.createdAt?.slice(0, 10) || new Date().toISOString().slice(0, 10));
+      setExpiryDate(editing.expiryDate || "");
+      setReference(editing.reference || "");
+      setSalesperson(editing.salesperson || "");
+      setProjectName(editing.projectName || "");
+      setSubject(editing.subject || "");
+      setNotes(editing.notes || "");
+      setDiscountPct(editing.discountPct || 0);
+      setShipping(editing.shipping || 0);
+      setUseShippingAddress(!!editing.useShippingAddress);
+      setItems(editing.items?.length ? editing.items.map((i) => ({ ...i })) : []);
+    } else {
+      setCustomerId(customers[0]?.id || "");
+      setEstimateNo(`Q-${new Date().getFullYear()}-${Math.floor(Math.random() * 9000 + 1000)}`);
+      setEstimateDate(new Date().toISOString().slice(0, 10));
+      setExpiryDate("");
+      setReference("");
+      setSalesperson("");
+      setProjectName("");
+      setSubject("");
+      setNotes("");
+      setDiscountPct(0);
+      setShipping(0);
+      setUseShippingAddress(false);
+      setItems([{ id: `li_${Date.now()}`, name: products[0]?.name || "Item", qty: 1, price: products[0]?.price || 0, description: products[0]?.description || "" }]);
+    }
+    // Re-seeding on every `customers`/`products` identity change would clobber
+    // edits mid-session; the open/editing pair is what should drive this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, editing]);
+
   const addItem = () => setItems(prev => [...prev, { id: `li_${Date.now()}`, name: products[0]?.name || "Item", qty: 1, price: products[0]?.price || 0, description: products[0]?.description || "" }]);
   const removeItem = (id: string) => setItems(prev => prev.filter(i=> i.id!==id));
   const updateItem = (id: string, patch: Partial<LineItem>) => setItems(prev => prev.map(i=> i.id===id ? { ...i, ...patch } : i));
@@ -61,12 +98,14 @@ const NewQuoteDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void;
 
   const selectedCustomer = customers.find(c=> c.id===customerId) || customers[0];
   const quote: Quotation = {
-    id: `q_${Date.now()}`,
+    // Keep the existing identity, number, status and creation date when
+    // editing; a fresh id here would save a duplicate instead of an update.
+    id: editing?.id || `q_${Date.now()}`,
     number: estimateNo,
     customer: selectedCustomer || { id: customerId || `c_${Date.now()}`, name: selectedCustomer?.name || "" },
     items,
-    status: "draft",
-    createdAt: new Date().toISOString(),
+    status: editing?.status || "draft",
+    createdAt: editing?.createdAt || new Date().toISOString(),
     notes,
     reference,
     expiryDate,
@@ -90,7 +129,7 @@ const NewQuoteDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void;
     <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
       <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>New Quotation</DialogTitle>
+          <DialogTitle>{editing ? `Edit ${editing.number}` : "New Quotation"}</DialogTitle>
         </DialogHeader>
         <div className="grid lg:grid-cols-2 gap-4">
           <div className="grid gap-2">
@@ -233,7 +272,7 @@ const NewQuoteDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void;
         </div>
         <DialogFooter>
           <Button variant="secondary" onClick={()=> onOpenChange(false)}>Cancel</Button>
-          <Button onClick={save}>Save as Draft</Button>
+          <Button onClick={save}>{editing ? "Save changes" : "Save as draft"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -253,6 +292,7 @@ const Quotations: React.FC = () => {
   const [capOpen, setCapOpen] = useState(false);
   const [activeQuote, setActiveQuote] = useState<Quotation | undefined>(undefined);
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<Quotation | undefined>(undefined);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewQuote, setPreviewQuote] = useState<Quotation | undefined>(undefined);
 
@@ -272,16 +312,17 @@ const Quotations: React.FC = () => {
     };
   }, []);
 
-  const addQuote = (q: Quotation) => {
-    AccountingStore.upsertQuote(q);
-    setQuotes(AccountingStore.listQuotes());
-    toast({ title: "Quotation added", description: q.number });
+  const editQuote = (q: Quotation) => {
+    setEditing(q);
+    setOpen(true);
   };
 
-  const editQuote = (q: Quotation) => {
+  const saveQuote = (q: Quotation) => {
+    const isEdit = !!editing;
     AccountingStore.upsertQuote(q);
     setQuotes(AccountingStore.listQuotes());
-    toast({ title: "Quotation updated", description: q.number });
+    setEditing(undefined);
+    toast({ title: isEdit ? "Quotation updated" : "Quotation added", description: q.number });
   };
 
   const convert = (id: string) => {
@@ -392,7 +433,7 @@ const Quotations: React.FC = () => {
         title="Quotations"
         description="Quotes you've sent, and what they're worth if they land."
         breadcrumbs={[{ label: "Accounting", to: "/accounting/quotations" }, { label: "Quotations" }]}
-        actions={<Button onClick={() => setOpen(true)}>New quotation</Button>}
+        actions={<Button onClick={() => { setEditing(undefined); setOpen(true); }}>New quotation</Button>}
       >
         <div className="grid gap-3 sm:grid-cols-3">
           <StatCard label="Quotations" value={quotes.length} hint="All time" icon={FileText} />
@@ -423,11 +464,16 @@ const Quotations: React.FC = () => {
         empty={{
           title: "No quotations yet",
           description: "Send your first quote — accepted ones convert straight into invoices.",
-          action: <Button onClick={() => setOpen(true)}>New quotation</Button>,
+          action: <Button onClick={() => { setEditing(undefined); setOpen(true); }}>New quotation</Button>,
         }}
       />
 
-      <NewQuoteDialog open={open} onOpenChange={setOpen} onAdd={addQuote} />
+      <NewQuoteDialog
+        open={open}
+        onOpenChange={(v) => { setOpen(v); if (!v) setEditing(undefined); }}
+        onAdd={saveQuote}
+        editing={editing}
+      />
       <CapturePaymentDialog open={capOpen} onOpenChange={(v)=> { setCapOpen(v); if (!v) { setActiveQuote(undefined); setQuotes(AccountingStore.listQuotes()); } }} context={{ quote: activeQuote }} onSaved={()=> { setQuotes(AccountingStore.listQuotes()); }} />
 
       <Dialog open={previewOpen} onOpenChange={(v) => { setPreviewOpen(v); if (!v) setPreviewQuote(undefined); }}>

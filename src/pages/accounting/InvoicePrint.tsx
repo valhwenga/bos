@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { AccountingStore, Invoice } from "@/lib/accountingStore";
 import { CompanySettingsStore } from "@/lib/companySettings";
+import { a4PrintCss } from "@/lib/printStyles";
 import { Button } from "@/components/ui/button";
 import { PaymentStore } from "@/lib/paymentStore";
 import { CreditNotesStore } from "@/lib/creditNotesStore";
@@ -96,30 +97,11 @@ const InvoicePrint = () => {
         <head>
           <title>${inv.number || 'invoice'}.pdf</title>
           <style>
-            :root {
-              --brand: ${c.primaryColor || '#128768'};
-              --brand-2: ${c.secondaryColor || '#1BA37E'};
-            }
-            @page {
-              size: A4;
-              margin: 0;
-            }
-            body {
-              margin: 0;
-              padding: 0;
-              font-family: system-ui, -apple-system, sans-serif;
-              background: white;
-              width: 210mm;
-              min-height: 297mm;
-              -webkit-print-color-adjust: exact;
-            }
-            .invoice-container {
-              width: 210mm;
-              min-height: 297mm;
-              background: white;
-              overflow: hidden;
-              position: relative;
-            }
+            ${a4PrintCss(c.primaryColor || '#128768', c.secondaryColor || '#1BA37E')}
+            body { font-family: system-ui, -apple-system, sans-serif; }
+            /* The container is the A4 sheet; .doc supplies its sizing and the
+               flex column that keeps the footer on the bottom edge. */
+            .invoice-container { position: relative; }
             .top-edge {
               height: 6px;
               background: var(--brand);
@@ -283,10 +265,10 @@ const InvoicePrint = () => {
           </style>
         </head>
         <body>
-          <div class="invoice-container">
+          <div class="invoice-container doc">
             ${c.logoDataUrl ? `<img src="${c.logoDataUrl}" class="watermark" alt="Watermark">` : ''}
             <div class="top-edge"></div>
-            <div class="border-container">
+            <div class="border-container doc__body" style="display:flex;flex-direction:column">
               <div class="header">
                 <div class="header-left">
                   ${c.logoDataUrl ? `
@@ -426,7 +408,7 @@ const InvoicePrint = () => {
                 </div>
               </div>
               
-              <div class="footer">
+              <div class="footer doc__footer avoid-break" style="margin-top:auto">
                 <div style="margin-bottom: 12px; font-weight: 500;">Thank You For Your Business!</div>
                 ${c.footerNote ? `
                   <div>
@@ -479,7 +461,7 @@ const InvoicePrint = () => {
 
       <div
         id="print-root"
-        className={`relative mx-auto bg-white shadow ${inv.items.length <= 5 ? 'print:fit-to-a4' : ''}`}
+        className="doc relative mx-auto bg-white shadow print:shadow-none"
         style={{
           width: '210mm',
           minHeight: '297mm',
@@ -494,15 +476,15 @@ const InvoicePrint = () => {
           <img src={c.logoDataUrl} aria-hidden className="pointer-events-none select-none opacity-[0.035] absolute -right-16 -bottom-10 w-[300mm] max-w-none -z-10" />
         )}
         {/* Document padding wrapper */}
-        <div className={`relative z-10 ${inv.items.length <= 5 ? 'pb-4 print:pb-2' : 'pb-10'}`}>
+        <div className="doc__body relative z-10 flex flex-col">
           {/* Top colored edge */}
           <div className="h-2 bg-gradient-to-r from-[color:var(--brand)] to-[color:var(--brand-2)]"></div>
           
           {/* Main content with colored edges */}
-          <div className="border-x-4 border-[color:var(--brand)]">
+          <div className="flex flex-1 flex-col border-x-4 border-[color:var(--brand)]">
             {/* Clean Header with Logo */}
             <div className="bg-white border-b border-gray-200">
-              <div className="p-10 flex items-start justify-between">
+              <div className="px-10 py-7 flex items-start justify-between">
                 <div className="flex-1">
                   {c.logoDataUrl && (
                     <div className="mb-4 bg-white p-5 rounded-lg inline-block">
@@ -548,7 +530,7 @@ const InvoicePrint = () => {
             </div>
 
           {/* Bill To Section */}
-            <div className="px-10 mt-8">
+            <div className="px-10 mt-5">
               <div className="bg-gradient-to-r from-[color:var(--brand)]/[0.06] to-[color:var(--brand-2)]/[0.06] rounded-lg p-6 border border-[color:var(--brand)]/20">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Left Column - Bill To */}
@@ -617,7 +599,7 @@ const InvoicePrint = () => {
           </div>
 
           {/* Summary Section */}
-            <div className="px-10 mt-8">
+            <div className="px-10 mt-5">
               <div className="text-sm text-gray-600">
                 <div className="mb-4 font-medium">Thank You For Your Business!</div>
                 {c.footerNote && (
@@ -690,8 +672,8 @@ const InvoicePrint = () => {
               </div>
             </div>
 
-          {/* Footer */}
-          <div className="px-10 mt-10 flex items-center justify-between">
+          {/* Footer — mt-auto pins this to the bottom of the sheet. */}
+          <div className="doc__footer avoid-break mt-auto flex items-center justify-between px-10 pt-6">
             <div className="text-sm text-slate-500">Payment via bank transfer. Please include the invoice number as reference.</div>
             <div className="text-right">
               {c.signatureDataUrl ? (
@@ -714,7 +696,7 @@ const InvoicePrint = () => {
         </div>
       </div>
 
-      <style>{`@page { size: A4; margin: 12mm; } @media print { body { -webkit-print-color-adjust: exact; } .print\:hidden{display:none;} .print\:shadow-none{box-shadow:none} .print\:border-0{border:0} html, body { height: auto; } }`}</style>
+      <style>{a4PrintCss(c.primaryColor || '#128768', c.secondaryColor || '#1BA37E')}</style>
     </div>
   );
 };
