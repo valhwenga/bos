@@ -1,4 +1,8 @@
 import { useMemo, useState } from "react";
+import { UserPlus, UserX, CheckCircle2 } from "lucide-react";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatCard } from "@/components/ui/stat-card";
 import { CrmLeadsStore, type Lead, type LeadStage } from "@/lib/crmLeadsStore";
 import { UsersStore } from "@/lib/usersStore";
 import { Button } from "@/components/ui/button";
@@ -59,54 +63,79 @@ const Leads = () => {
     setForm({ name: "", company: "", email: "", phone: "", address: "", source: 'manual', ownerId: users[0]?.id||"" });
   };
 
+  const stageTone = (stage: string) =>
+    stage === "won" ? "bg-success-soft text-success"
+    : stage === "lost" ? "bg-danger-soft text-danger"
+    : stage === "new" ? "bg-info-soft text-info"
+    : "bg-muted text-muted-foreground";
+
+  const columns: Column<Lead>[] = [
+    { id: "name", header: "Name", sortValue: (l) => l.name, cell: (l) => <span className="font-medium">{l.name}</span> },
+    { id: "company", header: "Company", sortValue: (l) => l.company ?? "", cell: (l) => l.company || <span className="text-subtle">—</span> },
+    {
+      id: "contact",
+      header: "Contact",
+      hideOnMobile: true,
+      cell: (l) => <span className="text-muted-foreground">{l.email || l.phone || "—"}</span>,
+    },
+    {
+      id: "stage",
+      header: "Stage",
+      sortValue: (l) => l.stage,
+      cell: (l) => (
+        <span className={`inline-flex rounded-sm px-1.5 py-0.5 text-xs font-medium capitalize ${stageTone(l.stage)}`}>
+          {l.stage.replace("_", " ")}
+        </span>
+      ),
+    },
+    {
+      id: "owner",
+      header: "Owner",
+      hideOnMobile: true,
+      sortValue: (l) => users.find((u) => u.id === l.ownerId)?.name ?? "",
+      cell: (l) => users.find((u) => u.id === l.ownerId)?.name || <span className="text-subtle">Unassigned</span>,
+    },
+  ];
+
+  const won = filtered.filter((l) => l.stage === "won").length;
+
   return (
-    <div className="p-6 space-y-4">
-      <Card className="shadow-[0_10px_0_rgba(0,0,0,0.08)]">
-        <CardHeader className="flex-row items-center justify-between">
-          <CardTitle>Leads</CardTitle>
-          <div className="flex items-center gap-2">
-            <Input placeholder="Search" value={q} onChange={(e)=> setQ(e.target.value)} />
-            <Select value={stage} onValueChange={(v) => setStage(v as LeadStage | 'all')}>
-              <SelectTrigger className="w-44"><SelectValue placeholder="Stage" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Stages</SelectItem>
-                {stageOptions.map(s=> <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Button onClick={add}>New Lead</Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-lg overflow-hidden border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Company</TableHead>
-                  <TableHead>Contact</TableHead>
-                  <TableHead>Stage</TableHead>
-                  <TableHead>Owner</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map(l => (
-                  <TableRow key={l.id}>
-                    <TableCell>{l.name}</TableCell>
-                    <TableCell>{l.company||'-'}</TableCell>
-                    <TableCell>{l.email||l.phone||'-'}</TableCell>
-                    <TableCell className="capitalize">{l.stage.replace('_',' ')}</TableCell>
-                    <TableCell>{users.find(u=>u.id===l.ownerId)?.name || '-'}</TableCell>
-                    <TableCell className="text-right space-x-2">
-                      <Button size="sm" variant="outline" onClick={()=> navigate(`/crm/leads/${l.id}`)}>Open</Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+    <div className="flex flex-col gap-6 p-6">
+      <PageHeader
+        title="Leads"
+        description="People who've shown interest but aren't customers yet."
+        breadcrumbs={[{ label: "CRM", to: "/crm/leads" }, { label: "Leads" }]}
+        actions={<Button onClick={add}>New lead</Button>}
+      >
+        <div className="grid gap-3 sm:grid-cols-3">
+          <StatCard label="Leads" value={filtered.length} hint="Matching current filters" icon={UserPlus} />
+          <StatCard label="Won" value={won} hint={won ? "Converted to customers" : "None yet"} icon={CheckCircle2} tone={won ? "success" : "neutral"} />
+          <StatCard label="Unassigned" value={filtered.filter((l) => !l.ownerId).length} hint="Need an owner" icon={UserX} tone={filtered.some((l) => !l.ownerId) ? "warning" : "neutral"} />
+        </div>
+      </PageHeader>
+
+      <DataTable
+        rows={filtered}
+        columns={columns}
+        rowKey={(l) => l.id}
+        searchAccessor={(l) => `${l.name} ${l.company ?? ""} ${l.email ?? ""} ${l.phone ?? ""}`}
+        searchPlaceholder="Search by name, company or contact…"
+        onRowClick={(l) => navigate(`/crm/leads/${l.id}`)}
+        toolbar={
+          <Select value={stage} onValueChange={(v) => setStage(v as LeadStage | "all")}>
+            <SelectTrigger className="h-9 w-40"><SelectValue placeholder="Stage" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All stages</SelectItem>
+              {stageOptions.map((s) => <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        }
+        empty={{
+          title: "No leads yet",
+          description: "Add a lead to start tracking it through your pipeline.",
+          action: <Button onClick={add}>New lead</Button>,
+        }}
+      />
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
