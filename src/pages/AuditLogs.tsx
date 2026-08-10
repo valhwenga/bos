@@ -16,13 +16,13 @@ export default function AuditLogs() {
   return (
     <div className="p-6">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">Audit & Compliance</h1>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <h1 className="text-2xl font-semibold text-foreground">Audit & Compliance</h1>
+        <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
           <span>Dashboard</span>
           <span>›</span>
           <span>Settings</span>
           <span>›</span>
-          <span className="text-primary">Audit Logs</span>
+          <span className="text-foreground">Audit Logs</span>
         </div>
       </div>
       <AuditReport />

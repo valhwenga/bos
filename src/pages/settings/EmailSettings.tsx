@@ -16,7 +16,7 @@ const EmailSettings = () => {
   return (
     <div className="p-6 space-y-4">
       <div>
-        <h1 className="text-3xl font-bold mb-2">Email (SMTP) Settings</h1>
+        <h1 className="text-2xl font-semibold text-foreground">Email (SMTP) Settings</h1>
         <div className="text-sm text-muted-foreground">Configure SMTP credentials used by the Email module.</div>
       </div>
 

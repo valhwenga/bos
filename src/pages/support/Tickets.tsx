@@ -4,6 +4,10 @@ import { Plus, Filter, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { LifeBuoy, Clock, AlertCircle } from "lucide-react";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatCard } from "@/components/ui/stat-card";
 import { SupportStore, type Ticket, type Priority, type TicketStatus } from "@/lib/supportStore";
 import { AuditLogStore } from "@/lib/auditLogStore";
 import { Textarea } from "@/components/ui/textarea";
@@ -62,89 +66,121 @@ const Tickets = () => {
 
   const navigate = useNavigate();
 
+  const priorityTone = (p: string) =>
+    p === "urgent" ? "bg-danger-soft text-danger"
+    : p === "high" ? "bg-warning-soft text-warning"
+    : p === "medium" ? "bg-info-soft text-info"
+    : "bg-muted text-muted-foreground";
+
+  const statusTone = (st: string) =>
+    st === "resolved" ? "bg-success-soft text-success"
+    : st === "rejected" ? "bg-danger-soft text-danger"
+    : st === "in_progress" || st === "pending_approval" ? "bg-info-soft text-info"
+    : st === "waiting" ? "bg-warning-soft text-warning"
+    : "bg-muted text-muted-foreground";
+
+  const columns: Column<Ticket>[] = [
+    { id: "id", header: "ID", hideOnMobile: true, sortValue: (t) => t.id, cell: (t) => <span className="font-mono text-xs text-muted-foreground">{t.id}</span> },
+    { id: "title", header: "Title", sortValue: (t) => t.title, cell: (t) => <span className="font-medium">{t.title}</span> },
+    { id: "category", header: "Category", hideOnMobile: true, sortValue: (t) => t.category ?? "", cell: (t) => t.category || <span className="text-subtle">—</span> },
+    {
+      id: "priority",
+      header: "Priority",
+      sortValue: (t) => t.priority,
+      cell: (t) => (
+        <span className={`inline-flex rounded-sm px-1.5 py-0.5 text-xs font-medium capitalize ${priorityTone(t.priority)}`}>{t.priority}</span>
+      ),
+    },
+    {
+      id: "status",
+      header: "Status",
+      sortValue: (t) => t.status,
+      cell: (t) => (
+        <span className={`inline-flex rounded-sm px-1.5 py-0.5 text-xs font-medium capitalize ${statusTone(t.status)}`}>
+          {t.status.replace(/_/g, " ")}
+        </span>
+      ),
+    },
+    {
+      id: "due",
+      header: "Due",
+      hideOnMobile: true,
+      sortValue: (t) => t.dueAt ?? "",
+      cell: (t) => (t.dueAt ? <span className="whitespace-nowrap text-muted-foreground">{new Date(t.dueAt).toLocaleDateString()}</span> : <span className="text-subtle">—</span>),
+    },
+    {
+      id: "updated",
+      header: "Updated",
+      align: "right",
+      sortValue: (t) => t.updatedAt,
+      cell: (t) => <span className="whitespace-nowrap text-muted-foreground">{new Date(t.updatedAt).toLocaleDateString()}</span>,
+    },
+  ];
+
+  const urgent = filtered.filter((t) => t.priority === "urgent").length;
+  const openCount = filtered.filter((t) => t.status !== "resolved" && t.status !== "closed" && t.status !== "rejected").length;
+
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold mb-2">Support Tickets</h1>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span>Dashboard</span>
-            <span>›</span>
-            <span>Support</span>
-            <span>›</span>
-            <span>Tickets</span>
-          </div>
+    <div className="flex flex-col gap-6 p-6">
+      <PageHeader
+        title="Support tickets"
+        description="Issues raised by clients and colleagues, and where each one stands."
+        breadcrumbs={[{ label: "Support", to: "/support" }, { label: "Tickets" }]}
+        actions={
+          <Button onClick={startAdd}>
+            <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+            New ticket
+          </Button>
+        }
+      >
+        <div className="grid gap-3 sm:grid-cols-3">
+          <StatCard label="Tickets" value={filtered.length} hint="Matching current filters" icon={LifeBuoy} />
+          <StatCard label="Open" value={openCount} hint="Not yet resolved" icon={Clock} tone={openCount ? "info" : "neutral"} />
+          <StatCard label="Urgent" value={urgent} hint={urgent ? "Need attention now" : "Nothing urgent"} icon={AlertCircle} tone={urgent ? "danger" : "neutral"} />
         </div>
-        <Button size="sm" onClick={startAdd}><Plus className="w-4 h-4 mr-2" />New Ticket</Button>
-      </div>
+      </PageHeader>
 
-      <div className="mb-4 flex items-center gap-3 flex-wrap">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input placeholder="Search by title or description..." value={q} onChange={(e)=> setQ(e.target.value)} className="pl-9 w-72" />
-        </div>
-        <Select value={status} onValueChange={(v)=> setStatus(v === "all" ? "all" : (v as TicketStatus))}>
-          <SelectTrigger className="w-44"><SelectValue placeholder="Status" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Statuses</SelectItem>
-            {statusOptions.map(s => <SelectItem key={s} value={s}>{s.replace(/_/g,' ')}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Select value={priority} onValueChange={(v)=> setPriority(v === "all" ? "all" : (v as Priority))}>
-          <SelectTrigger className="w-44"><SelectValue placeholder="Priority" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Priorities</SelectItem>
-            {priorityOptions.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Select value={assignee} onValueChange={(v)=> setAssignee(v as (typeof assignee))}>
-          <SelectTrigger className="w-44"><SelectValue placeholder="Assignee" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Assignees</SelectItem>
-            <SelectItem value="unassigned">Unassigned</SelectItem>
-            <SelectItem value="me">Assigned to Me</SelectItem>
-            {UsersStore.list().map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
-          </SelectContent>
-        </Select>
-      </div>
+      <DataTable
+        rows={filtered}
+        columns={columns}
+        rowKey={(t) => t.id}
+        searchAccessor={(t) => `${t.id} ${t.title} ${t.description ?? ""} ${t.category ?? ""}`}
+        searchPlaceholder="Search by title or description…"
+        onRowClick={(t) => navigate(`/support/tickets/${t.id}`)}
+        toolbar={
+          <>
+            <Select value={status} onValueChange={(v) => setStatus(v === "all" ? "all" : (v as TicketStatus))}>
+              <SelectTrigger className="h-9 w-40"><SelectValue placeholder="Status" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                {statusOptions.map((s) => <SelectItem key={s} value={s}>{s.replace(/_/g, " ")}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={priority} onValueChange={(v) => setPriority(v === "all" ? "all" : (v as Priority))}>
+              <SelectTrigger className="h-9 w-36"><SelectValue placeholder="Priority" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All priorities</SelectItem>
+                {priorityOptions.map((pr) => <SelectItem key={pr} value={pr}>{pr}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={assignee} onValueChange={(v) => setAssignee(v as typeof assignee)}>
+              <SelectTrigger className="h-9 w-40"><SelectValue placeholder="Assignee" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All assignees</SelectItem>
+                <SelectItem value="unassigned">Unassigned</SelectItem>
+                <SelectItem value="me">Assigned to me</SelectItem>
+                {UsersStore.list().map((u) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </>
+        }
+        empty={{
+          title: "No tickets",
+          description: "Raise a ticket to track an issue through to resolution.",
+          action: <Button onClick={startAdd}>New ticket</Button>,
+        }}
+      />
 
-      <div className="bg-card rounded-lg border border-border overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-secondary/50">
-              <tr>
-                <th className="text-left p-4 text-sm font-semibold">ID</th>
-                <th className="text-left p-4 text-sm font-semibold">TITLE</th>
-                <th className="text-left p-4 text-sm font-semibold">CATEGORY</th>
-                <th className="text-left p-4 text-sm font-semibold">PRIORITY</th>
-                <th className="text-left p-4 text-sm font-semibold">STATUS</th>
-                <th className="text-left p-4 text-sm font-semibold">DUE</th>
-                <th className="text-left p-4 text-sm font-semibold">UPDATED</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(t => (
-                <tr key={t.id} className="border-t border-border hover:bg-secondary/30 cursor-pointer" onClick={()=> navigate(`/support/tickets/${t.id}`)}>
-                  <td className="p-4 text-sm">{t.id}</td>
-                  <td className="p-4 font-medium">{t.title}</td>
-                  <td className="p-4 text-sm">{t.category}</td>
-                  <td className="p-4 text-sm capitalize">
-                    <span className={`px-2 py-1 rounded text-xs ${t.priority==='urgent'?'bg-danger text-danger-foreground':t.priority==='high'?'bg-warning text-warning-foreground':t.priority==='medium'?'bg-warning text-warning-foreground':'bg-success text-success-foreground'}`}>{t.priority}</span>
-                  </td>
-                  <td className="p-4 text-sm capitalize">
-                    <span className={`px-2 py-1 rounded text-xs ${t.status==='pending_approval'?'bg-info text-info-foreground':t.status==='closed'?'bg-secondary text-secondary-foreground':t.status==='rejected'?'bg-danger text-danger-foreground':t.status==='resolved'?'bg-success text-success-foreground':t.status==='in_progress'?'bg-info text-info-foreground':t.status==='waiting'?'bg-warning text-warning-foreground':'bg-secondary text-secondary-foreground'}`}>{t.status.replace(/_/g,' ')}</span>
-                  </td>
-                  <td className="p-4 text-sm">{t.dueAt ? new Date(t.dueAt).toLocaleString() : '-'}</td>
-                  <td className="p-4 text-sm">{new Date(t.updatedAt).toLocaleString()}</td>
-                </tr>
-              ))}
-              {filtered.length === 0 && (
-                <tr><td className="p-6 text-sm text-muted-foreground" colSpan={7}>No tickets found</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-[95vw] w-[95vw] lg:max-w-[900px]">

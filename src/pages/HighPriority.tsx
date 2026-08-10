@@ -16,11 +16,11 @@ const HighPriorityPage: React.FC = () => {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-3xl font-bold mb-2">High Priority Center</h1>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <h1 className="text-2xl font-semibold text-foreground">High Priority Center</h1>
+          <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
             <span>Dashboard</span>
-            <span>»</span>
-            <span className="text-primary">High Priority</span>
+            <span>›</span>
+            <span className="text-foreground">High Priority</span>
           </div>
         </div>
         

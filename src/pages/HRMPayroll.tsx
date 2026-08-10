@@ -4,6 +4,7 @@ import { Download, DollarSign, Send, Eye, UserCheck, Calculator, Play, CheckCirc
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { StatCard } from "@/components/ui/stat-card";
 import { CompanySettingsStore } from "@/lib/companySettings";
 import { generatePayslipPdf } from "@/lib/payslipPdf";
 import { batchGeneratePayslips, emailPayslips } from "@/lib/payslipBatch";
@@ -87,36 +88,7 @@ const SEED = [
   },
 ];
 
-const payrollStats = [
-  {
-    title: "Total Payroll",
-    value: 416500,
-    change: "+5.2%",
-    icon: DollarSign,
-    color: "bg-info",
-  },
-  {
-    title: "Paid This Month",
-    value: 269500,
-    change: "4 employees",
-    icon: DollarSign,
-    color: "bg-success",
-  },
-  {
-    title: "Pending Payments",
-    value: 129000,
-    change: "2 employees",
-    icon: DollarSign,
-    color: "bg-warning",
-  },
-  {
-    title: "Total Deductions",
-    value: 43500,
-    change: "10.5%",
-    icon: DollarSign,
-    color: "bg-primary",
-  },
-];
+
 
 const statusColors = {
   Paid: "bg-primary text-primary-foreground",
@@ -204,6 +176,15 @@ const HRMPayroll = () => {
     }
     return r.paymentDate.includes(monShort) && r.paymentDate.includes(year);
   });
+
+  // These four tiles previously displayed fixed numbers (416500 / "+5.2%" and
+  // friends) that never changed with the data or the selected period.
+  const payrollStats = [
+    { title: "Total payroll", value: displayedData.reduce((sum, r) => sum + r.netSalary, 0), hint: `${displayedData.length} employee${displayedData.length === 1 ? "" : "s"}`, tone: "neutral" as const },
+    { title: "Paid", value: displayedData.filter((r) => r.status === "Paid").reduce((sum, r) => sum + r.netSalary, 0), hint: `${displayedData.filter((r) => r.status === "Paid").length} paid`, tone: "success" as const },
+    { title: "Pending", value: displayedData.filter((r) => r.status === "Pending").reduce((sum, r) => sum + r.netSalary, 0), hint: `${displayedData.filter((r) => r.status === "Pending").length} awaiting`, tone: "warning" as const },
+    { title: "Deductions", value: displayedData.reduce((sum, r) => sum + r.deductions, 0), hint: "Total withheld", tone: "neutral" as const },
+  ];
 
   const processPayroll = async () => {
     setProcessingPayroll(true);
@@ -303,13 +284,13 @@ const HRMPayroll = () => {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-3xl font-bold mb-2">Payroll Management</h1>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <h1 className="text-2xl font-semibold text-foreground">Payroll Management</h1>
+          <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
             <span>Dashboard</span>
             <span>›</span>
             <span>HRM System</span>
             <span>›</span>
-            <span className="text-primary">Payroll</span>
+            <span className="text-foreground">Payroll</span>
           </div>
         </div>
 
@@ -365,18 +346,16 @@ const HRMPayroll = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        {payrollStats.map((stat, index) => (
-          <Card key={index} className="p-5">
-            <div className="flex items-center justify-between mb-2">
-              <div className={`w-12 h-12 rounded-lg ${stat.color} flex items-center justify-center`}>
-                <stat.icon className="w-6 h-6 text-primary-foreground" />
-              </div>
-              <span className="text-xs font-medium text-success">{stat.change}</span>
-            </div>
-            <p className="text-sm text-muted-foreground mb-1">{stat.title}</p>
-            <p className="text-2xl font-bold">{cs.currencySymbol}{Number(stat.value).toLocaleString()}</p>
-          </Card>
+      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {payrollStats.map((stat) => (
+          <StatCard
+            key={stat.title}
+            label={stat.title}
+            value={`${cs.currencySymbol}${Number(stat.value).toLocaleString()}`}
+            hint={stat.hint}
+            tone={stat.tone}
+            icon={DollarSign}
+          />
         ))}
       </div>
 

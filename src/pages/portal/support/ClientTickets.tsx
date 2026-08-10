@@ -47,8 +47,8 @@ const ClientTickets = () => {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-3xl font-bold mb-2">My Support Tickets</h1>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <h1 className="text-2xl font-semibold text-foreground">My Support Tickets</h1>
+          <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
             <span>Portal</span>
             <span>›</span>
             <span>Support</span>

@@ -28,7 +28,7 @@ const SettingsPage: React.FC = () => {
   return (
     <div className="p-6">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold flex items-center gap-2">
+        <h1 className="flex items-center gap-2 text-2xl font-semibold text-foreground">
           <Settings className="w-8 h-8" />
           Settings
         </h1>

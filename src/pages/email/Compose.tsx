@@ -45,7 +45,7 @@ const Compose = () => {
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Compose</h1>
+        <h1 className="text-2xl font-semibold text-foreground">Compose</h1>
         <div className="flex gap-2">
           <Button variant="secondary" onClick={()=> navigate(-1)}>Cancel</Button>
           <Button onClick={send} disabled={!to.trim() || !subject.trim()}>Send</Button>

@@ -12,34 +12,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { StatCard } from "@/components/ui/stat-card";
 import { CRMStore, type Deal, type DealStage } from "@/lib/crmStore";
 
-const stats = [
-  {
-    title: "Total Deals",
-    value: 1404250.99,
-    icon: DollarSign,
-    color: "bg-info",
-  },
-  {
-    title: "This Month Total Deals",
-    value: 0,
-    icon: DollarSign,
-    color: "bg-success",
-  },
-  {
-    title: "This Week Total Deals",
-    value: 0,
-    icon: DollarSign,
-    color: "bg-warning",
-  },
-  {
-    title: "Last 30 Days Total Deals",
-    value: 0,
-    icon: DollarSign,
-    color: "bg-primary",
-  },
-];
+
 const CRMDeals = () => {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
@@ -49,6 +25,20 @@ const CRMDeals = () => {
   const sym = cs.currencySymbol || "$";
   const stages = CRMStore.stages();
   const data = useMemo(() => stages.map((s) => ({ stage: s, deals: CRMStore.byStage(s) })), [stages, open, title, amount, stage]);
+
+  // These tiles previously displayed fixed numbers (a "total" of 1,404,250.99
+  // and three zeroes) regardless of what was actually on the board.
+  const allDeals = useMemo(() => data.flatMap((c) => c.deals), [data]);
+  const pipelineValue = allDeals.reduce((sum, d) => sum + (d.amount || 0), 0);
+  const wonCount = allDeals.filter((d) => d.status === "Won").length;
+  const averageValue = allDeals.length ? pipelineValue / allDeals.length : 0;
+
+  const stats = [
+    { title: "Pipeline value", value: `${sym}${pipelineValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, hint: "Across every stage", tone: "info" as const },
+    { title: "Deals", value: String(allDeals.length), hint: "On the board", tone: "neutral" as const },
+    { title: "Won", value: String(wonCount), hint: wonCount ? "Closed successfully" : "None yet", tone: wonCount ? "success" as const : "neutral" as const },
+    { title: "Average size", value: `${sym}${averageValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, hint: "Mean deal value", tone: "neutral" as const },
+  ];
 
   const add = () => {
     if (!title.trim()) return;
@@ -63,8 +53,8 @@ const CRMDeals = () => {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-3xl font-bold mb-2">Manage Deals - Sales</h1>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <h1 className="text-2xl font-semibold text-foreground">Manage Deals - Sales</h1>
+          <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
             <span>Dashboard</span>
             <span>›</span>
             <span>Deal</span>
@@ -92,19 +82,9 @@ const CRMDeals = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
-        {stats.map((stat, index) => (
-          <Card key={index} className="p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">{stat.title}</p>
-                <p className="text-2xl font-bold">{sym}{Number(stat.value).toLocaleString()}</p>
-              </div>
-              <div className={`w-12 h-12 rounded-full ${stat.color} flex items-center justify-center`}>
-                <stat.icon className="w-6 h-6 text-primary-foreground" />
-              </div>
-            </div>
-          </Card>
+      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {stats.map((stat) => (
+          <StatCard key={stat.title} label={stat.title} value={stat.value} hint={stat.hint} tone={stat.tone} icon={DollarSign} />
         ))}
       </div>
 
