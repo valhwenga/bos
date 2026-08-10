@@ -348,7 +348,6 @@ const App = () => {
           <Route path="/auth/login" element={<Login />} />
           <Route path="/auth/signup" element={<Signup />} />
           <Route path="/auth/invite" element={<InviteAccept />} />
-          <Route path="/auth/pending-approvals" element={<Protected><PendingApprovals /></Protected>} />
           <Route path="/auth/forgot" element={<ForgotPassword />} />
           <Route path="/auth/reset" element={<ResetPassword />} />
 
@@ -403,6 +402,7 @@ const App = () => {
             {/* Misc */}
             <Route path="users" element={<AccessGuard module="settings"><ManageUsers /></AccessGuard>} />
             <Route path="users/client" element={<AccessGuard module="settings"><Clients /></AccessGuard>} />
+            <Route path="users/pending" element={<AccessGuard module="settings"><PendingApprovals /></AccessGuard>} />
             <Route path="products" element={<AccessGuard module="inventory"><Placeholder /></AccessGuard>} />
             <Route path="pos" element={<AccessGuard module="inventory"><Placeholder /></AccessGuard>} />
             <Route path="support" element={<AccessGuard module="support"><SupportDashboard /></AccessGuard>} />

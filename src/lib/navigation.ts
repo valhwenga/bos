@@ -152,6 +152,7 @@ export const NAV_ITEMS: NavItem[] = [
       { name: "All Users", path: "/users" },
       { name: "Roles", path: "/users/role" },
       { name: "Clients", path: "/users/client" },
+      { name: "Pending approvals", path: "/users/pending" },
     ],
   },
   {

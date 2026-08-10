@@ -4,6 +4,10 @@ import { Plus, Edit, Trash, Shield } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Users, UserCheck } from "lucide-react";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatCard } from "@/components/ui/stat-card";
 import { UsersStore, type AppUser } from "@/lib/usersStore";
 import { RolesStore, type Role } from "@/lib/rolesStore";
 import { Switch } from "@/components/ui/switch";
@@ -42,76 +46,98 @@ const ManageUsers = () => {
     refresh();
   };
 
-  return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold mb-2">User Management</h1>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span>Dashboard</span>
-            <span>›</span>
-            <span>Users</span>
-          </div>
-      <div className="mt-4 flex items-center gap-2">
-        <Input value={q} onChange={(e)=> setQ(e.target.value)} placeholder="Search users by name, email, or role..." className="w-full md:w-96" />
-      </div>
+  const columns: Column<AppUser>[] = [
+    { id: "name", header: "Name", sortValue: (u) => u.name, cell: (u) => <span className="font-medium">{u.name}</span> },
+    { id: "email", header: "Email", sortValue: (u) => u.email, cell: (u) => <span className="text-muted-foreground">{u.email}</span> },
+    {
+      id: "role",
+      header: "Role",
+      sortValue: (u) => roleMap[u.roleId]?.name ?? u.roleId,
+      cell: (u) => roleMap[u.roleId]?.name || u.roleId,
+    },
+    { id: "level", header: "Level", hideOnMobile: true, sortValue: (u) => roleMap[u.roleId]?.level ?? "", cell: (u) => roleMap[u.roleId]?.level || "—" },
+    {
+      id: "twofa",
+      header: "2FA",
+      hideOnMobile: true,
+      sortValue: (u) => (u.twoFactorEnabled ? 1 : 0),
+      cell: (u) => (
+        <span className={`inline-flex items-center gap-1 text-xs ${u.twoFactorEnabled ? "text-success" : "text-muted-foreground"}`}>
+          <Shield className="h-3 w-3" aria-hidden="true" />
+          {u.twoFactorEnabled ? "On" : "Off"}
+        </span>
+      ),
+    },
+    {
+      id: "status",
+      header: "Status",
+      sortValue: (u) => u.status,
+      cell: (u) => (
+        <span className={`inline-flex rounded-sm px-1.5 py-0.5 text-xs font-medium capitalize ${u.status === "active" ? "bg-success-soft text-success" : "bg-muted text-muted-foreground"}`}>
+          {u.status}
+        </span>
+      ),
+    },
+    {
+      id: "actions",
+      header: <span className="sr-only">Actions</span>,
+      align: "right",
+      width: "1%",
+      cell: (u) => (
+        <div className="inline-flex items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()}>
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => startEdit(u)} aria-label={`Edit ${u.name}`}>
+            <Edit className="h-3.5 w-3.5" />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-danger" onClick={() => remove(u.id)} aria-label={`Delete ${u.name}`}>
+            <Trash className="h-3.5 w-3.5" />
+          </Button>
         </div>
-        <Button size="sm" onClick={startAdd}>
-          <Plus className="w-4 h-4 mr-2" />
-          Add User
-        </Button>
-      </div>
+      ),
+    },
+  ];
 
-      <div className="bg-card rounded-lg border border-border overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-secondary/50">
-              <tr>
-                <th className="text-left p-4 font-semibold text-sm">NAME</th>
-                <th className="text-left p-4 font-semibold text-sm">EMAIL</th>
-                <th className="text-left p-4 font-semibold text-sm">ROLE</th>
-                <th className="text-left p-4 font-semibold text-sm">LEVEL</th>
-                <th className="text-left p-4 font-semibold text-sm">2FA</th>
-                <th className="text-left p-4 font-semibold text-sm">STATUS</th>
-                <th className="text-right p-4 font-semibold text-sm">ACTION</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.filter(u => {
-                const role = roleMap[u.roleId];
-                const hay = `${u.name} ${u.email} ${role?.name||''}`.toLowerCase();
-                return hay.includes(q.toLowerCase());
-              }).map((u) => {
-                const role = roleMap[u.roleId];
-                return (
-                  <tr key={u.id} className="border-t border-border hover:bg-secondary/30 transition-colors">
-                    <td className="p-4 font-medium">{u.name}</td>
-                    <td className="p-4">{u.email}</td>
-                    <td className="p-4">{role?.name || u.roleId}</td>
-                    <td className="p-4">{role?.level || "-"}</td>
-                    <td className="p-4">
-                      <div className={`inline-flex items-center gap-1 text-xs ${u.twoFactorEnabled ? 'text-primary' : 'text-muted-foreground'}`}>
-                        <Shield className="w-3 h-3" /> {u.twoFactorEnabled ? 'Enabled' : 'Disabled'}
-                      </div>
-                    </td>
-                    <td className="p-4 capitalize">{u.status}</td>
-                    <td className="p-4">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button size="icon" variant="ghost" className="h-9 w-9 text-info hover:text-info hover:bg-info-soft" onClick={()=> startEdit(u)}>
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button size="icon" variant="ghost" className="h-9 w-9 text-danger hover:text-danger hover:bg-danger-soft" onClick={()=> remove(u.id)}>
-                          <Trash className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+  const activeCount = users.filter((u) => u.status === "active").length;
+  const without2fa = users.filter((u) => !u.twoFactorEnabled).length;
+
+  return (
+    <div className="flex flex-col gap-6 p-6">
+      <PageHeader
+        title="Users"
+        description="Who can sign in, and what each person's role lets them reach."
+        breadcrumbs={[{ label: "Users", to: "/users" }, { label: "All users" }]}
+        actions={
+          <Button onClick={startAdd}>
+            <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+            Add user
+          </Button>
+        }
+      >
+        <div className="grid gap-3 sm:grid-cols-3">
+          <StatCard label="Users" value={users.length} hint="With an account" icon={Users} />
+          <StatCard label="Active" value={activeCount} hint={`${users.length - activeCount} inactive`} icon={UserCheck} tone="success" />
+          <StatCard
+            label="Without 2FA"
+            value={without2fa}
+            hint={without2fa ? "Second factor not enabled" : "Everyone protected"}
+            icon={Shield}
+            tone={without2fa ? "warning" : "success"}
+          />
         </div>
-      </div>
+      </PageHeader>
+
+      <DataTable
+        rows={users}
+        columns={columns}
+        rowKey={(u) => u.id}
+        searchAccessor={(u) => `${u.name} ${u.email} ${roleMap[u.roleId]?.name ?? ""}`}
+        searchPlaceholder="Search by name, email or role…"
+        onRowClick={startEdit}
+        empty={{
+          title: "No users yet",
+          description: "Add someone and assign them a role to control what they can see.",
+          action: <Button onClick={startAdd}>Add user</Button>,
+        }}
+      />
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-[95vw] w-[95vw] lg:max-w-[800px]">

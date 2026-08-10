@@ -3,6 +3,10 @@ import { Button } from "@/components/ui/button";
 import { Plus, Edit, Trash } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Briefcase, KeyRound } from "lucide-react";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatCard } from "@/components/ui/stat-card";
 import { ClientsStore, type Client } from "@/lib/clientsStore";
 import { AuditLogStore } from "@/lib/auditLogStore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -92,75 +96,102 @@ const Clients = () => {
     AuthStore.setAccountActive(acc.id, !acc.active);
   };
 
-  return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold mb-2">Clients</h1>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span>Dashboard</span>
-            <span>›</span>
-            <span>Users</span>
-            <span>›</span>
-            <span>Clients</span>
-          </div>
-          <div className="mt-4 flex items-center gap-2">
-            <Input value={q} onChange={(e)=> setQ(e.target.value)} placeholder="Search clients by name, email, or company..." className="w-full md:w-96" />
-          </div>
+  const columns: Column<Client>[] = [
+    { id: "name", header: "Name", sortValue: (c) => c.name, cell: (c) => <span className="font-medium">{c.name}</span> },
+    { id: "email", header: "Email", sortValue: (c) => c.email ?? "", cell: (c) => c.email || <span className="text-subtle">—</span> },
+    { id: "company", header: "Company", hideOnMobile: true, sortValue: (c) => c.company ?? "", cell: (c) => c.company || <span className="text-subtle">—</span> },
+    { id: "phone", header: "Phone", hideOnMobile: true, cell: (c) => c.phone || <span className="text-subtle">—</span> },
+    {
+      id: "status",
+      header: "Status",
+      sortValue: (c) => c.status,
+      cell: (c) => (
+        <span className={`inline-flex rounded-sm px-1.5 py-0.5 text-xs font-medium capitalize ${c.status === "active" ? "bg-success-soft text-success" : "bg-muted text-muted-foreground"}`}>
+          {c.status}
+        </span>
+      ),
+    },
+    {
+      id: "login",
+      header: "Portal login",
+      sortValue: (c) => (accountByClientId[c.id] ? (accountByClientId[c.id].active ? 2 : 1) : 0),
+      cell: (c) => {
+        const account = accountByClientId[c.id];
+        if (!account) return <span className="text-subtle">None</span>;
+        return (
+          <span className={`inline-flex rounded-sm px-1.5 py-0.5 text-xs font-medium ${account.active ? "bg-info-soft text-info" : "bg-muted text-muted-foreground"}`}>
+            {account.active ? "Enabled" : "Disabled"}
+          </span>
+        );
+      },
+    },
+    {
+      id: "actions",
+      header: <span className="sr-only">Actions</span>,
+      align: "right",
+      width: "1%",
+      cell: (c) => (
+        <div className="inline-flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+          {accountByClientId[c.id] ? (
+            <Button size="sm" variant="outline" className="h-8" onClick={() => toggleAccountActive(c.id)}>
+              {accountByClientId[c.id].active ? "Disable login" : "Enable login"}
+            </Button>
+          ) : (
+            <Button size="sm" variant="outline" className="h-8" onClick={() => startCreateLogin(c)}>
+              Create login
+            </Button>
+          )}
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => startEdit(c)} aria-label={`Edit ${c.name}`}>
+            <Edit className="h-3.5 w-3.5" />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-danger" onClick={() => remove(c.id)} aria-label={`Delete ${c.name}`}>
+            <Trash className="h-3.5 w-3.5" />
+          </Button>
         </div>
-        <Button size="sm" onClick={startAdd}>
-          <Plus className="w-4 h-4 mr-2" />
-          Add Client
-        </Button>
-      </div>
+      ),
+    },
+  ];
 
-      <div className="bg-card rounded-lg border border-border overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-secondary/50">
-              <tr>
-                <th className="text-left p-4 font-semibold text-sm">NAME</th>
-                <th className="text-left p-4 font-semibold text-sm">EMAIL</th>
-                <th className="text-left p-4 font-semibold text-sm">COMPANY</th>
-                <th className="text-left p-4 font-semibold text-sm">PHONE</th>
-                <th className="text-left p-4 font-semibold text-sm">STATUS</th>
-                <th className="text-right p-4 font-semibold text-sm">ACTION</th>
-              </tr>
-            </thead>
-            <tbody>
-              {list.filter(c => {
-                const hay = `${c.name} ${c.email||''} ${c.company||''}`.toLowerCase();
-                return hay.includes(q.toLowerCase());
-              }).map(c => (
-                <tr key={c.id} className="border-t border-border hover:bg-secondary/30 transition-colors">
-                  <td className="p-4 font-medium">{c.name}</td>
-                  <td className="p-4">{c.email||'-'}</td>
-                  <td className="p-4">{c.company||'-'}</td>
-                  <td className="p-4">{c.phone||'-'}</td>
-                  <td className="p-4 capitalize">{c.status}</td>
-                  <td className="p-4">
-                    <div className="flex items-center justify-end gap-2">
-                      {accountByClientId[c.id] ? (
-                        <Button size="sm" variant="secondary" onClick={()=> toggleAccountActive(c.id)}>
-                          {accountByClientId[c.id].active ? "Disable Login" : "Enable Login"}
-                        </Button>
-                      ) : (
-                        <Button size="sm" variant="secondary" onClick={()=> startCreateLogin(c)}>Create Login</Button>
-                      )}
-                      <Button size="icon" variant="ghost" className="h-9 w-9 text-info hover:text-info hover:bg-info-soft" onClick={()=> startEdit(c)}>
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button size="icon" variant="ghost" className="h-9 w-9 text-danger hover:text-danger hover:bg-danger-soft" onClick={()=> remove(c.id)}>
-                        <Trash className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+  const withLogin = list.filter((c) => !!accountByClientId[c.id]).length;
+
+  return (
+    <div className="flex flex-col gap-6 p-6">
+      <PageHeader
+        title="Clients"
+        description="External contacts, and whether they can sign in to the client portal."
+        breadcrumbs={[{ label: "Users", to: "/users" }, { label: "Clients" }]}
+        actions={
+          <Button onClick={startAdd}>
+            <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+            Add client
+          </Button>
+        }
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <StatCard label="Clients" value={list.length} hint="On record" icon={Briefcase} />
+          <StatCard
+            label="Portal access"
+            value={withLogin}
+            hint={`${list.length - withLogin} without a login`}
+            icon={KeyRound}
+            tone={withLogin ? "info" : "neutral"}
+          />
         </div>
-      </div>
+      </PageHeader>
+
+      <DataTable
+        rows={list}
+        columns={columns}
+        rowKey={(c) => c.id}
+        searchAccessor={(c) => `${c.name} ${c.email ?? ""} ${c.company ?? ""} ${c.phone ?? ""}`}
+        searchPlaceholder="Search by name, email or company…"
+        onRowClick={startEdit}
+        empty={{
+          title: "No clients yet",
+          description: "Add a client, then optionally give them a portal login to raise tickets.",
+          action: <Button onClick={startAdd}>Add client</Button>,
+        }}
+      />
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-[95vw] w-[95vw] lg:max-w-[800px]">
