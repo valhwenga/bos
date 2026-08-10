@@ -7,6 +7,10 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Users, UserCheck, Building2 } from "lucide-react";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatCard } from "@/components/ui/stat-card";
 import { CompanySettingsStore } from "@/lib/companySettings";
 import type { Employee, EmployeeDocument } from "@/lib/hrmStore";
 
@@ -107,198 +111,115 @@ const HRMEmployees = () => {
     };
     reader.readAsDataURL(f);
   };
+  const columns: Column<Employee>[] = [
+    {
+      id: "employee",
+      header: "Employee",
+      sortValue: (e) => e.name,
+      cell: (e) => (
+        <div className="flex items-center gap-2.5">
+          <Avatar className="h-8 w-8">
+            <AvatarFallback className="bg-primary text-2xs font-medium text-primary-foreground">
+              {e.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex min-w-0 flex-col">
+            <span className="truncate font-medium">{e.name}</span>
+            <span className="text-xs text-muted-foreground">{e.id}</span>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: "contact",
+      header: "Contact",
+      hideOnMobile: true,
+      sortValue: (e) => e.email ?? "",
+      cell: (e) => (
+        <div className="flex flex-col text-xs">
+          <span className="text-foreground">{e.email || "—"}</span>
+          <span className="text-muted-foreground">{e.phone || ""}</span>
+        </div>
+      ),
+    },
+    { id: "department", header: "Department", sortValue: (e) => e.department ?? "", cell: (e) => e.department || <span className="text-subtle">—</span> },
+    { id: "designation", header: "Designation", hideOnMobile: true, sortValue: (e) => e.designation ?? "", cell: (e) => e.designation || <span className="text-subtle">—</span> },
+    { id: "joined", header: "Joined", hideOnMobile: true, sortValue: (e) => e.joiningDate ?? "", cell: (e) => e.joiningDate || <span className="text-subtle">—</span> },
+    {
+      id: "salary",
+      header: "Salary",
+      align: "right",
+      hideOnMobile: true,
+      sortValue: (e) => parseFloat(String(e.salary ?? "").replace(/[^0-9.]/g, "")) || 0,
+      cell: (e) => (e.salary ? `${cs.currencySymbol}${String(e.salary).replace(/[^0-9.,\s-]/g, "").trim()}` : "—"),
+    },
+    {
+      id: "status",
+      header: "Status",
+      sortValue: (e) => e.status ?? "",
+      cell: (e) => (
+        <span className={`inline-flex rounded-sm px-1.5 py-0.5 text-xs font-medium ${e.status === "Active" ? "bg-success-soft text-success" : "bg-muted text-muted-foreground"}`}>
+          {e.status || "Unknown"}
+        </span>
+      ),
+    },
+    {
+      id: "actions",
+      header: <span className="sr-only">Actions</span>,
+      align: "right",
+      width: "1%",
+      cell: (e) => (
+        <div className="inline-flex items-center justify-end gap-0.5" onClick={(ev) => ev.stopPropagation()}>
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => { setViewing(e); setViewOpen(true); }} aria-label={`View ${e.name}`}>
+            <Eye className="h-3.5 w-3.5" />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => startEdit(e)} aria-label={`Edit ${e.name}`}>
+            <Edit className="h-3.5 w-3.5" />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-danger" onClick={() => remove(e.id)} aria-label={`Delete ${e.name}`}>
+            <Trash className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
+  const activeCount = employees.filter((e) => e.status === "Active").length;
+  const departmentCount = new Set(employees.map((e) => e.departmentId || e.department).filter(Boolean)).size;
+
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold mb-2">Manage Employees</h1>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span>Dashboard</span>
-            <span>›</span>
-            <span>HRM System</span>
-            <span>›</span>
-            <span className="text-primary">Employees</span>
-          </div>
+    <div className="flex flex-col gap-6 p-6">
+      <PageHeader
+        title="Employees"
+        description="Everyone on the team, their role and where they sit."
+        breadcrumbs={[{ label: "HRM", to: "/hrm/employees" }, { label: "Employees" }]}
+        actions={
+          <Button onClick={startAdd}>
+            <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+            Add employee
+          </Button>
+        }
+      >
+        <div className="grid gap-3 sm:grid-cols-3">
+          <StatCard label="Employees" value={employees.length} hint="On the books" icon={Users} />
+          <StatCard label="Active" value={activeCount} hint={`${employees.length - activeCount} inactive`} icon={UserCheck} tone="success" />
+          <StatCard label="Departments" value={departmentCount} hint="Represented across the team" icon={Building2} />
         </div>
+      </PageHeader>
 
-        <Button size="sm" onClick={startAdd}>
-          <Plus className="w-4 h-4 mr-2" />
-          Add Employee
-        </Button>
-      </div>
-
-      <div className="bg-card rounded-lg border border-border overflow-hidden">
-        <div className="p-4 border-b border-border flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Select defaultValue="10">
-              <SelectTrigger className="w-20">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="10">10</SelectItem>
-                <SelectItem value="25">25</SelectItem>
-                <SelectItem value="50">50</SelectItem>
-              </SelectContent>
-            </Select>
-            <span className="text-sm text-muted-foreground">entries per page</span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input type="search" placeholder="Search employees..." className="pl-9 w-64" />
-            </div>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-secondary/50">
-              <tr>
-                <th className="text-left p-4 font-semibold text-sm">EMPLOYEE</th>
-                <th className="text-left p-4 font-semibold text-sm">CONTACT</th>
-                <th className="text-left p-4 font-semibold text-sm">DEPARTMENT</th>
-                <th className="text-left p-4 font-semibold text-sm">DESIGNATION</th>
-                <th className="text-left p-4 font-semibold text-sm">JOINING DATE</th>
-                <th className="text-left p-4 font-semibold text-sm">SALARY</th>
-                <th className="text-left p-4 font-semibold text-sm">STATUS</th>
-                <th className="text-right p-4 font-semibold text-sm">ACTION</th>
-              </tr>
-            </thead>
-            <tbody>
-              {employees.map((employee) => (
-                <tr key={employee.id} className="border-t border-border hover:bg-secondary/30 transition-colors">
-                  <td className="p-4">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="w-10 h-10">
-                        <AvatarFallback className="bg-primary text-primary-foreground font-medium">
-                          {employee.name.split(" ").map(n => n[0]).join("")}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="font-medium">{employee.name}</p>
-                        <p className="text-xs text-muted-foreground">{employee.id}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="p-4">
-                    <div className="text-sm">
-                      <p className="text-foreground">{employee.email}</p>
-                      <p className="text-muted-foreground">{employee.phone}</p>
-                    </div>
-                  </td>
-                  <td className="p-4">
-                    <span className="text-sm">{employee.department}</span>
-                  </td>
-                  <td className="p-4">
-                    <span className="text-sm">{employee.designation}</span>
-                  </td>
-                  <td className="p-4">
-                    <span className="text-sm">{employee.joiningDate}</span>
-                  </td>
-                  <td className="p-4">
-                    <span className="text-sm font-medium">
-                      {employee.salary ? `${cs.currencySymbol}${String(employee.salary).replace(/[^0-9.,\s-]/g, "").trim()}` : "-"}
-                    </span>
-                  </td>
-                  <td className="p-4">
-                    <Badge 
-                      variant={employee.status === "Active" ? "default" : "secondary"}
-                      className={employee.status === "Active" ? "bg-primary" : ""}
-                    >
-                      {employee.status}
-                    </Badge>
-                  </td>
-                  <td className="p-4">
-                    <div className="flex items-center justify-end gap-2">
-                      <Button size="icon" variant="ghost" className="h-9 w-9 text-info hover:text-info hover:bg-info-soft" onClick={() => { setViewing(employee); setViewOpen(true); }}>
-                        <Eye className="w-4 h-4" />
-                      </Button>
-                      <Button size="icon" variant="ghost" className="h-9 w-9 text-success hover:text-success hover:bg-success-soft" onClick={()=> startEdit(employee)}>
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button size="icon" variant="ghost" className="h-9 w-9 text-danger hover:text-danger hover:bg-danger-soft" onClick={()=> remove(employee.id)}>
-                        <Trash className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="p-4 border-t border-border flex items-center justify-between text-sm text-muted-foreground">
-          <span>Showing {showingFrom} to {showingTo} of {totalEntries} entries</span>
-          <div className="flex gap-1">
-            <Button variant="outline" size="sm" disabled>
-              Previous
-            </Button>
-            <Button variant="outline" size="sm" className="bg-primary text-primary-foreground">
-              1
-            </Button>
-            <Button variant="outline" size="sm" disabled>
-              Next
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      <Dialog open={viewOpen} onOpenChange={setViewOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Employee Details</DialogTitle>
-          </DialogHeader>
-          {viewing && (
-            <div className="grid gap-4 text-sm">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div><span className="text-muted-foreground">Name:</span> {viewing.name}</div>
-                <div><span className="text-muted-foreground">ID:</span> {viewing.id}</div>
-                <div><span className="text-muted-foreground">Email:</span> {viewing.email || "-"}</div>
-                <div><span className="text-muted-foreground">Phone:</span> {viewing.phone || "-"}</div>
-                <div><span className="text-muted-foreground">Department:</span> {viewing.department || "-"}</div>
-                <div><span className="text-muted-foreground">Designation:</span> {viewing.designation || "-"}</div>
-                <div><span className="text-muted-foreground">Joining Date:</span> {viewing.joiningDate || "-"}</div>
-                <div><span className="text-muted-foreground">Salary:</span> {viewing.salary ? `${cs.currencySymbol}${String(viewing.salary).replace(/[^0-9.,\s-]/g, "").trim()}` : "-"}</div>
-                <div><span className="text-muted-foreground">Status:</span> {viewing.status || "-"}</div>
-              </div>
-
-              <div className="grid gap-2">
-                <div className="font-medium">Documents</div>
-                <div className="grid gap-1">
-                  <div>
-                    <span className="text-muted-foreground">CV:</span>{" "}
-                    {viewing.cv?.dataUrl ? <a className="underline" href={viewing.cv.dataUrl} target="_blank">{viewing.cv.name}</a> : "-"}
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Qualifications:</span>{" "}
-                    {viewing.qualifications?.dataUrl ? <a className="underline" href={viewing.qualifications.dataUrl} target="_blank">{viewing.qualifications.name}</a> : "-"}
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">ID Copy:</span>{" "}
-                    {viewing.idCopy?.dataUrl ? <a className="underline" href={viewing.idCopy.dataUrl} target="_blank">{viewing.idCopy.name}</a> : "-"}
-                  </div>
-                  {(viewing.otherDocuments || []).length > 0 && (
-                    <div className="grid gap-1">
-                      <span className="text-muted-foreground">Other:</span>
-                      <div className="grid gap-1">
-                        {(viewing.otherDocuments || []).map((d) => (
-                          <a key={d.name + d.size} className="underline" href={d.dataUrl} target="_blank">{d.name}</a>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setViewOpen(false)}>
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DataTable
+        rows={employees}
+        columns={columns}
+        rowKey={(e) => e.id}
+        searchAccessor={(e) => `${e.name} ${e.id} ${e.email ?? ""} ${e.department ?? ""} ${e.designation ?? ""}`}
+        searchPlaceholder="Search by name, department or role…"
+        onRowClick={(e) => { setViewing(e); setViewOpen(true); }}
+        empty={{
+          title: "No employees yet",
+          description: "Add your first employee to start tracking attendance, leave and payroll.",
+          action: <Button onClick={startAdd}>Add employee</Button>,
+        }}
+      />
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-[95vw] w-[95vw] lg:max-w-[1200px] h-[85vh] max-h-[85vh] overflow-y-auto overflow-x-hidden">

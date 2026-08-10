@@ -2,6 +2,9 @@ import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Plus, Calendar, CheckCircle, XCircle, Clock, AlertCircle, Eye, Check, X } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatCard } from "@/components/ui/stat-card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -153,160 +156,133 @@ export default function HRMLeave() {
     setApplyOpen(false);
     setForm({ employee: user.name || "", employeeId: user.id || "", type: "Sick Leave", startDate: "", endDate: "", reason: "" });
   };
+  type LeaveRow = (typeof visibleLeaves)[number];
+
+  const columns: Column<LeaveRow>[] = [
+    {
+      id: "employee",
+      header: "Employee",
+      sortValue: (r) => r.employee,
+      cell: (r) => (
+        <div className="flex items-center gap-2.5">
+          <Avatar className="h-8 w-8">
+            <AvatarFallback className="bg-primary text-2xs font-medium text-primary-foreground">
+              {r.employee.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex min-w-0 flex-col">
+            <span className="truncate font-medium">{r.employee}</span>
+            <span className="text-xs text-muted-foreground">{r.employeeId}</span>
+          </div>
+        </div>
+      ),
+    },
+    { id: "type", header: "Type", sortValue: (r) => r.type, cell: (r) => r.type },
+    {
+      id: "dates",
+      header: "Dates",
+      sortValue: (r) => r.startDate,
+      cell: (r) => (
+        <span className="whitespace-nowrap text-muted-foreground">
+          {new Date(r.startDate).toLocaleDateString()} – {new Date(r.endDate).toLocaleDateString()}
+        </span>
+      ),
+    },
+    {
+      id: "days",
+      header: "Days",
+      align: "right",
+      sortValue: (r) => r.days,
+      cell: (r) => <span className="font-medium">{r.days}</span>,
+    },
+    {
+      id: "reason",
+      header: "Reason",
+      hideOnMobile: true,
+      cell: (r) => <span className="block max-w-xs truncate text-muted-foreground" title={r.reason}>{r.reason || "—"}</span>,
+    },
+    {
+      id: "status",
+      header: "Status",
+      sortValue: (r) => r.status,
+      cell: (r) => (
+        <span className={`inline-flex rounded-sm px-1.5 py-0.5 text-xs font-medium ${statusColors[r.status as keyof typeof statusColors] ?? "bg-muted text-muted-foreground"}`}>
+          {r.status}
+        </span>
+      ),
+    },
+    {
+      id: "actions",
+      header: <span className="sr-only">Actions</span>,
+      align: "right",
+      width: "1%",
+      cell: (r) => (
+        <div className="inline-flex items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()}>
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => view(r)} aria-label="View request">
+            <Eye className="h-3.5 w-3.5" />
+          </Button>
+          {r.status === "Pending" && canActOnLeave(r) && (
+            <>
+              <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-success" onClick={() => approve(r)} aria-label="Approve request">
+                <Check className="h-3.5 w-3.5" />
+              </Button>
+              <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-danger" onClick={() => reject(r)} aria-label="Reject request">
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </>
+          )}
+        </div>
+      ),
+    },
+  ];
+
+  const pendingCount = visibleLeaves.filter((r) => r.status === "Pending").length;
+
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold mb-2">Leave Management</h1>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span>Dashboard</span>
-            <span>›</span>
-            <span>HRM System</span>
-            <span>›</span>
-            <span className="text-primary">Leave</span>
-          </div>
+    <div className="flex flex-col gap-6 p-6">
+      <PageHeader
+        title="Leave"
+        description="Requests, approvals and how much leave has been taken."
+        breadcrumbs={[{ label: "HRM", to: "/hrm/employees" }, { label: "Leave" }]}
+        actions={
+          <Button onClick={() => setApplyOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+            Apply for leave
+          </Button>
+        }
+      >
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {stats.map((stat) => (
+            <StatCard key={stat.type} label={stat.type} value={stat.count} hint="Requests recorded" />
+          ))}
         </div>
+      </PageHeader>
 
-        <Button size="sm" onClick={()=> setApplyOpen(true)}>
-          <Plus className="w-4 h-4 mr-2" />
-          Apply Leave
-        </Button>
-      </div>
+      <DataTable
+        rows={visibleLeaves}
+        columns={columns}
+        rowKey={(r) => r.id}
+        searchAccessor={(r) => `${r.employee} ${r.employeeId} ${r.type} ${r.reason ?? ""}`}
+        searchPlaceholder="Search by employee, type or reason…"
+        onRowClick={view}
+        toolbar={
+          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}>
+            <SelectTrigger className="h-9 w-36"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="approved">Approved</SelectItem>
+              <SelectItem value="rejected">Rejected</SelectItem>
+            </SelectContent>
+          </Select>
+        }
+        empty={{
+          title: pendingCount ? "Nothing matches this filter" : "No leave requests",
+          description: "Requests appear here once someone applies for leave.",
+          action: <Button onClick={() => setApplyOpen(true)}>Apply for leave</Button>,
+        }}
+      />
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        {stats.map((stat, index) => (
-          <Card key={index} className="p-5">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-muted-foreground">{stat.type}</span>
-              <div className={`w-10 h-10 rounded-lg ${stat.color} flex items-center justify-center`}>
-                <span className="text-xl">{stat.icon}</span>
-              </div>
-            </div>
-            <p className="text-3xl font-bold">{stat.count}</p>
-          </Card>
-        ))}
-      </div>
-
-      <div className="bg-card rounded-lg border border-border overflow-hidden">
-        <div className="p-4 border-b border-border flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Select value={statusFilter} onValueChange={(v)=> setStatusFilter(v as typeof statusFilter)}>
-              <SelectTrigger className="w-32">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="approved">Approved</SelectItem>
-                <SelectItem value="rejected">Rejected</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Select defaultValue="10">
-              <SelectTrigger className="w-20">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="10">10</SelectItem>
-                <SelectItem value="25">25</SelectItem>
-                <SelectItem value="50">50</SelectItem>
-              </SelectContent>
-            </Select>
-            <span className="text-sm text-muted-foreground">entries</span>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-secondary/50">
-              <tr>
-                <th className="text-left p-4 font-semibold text-sm">EMPLOYEE</th>
-                <th className="text-left p-4 font-semibold text-sm">LEAVE TYPE</th>
-                <th className="text-left p-4 font-semibold text-sm">START DATE</th>
-                <th className="text-left p-4 font-semibold text-sm">END DATE</th>
-                <th className="text-left p-4 font-semibold text-sm">DAYS</th>
-                <th className="text-left p-4 font-semibold text-sm">REASON</th>
-                <th className="text-left p-4 font-semibold text-sm">STATUS</th>
-                <th className="text-right p-4 font-semibold text-sm">ACTION</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visibleLeaves.map((request) => (
-                <tr key={request.id} className="border-t border-border hover:bg-secondary/30 transition-colors">
-                  <td className="p-4">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="w-10 h-10">
-                        <AvatarFallback className="bg-primary text-primary-foreground font-medium">
-                          {request.employee.split(" ").map(n => n[0]).join("")}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="font-medium">{request.employee}</p>
-                        <p className="text-xs text-muted-foreground">{request.employeeId}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="p-4">
-                    <span className="text-sm">{request.type}</span>
-                  </td>
-                  <td className="p-4">
-                    <span className="text-sm">{new Date(request.startDate).toLocaleDateString()}</span>
-                  </td>
-                  <td className="p-4">
-                    <span className="text-sm">{new Date(request.endDate).toLocaleDateString()}</span>
-                  </td>
-                  <td className="p-4">
-                    <Badge variant="secondary">{request.days} {request.days === 1 ? 'day' : 'days'}</Badge>
-                  </td>
-                  <td className="p-4">
-                    <span className="text-sm text-muted-foreground line-clamp-2">{request.reason}</span>
-                  </td>
-                  <td className="p-4">
-                    <Badge className={statusColors[request.status as keyof typeof statusColors]}>
-                      {request.status}
-                    </Badge>
-                  </td>
-                  <td className="p-4">
-                    <div className="flex items-center justify-end gap-2">
-                      <Button size="icon" variant="ghost" className="h-9 w-9" onClick={()=> view(request)}>
-                        <Eye className="w-4 h-4" />
-                      </Button>
-                    {request.status === "Pending" && canActOnLeave(request) && (
-                      <div className="flex items-center justify-end gap-2">
-                        <Button size="icon" variant="ghost" className="h-9 w-9 text-success hover:text-success hover:bg-success-soft" onClick={()=> approve(request)}>
-                          <Check className="w-4 h-4" />
-                        </Button>
-                        <Button size="icon" variant="ghost" className="h-9 w-9 text-danger hover:text-danger hover:bg-danger-soft" onClick={()=> reject(request)}>
-                          <X className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    )}
-                    {request.status !== "Pending" && <Clock className="w-4 h-4 text-muted-foreground" />}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="p-4 border-t border-border flex items-center justify-between text-sm text-muted-foreground">
-          <span>Showing {visibleLeaves.length ? 1 : 0} to {visibleLeaves.length} of {visibleLeaves.length} entries</span>
-          <div className="flex gap-1">
-            <Button variant="outline" size="sm" disabled>
-              Previous
-            </Button>
-            <Button variant="outline" size="sm" className="bg-primary text-primary-foreground">
-              1
-            </Button>
-            <Button variant="outline" size="sm" disabled>
-              Next
-            </Button>
-          </div>
-        </div>
-      </div>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>

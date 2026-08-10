@@ -1,5 +1,8 @@
 import { Button } from "@/components/ui/button";
-import { Download, Calendar, Search } from "lucide-react";
+import { Download, Calendar, Search, CalendarClock, CheckCircle2, Timer, ListChecks } from "lucide-react";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatCard } from "@/components/ui/stat-card";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -94,207 +97,107 @@ const HRMAttendance = () => {
     return "Absent";
   })();
 
-  return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold mb-2">Employee Attendance</h1>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span>Dashboard</span>
-            <span>›</span>
-            <span>HRM System</span>
-            <span>›</span>
-            <span className="text-primary">Attendance</span>
+  type AttendanceRow = (typeof rows)[number];
+
+  const columns: Column<AttendanceRow>[] = [
+    {
+      id: "employee",
+      header: "Employee",
+      sortValue: (r) => r.employee,
+      cell: (r) => (
+        <div className="flex items-center gap-2.5">
+          <Avatar className="h-8 w-8">
+            <AvatarFallback className="bg-primary text-2xs font-medium text-primary-foreground">
+              {r.employee.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex min-w-0 flex-col">
+            <span className="truncate font-medium">{r.employee}</span>
+            <span className="text-xs text-muted-foreground">{r.id}</span>
           </div>
         </div>
+      ),
+    },
+    { id: "department", header: "Department", hideOnMobile: true, sortValue: (r) => r.department ?? "", cell: (r) => r.department || <span className="text-subtle">—</span> },
+    { id: "date", header: "Date", sortValue: (r) => r.date, cell: (r) => r.date },
+    { id: "in", header: "Check in", align: "right", cell: (r) => <span className="font-medium">{r.checkIn}</span> },
+    { id: "out", header: "Check out", align: "right", cell: (r) => <span className="font-medium">{r.checkOut}</span> },
+    { id: "hours", header: "Hours", align: "right", hideOnMobile: true, cell: (r) => r.workHours },
+    {
+      id: "status",
+      header: "Status",
+      sortValue: (r) => r.status,
+      cell: (r) => (
+        <span className={`inline-flex rounded-sm px-1.5 py-0.5 text-xs font-medium ${statusColors[r.status as keyof typeof statusColors] ?? "bg-muted text-muted-foreground"}`}>
+          {r.status}
+        </span>
+      ),
+    },
+  ];
 
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={doClockIn}>
-            Clock In
-          </Button>
-          <Button variant="outline" size="sm" onClick={doClockOut}>
-            Clock Out
-          </Button>
-          <Select value={view} onValueChange={(v)=> setView(v as ViewMode)}>
-            <SelectTrigger className="w-32">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="today">Today</SelectItem>
-              <SelectItem value="date">Selected Date</SelectItem>
-              <SelectItem value="all">All</SelectItem>
-            </SelectContent>
-          </Select>
-          <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-muted-foreground" />
+  return (
+    <div className="flex flex-col gap-6 p-6">
+      <PageHeader
+        title="Attendance"
+        description="Clock-ins and hours worked across the team."
+        breadcrumbs={[{ label: "HRM", to: "/hrm/employees" }, { label: "Attendance" }]}
+        actions={
+          <>
+            <Button variant="outline" onClick={doClockIn}>Clock in</Button>
+            <Button variant="outline" onClick={doClockOut}>Clock out</Button>
+            <Button onClick={handleExport}>
+              <Download className="mr-2 h-4 w-4" aria-hidden="true" />
+              Export
+            </Button>
+          </>
+        }
+      >
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            label={statusLabel}
+            value={dayStatus}
+            hint={`${statusEntry?.clockIn ? new Date(statusEntry.clockIn).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"} – ${statusEntry?.clockOut ? new Date(statusEntry.clockOut).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}`}
+            icon={CalendarClock}
+          />
+          {/* Labels below now describe what is actually counted. "Late arrivals"
+              previously showed the total record count, and "On leave" showed
+              people who had clocked in but not out. */}
+          <StatCard label="Completed days" value={presentCount} hint="Clocked in and out" icon={CheckCircle2} tone="success" />
+          <StatCard label="Still clocked in" value={inProgress} hint="No clock-out recorded" icon={Timer} tone={inProgress ? "warning" : "neutral"} />
+          <StatCard label="Records" value={rows.length} hint="In the selected period" icon={ListChecks} />
+        </div>
+      </PageHeader>
+
+      <DataTable
+        rows={rows}
+        columns={columns}
+        rowKey={(r) => `${r.id}-${r.date}`}
+        searchAccessor={(r) => `${r.employee} ${r.id} ${r.department ?? ""} ${r.date}`}
+        searchPlaceholder="Search by employee or date…"
+        toolbar={
+          <>
+            <Select value={view} onValueChange={(v) => setView(v as ViewMode)}>
+              <SelectTrigger className="h-9 w-32"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="today">Today</SelectItem>
+                <SelectItem value="date">Selected date</SelectItem>
+                <SelectItem value="all">All</SelectItem>
+              </SelectContent>
+            </Select>
             <Input
               type="date"
               value={selectedDate}
-              onChange={(e)=> { setSelectedDate(e.target.value); setView("date"); }}
-              className="w-[150px]"
+              onChange={(e) => { setSelectedDate(e.target.value); setView("date"); }}
+              className="h-9 w-36"
+              aria-label="Selected date"
             />
-          </div>
-          <Button size="sm" onClick={handleExport}>
-            <Download className="w-4 h-4 mr-2" />
-            Export Report
-          </Button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-card rounded-lg border border-border p-5">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-muted-foreground">{statusLabel}</span>
-            <div className="w-10 h-10 rounded-lg bg-secondary/40 flex items-center justify-center">
-              <span className="text-xl">📅</span>
-            </div>
-          </div>
-          <p className="text-3xl font-bold">{dayStatus}</p>
-          <p className="text-xs text-muted-foreground mt-1">
-            {statusEntry?.clockIn ? new Date(statusEntry.clockIn).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}) : '-'}
-            {" "}–{" "}
-            {statusEntry?.clockOut ? new Date(statusEntry.clockOut).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}) : '-'}
-          </p>
-        </div>
-        <div className="bg-card rounded-lg border border-border p-5">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-muted-foreground">Present Today</span>
-            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-              <span className="text-xl">✓</span>
-            </div>
-          </div>
-          <p className="text-3xl font-bold">{presentCount}</p>
-          <p className="text-xs text-muted-foreground mt-1">Recorded days</p>
-        </div>
-
-        <div className="bg-card rounded-lg border border-border p-5">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-muted-foreground">On Leave</span>
-            <div className="w-10 h-10 rounded-lg bg-info/10 flex items-center justify-center">
-              <span className="text-xl">🏖️</span>
-            </div>
-          </div>
-          <p className="text-3xl font-bold">{inProgress}</p>
-          <p className="text-xs text-muted-foreground mt-1">Checked-in, not out</p>
-        </div>
-
-        <div className="bg-card rounded-lg border border-border p-5">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-muted-foreground">Late Arrivals</span>
-            <div className="w-10 h-10 rounded-lg bg-warning/10 flex items-center justify-center">
-              <span className="text-xl">⏰</span>
-            </div>
-          </div>
-          <p className="text-3xl font-bold">{rows.length}</p>
-          <p className="text-xs text-muted-foreground mt-1">Total records</p>
-        </div>
-
-        <div className="bg-card rounded-lg border border-border p-5">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-muted-foreground">Absent</span>
-            <div className="w-10 h-10 rounded-lg bg-danger/10 flex items-center justify-center">
-              <span className="text-xl">✗</span>
-            </div>
-          </div>
-          <p className="text-3xl font-bold">{absentCount}</p>
-          <p className="text-xs text-muted-foreground mt-1">No check-in</p>
-        </div>
-      </div>
-
-      <div className="bg-card rounded-lg border border-border overflow-hidden">
-        <div className="p-4 border-b border-border flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Select defaultValue="10">
-              <SelectTrigger className="w-20">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="10">10</SelectItem>
-                <SelectItem value="25">25</SelectItem>
-                <SelectItem value="50">50</SelectItem>
-              </SelectContent>
-            </Select>
-            <span className="text-sm text-muted-foreground">entries per page</span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input type="search" placeholder="Search..." className="pl-9 w-64" />
-            </div>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-secondary/50">
-              <tr>
-                <th className="text-left p-4 font-semibold text-sm">EMPLOYEE</th>
-                <th className="text-left p-4 font-semibold text-sm">DEPARTMENT</th>
-                <th className="text-left p-4 font-semibold text-sm">DATE</th>
-                <th className="text-left p-4 font-semibold text-sm">CHECK IN</th>
-                <th className="text-left p-4 font-semibold text-sm">CHECK OUT</th>
-                <th className="text-left p-4 font-semibold text-sm">WORK HOURS</th>
-                <th className="text-left p-4 font-semibold text-sm">STATUS</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((record, index) => (
-                <tr key={index} className="border-t border-border hover:bg-secondary/30 transition-colors">
-                  <td className="p-4">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="w-10 h-10">
-                        <AvatarFallback className="bg-primary text-primary-foreground font-medium">
-                          {record.employee.split(" ").map(n => n[0]).join("")}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="font-medium">{record.employee}</p>
-                        <p className="text-xs text-muted-foreground">{record.id}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="p-4">
-                    <span className="text-sm">{record.department}</span>
-                  </td>
-                  <td className="p-4">
-                    <span className="text-sm">{record.date}</span>
-                  </td>
-                  <td className="p-4">
-                    <span className="text-sm font-medium">{record.checkIn}</span>
-                  </td>
-                  <td className="p-4">
-                    <span className="text-sm font-medium">{record.checkOut}</span>
-                  </td>
-                  <td className="p-4">
-                    <span className="text-sm">{record.workHours}</span>
-                  </td>
-                  <td className="p-4">
-                    <Badge className={statusColors[record.status as keyof typeof statusColors]}>
-                      {record.status}
-                    </Badge>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="p-4 border-t border-border flex items-center justify-between text-sm text-muted-foreground">
-          <span>Showing {rows.length ? 1 : 0} to {rows.length} of {rows.length} entries</span>
-          <div className="flex gap-1">
-            <Button variant="outline" size="sm" disabled>
-              Previous
-            </Button>
-            <Button variant="outline" size="sm" className="bg-primary text-primary-foreground">
-              1
-            </Button>
-            <Button variant="outline" size="sm" disabled>
-              Next
-            </Button>
-          </div>
-        </div>
-      </div>
+          </>
+        }
+        empty={{
+          title: "No attendance recorded",
+          description: "Clock-ins for the selected period will show up here.",
+        }}
+      />
     </div>
   );
 };
