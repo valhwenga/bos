@@ -364,6 +364,8 @@ const InvoicePrint = () => {
                       ${c.bankAccount ? `<div>Account: ${c.bankAccount}</div>` : ''}
                       ${c.branchCode ? `<div>Branch Code: ${c.branchCode}</div>` : ''}
                       ${c.branchName ? `<div>Branch: ${c.branchName}</div>` : ''}
+                      ${c.bankSwift ? `<div>SWIFT: ${c.bankSwift}</div>` : ''}
+                      ${c.bankIban ? `<div>IBAN: ${c.bankIban}</div>` : ''}
                       <div>Reference: ${inv.number}</div>
                     </div>
                   </div>
@@ -617,6 +619,8 @@ const InvoicePrint = () => {
                       {c.bankAccount && <div><span className="font-semibold">Account:</span> {c.bankAccount}</div>}
                       {c.branchCode && <div><span className="font-semibold">Branch Code:</span> {c.branchCode}</div>}
                       {c.branchName && <div><span className="font-semibold">Branch:</span> {c.branchName}</div>}
+                      {c.bankSwift && <div><span className="font-semibold">SWIFT:</span> {c.bankSwift}</div>}
+                      {c.bankIban && <div><span className="font-semibold">IBAN:</span> {c.bankIban}</div>}
                       <div><span className="font-semibold">Reference:</span> {inv.number}</div>
                     </div>
                   </div>

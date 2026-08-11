@@ -295,8 +295,9 @@ const QuotationPrint = () => {
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-[color:var(--brand)] bg-gradient-to-r from-[color:var(--brand)] to-[color:var(--brand-2)]">
-                    <td className="px-3 py-1.5" colSpan={3}></td>
-                    <td className="px-3 py-1.5 text-right text-sm font-extrabold text-white whitespace-nowrap">GRAND TOTAL</td>
+                    <td className="px-3 py-1.5" colSpan={2}></td>
+                    <td className="whitespace-nowrap px-3 py-1.5 text-right text-sm font-extrabold text-white">GRAND TOTAL</td>
+                    <td className="px-3 py-1.5 text-right text-sm font-extrabold text-white">{currency(totals.grand, c.currencySymbol)}</td>
                   </tr>
                 </tfoot>
               </table>
@@ -304,12 +305,53 @@ const QuotationPrint = () => {
           </div>
 
           {/* Summary — mt-auto pins this to the bottom of the sheet. */}
-          <div className="doc__footer avoid-break mt-auto px-7 pt-8">
-            <div className="text-sm text-gray-600">
-              <div className="mb-1.5 font-medium">Thank You For Your Business!</div>
-              <div className="mb-4 font-medium">Quotation Terms:</div>
-              <div className="text-xs text-gray-600">This quotation is valid until {new Date(q.expiryDate).toLocaleDateString('en-GB')}</div>
-              <div className="mt-3">Payment via bank transfer. Please include quotation number as reference.</div>
+          <div className="doc__footer avoid-break mt-auto px-7 pb-2 pt-3">
+            <div className="text-xs text-gray-600">
+              <div className="mb-1 font-medium">Thank You For Your Business!</div>
+              {q.expiryDate && (
+                <div className="text-[11px] text-gray-600">
+                  This quotation is valid until {new Date(q.expiryDate).toLocaleDateString('en-GB')}
+                </div>
+              )}
+              {c.footerNote && <div className="mt-0.5 text-[11px] text-gray-500 whitespace-pre-wrap">{c.footerNote}</div>}
+            </div>
+
+            <div className="mt-2 grid grid-cols-1 gap-5 md:grid-cols-2">
+              {/* Banking details: a quotation is what a customer pays against
+                  once accepted, so it needs the same details as an invoice. */}
+              <div className="rounded-md border border-[color:var(--brand)]/20 bg-gradient-to-r from-[color:var(--brand)]/[0.06] to-[color:var(--brand-2)]/[0.06] px-4 py-3">
+                <div className="mb-1 text-xs font-medium">Banking Details</div>
+                <div className="space-y-0.5 text-[11px] text-gray-700">
+                  {c.bankName && <div><span className="font-semibold">Bank:</span> {c.bankName}</div>}
+                  {c.bankAccount && <div><span className="font-semibold">Account:</span> {c.bankAccount}</div>}
+                  {c.branchCode && <div><span className="font-semibold">Branch Code:</span> {c.branchCode}</div>}
+                  {c.branchName && <div><span className="font-semibold">Branch:</span> {c.branchName}</div>}
+                  {c.bankSwift && <div><span className="font-semibold">SWIFT:</span> {c.bankSwift}</div>}
+                  {c.bankIban && <div><span className="font-semibold">IBAN:</span> {c.bankIban}</div>}
+                  <div><span className="font-semibold">Reference:</span> {q.number}</div>
+                </div>
+              </div>
+
+              <div className="rounded-md border border-[color:var(--brand)]/20 bg-gradient-to-r from-[color:var(--brand)]/[0.06] to-[color:var(--brand-2)]/[0.06] px-4 py-3">
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs">
+                    <span className="whitespace-nowrap text-gray-600">Sub Total</span>
+                    <span className="font-medium">{currency(totals.subtotal, c.currencySymbol)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="whitespace-nowrap text-gray-600">Tax (VAT)</span>
+                    <span className="font-medium">{currency(totals.tax, c.currencySymbol)}</span>
+                  </div>
+                  <div className="flex justify-between border-t border-[color:var(--brand)]/20 pt-1 text-sm font-bold">
+                    <span className="whitespace-nowrap">TOTAL</span>
+                    <span>{currency(totals.grand, c.currencySymbol)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-2 text-[11px] text-gray-500">
+              Payment via bank transfer. Please include the quotation number as reference.
             </div>
           </div>
         </div>
