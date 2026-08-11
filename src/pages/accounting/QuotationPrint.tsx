@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { AccountingStore, Quotation } from "@/lib/accountingStore";
 import { CompanySettingsStore } from "@/lib/companySettings";
 import { a4PrintCss } from "@/lib/printStyles";
+import { useFitToPage } from "@/lib/useFitToPage";
 import { Button } from "@/components/ui/button";
 import { PaymentStore } from "@/lib/paymentStore";
 import { PDF_COLORS, PDF_CONFIG, generatePDFHTML } from "@/lib/pdfGenerator";
@@ -39,6 +40,8 @@ const QuotationPrint = () => {
 
   const q: Quotation | undefined = AccountingStore.listQuotes().find(i => i.id === id);
   const c = CompanySettingsStore.get();
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const fitScale = useFitToPage(sheetRef, [q]);
   const billTo = useMemo(() => {
     const cust = q?.customer;
     if (!cust) return undefined;
@@ -61,7 +64,7 @@ const QuotationPrint = () => {
   if (!q) return (
     <div className="p-6">
       <Button variant="secondary" onClick={()=> navigate(-1)}>Back</Button>
-      <div className="mt-4">Quotation not found.</div>
+      <div className="mt-3">Quotation not found.</div>
     </div>
   );
 
@@ -166,8 +169,12 @@ const QuotationPrint = () => {
 
       <div
         id="print-root"
+        ref={sheetRef}
         className="doc relative mx-auto bg-white shadow print:shadow-none"
         style={{
+          // Set by useFitToPage; 1 unless the document only just overflows.
+          transform: `scale(${fitScale})`,
+          transformOrigin: 'top center',
           width: '210mm',
           minHeight: '297mm',
           // The document's brand colour comes from Company Settings; this used
@@ -181,78 +188,65 @@ const QuotationPrint = () => {
           <img src={c.logoDataUrl} aria-hidden className="pointer-events-none select-none opacity-[0.035] absolute -right-16 -bottom-10 w-[300mm] max-w-none -z-10" />
         )}
         {/* Document padding wrapper */}
-        <div className="doc__body relative z-10 flex flex-col">
+        <div className="doc__body relative z-10 m-2 flex flex-col border-2 border-[color:var(--brand)]">
           {/* Top colored edge */}
-          <div className="h-2 bg-gradient-to-r from-[color:var(--brand)] to-[color:var(--brand-2)]"></div>
+          <div className="h-1.5 shrink-0 bg-gradient-to-r from-[color:var(--brand)] to-[color:var(--brand-2)]"></div>
           
           {/* Main content with colored edges */}
-          <div className="flex flex-1 flex-col border-x-4 border-[color:var(--brand)]">
+          <div className="flex flex-1 flex-col">
             {/* Clean Header with Logo */}
             <div className="bg-white border-b border-gray-200">
-              <div className="px-10 py-7 flex items-start justify-between">
+              <div className="px-7 py-3 flex items-start justify-between">
                 <div className="flex-1">
                   {c.logoDataUrl && (
-                    <div className="mb-4 bg-white p-5 rounded-lg inline-block">
-                      <img src={c.logoDataUrl} className="h-32 w-auto max-w-[320px] object-contain" />
+                    <div className="mb-2 inline-block rounded bg-white p-1">
+                      <img src={c.logoDataUrl} className="h-14 w-auto max-w-[200px] object-contain" />
                     </div>
                   )}
                   <div className="text-sm text-gray-600">
                     <div className="mt-2">
-                      <div className="font-bold text-base">Quotation No:</div>
-                      <div className="text-base font-semibold">{q.number}</div>
+                      <div className="text-xs font-bold">Quotation No:</div>
+                      <div className="text-sm font-semibold">{q.number}</div>
                     </div>
                     <div className="mt-2">
-                      <div className="font-bold text-base">Date:</div>
-                      <div className="text-base font-semibold">{new Date(q.createdAt).toLocaleDateString('en-GB')}</div>
+                      <div className="text-xs font-bold">Date:</div>
+                      <div className="text-sm font-semibold">{new Date(q.createdAt).toLocaleDateString('en-GB')}</div>
                     </div>
                     {q.expiryDate && (
                       <div className="mt-2">
-                        <div className="font-bold text-base">Valid Until:</div>
-                        <div className="text-base font-semibold">{new Date(q.expiryDate).toLocaleDateString('en-GB')}</div>
+                        <div className="text-xs font-bold">Valid Until:</div>
+                        <div className="text-sm font-semibold">{new Date(q.expiryDate).toLocaleDateString('en-GB')}</div>
                       </div>
                     )}
                   </div>
                 </div>
-                <div className="text-right ml-8">
-                  <div className="text-3xl font-bold text-gray-900">QUOTATION</div>
-                  <div className="mt-1 text-sm text-gray-600 space-y-1">
-                    <div className="text-xl font-semibold text-gray-900">Spike Technologies</div>
-                    <div>
-                      <div className="font-medium">Company registration</div>
-                      <div>2021/847783/07</div>
-                    </div>
-                    <div>
-                      <div className="font-medium">Website</div>
-                      <div>www.spiketech.co.za</div>
-                    </div>
-                    <div>
-                      <div className="font-medium">Email</div>
-                      <div>accounts@spiketech.co.za</div>
-                    </div>
-                    {c.phone && (
-                      <div>
-                        <div className="font-medium">Phone</div>
-                        <div>{c.phone}</div>
-                      </div>
-                    )}
+                <div className="ml-6 text-right">
+                  <div className="text-2xl font-bold leading-none text-gray-900">QUOTATION</div>
+                  {/* From Company Settings; these were hardcoded to one company. */}
+                  <div className="mt-1.5 text-[11px] leading-snug text-gray-600">
+                    <div className="text-base font-semibold text-gray-900">{c.name}</div>
+                    {c.taxId && <div>Reg/Tax: {c.taxId}</div>}
+                    {c.address && <div className="whitespace-pre-line">{c.address}</div>}
+                    {c.email && <div>{c.email}</div>}
+                    {c.phone && <div>{c.phone}</div>}
                   </div>
                 </div>
               </div>
             </div>
 
             {/* Bill To Section */}
-            <div className="px-10 mt-5">
+            <div className="px-7 mt-1.5">
               <div className="bg-gradient-to-r from-[color:var(--brand)]/[0.06] to-[color:var(--brand-2)]/[0.06] rounded-lg p-6 border border-[color:var(--brand)]/20">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Left Column - Bill To */}
                   <div>
-                    <div className="text-sm font-semibold text-[color:var(--brand)] uppercase tracking-wide mb-3">Bill To</div>
+                    <div className="text-[11px] font-semibold text-[color:var(--brand)] uppercase tracking-wide mb-1">Bill To</div>
                     <div className="text-gray-900">
                       <div className="font-semibold text-lg">{q.customer.companyName || q.customer.name}</div>
                       <div className="text-gray-700">{q.customer.name}</div>
                       {q.customer.email && <div className="text-gray-600">{q.customer.email}</div>}
                       {q.customer.responsible?.name && (
-                        <div className="mt-2 text-gray-600">Attn: {q.customer.responsible.name}{q.customer.responsible.title ? `, ${q.customer.responsible.title}` : ""}</div>
+                        <div className="mt-1 text-gray-600">Attn: {q.customer.responsible.name}{q.customer.responsible.title ? `, ${q.customer.responsible.title}` : ""}</div>
                       )}
                     </div>
                   </div>
@@ -260,7 +254,7 @@ const QuotationPrint = () => {
                   {/* Right Column - Address */}
                   {billTo?.addr && (
                     <div>
-                      <div className="text-sm font-semibold text-[color:var(--brand)] uppercase tracking-wide mb-3">Address</div>
+                      <div className="text-[11px] font-semibold text-[color:var(--brand)] uppercase tracking-wide mb-1">Address</div>
                       <div className="text-gray-600 whitespace-pre-line">
                         {(billTo.addr.line1||"")}
                         {billTo.addr.line2 ? `\n${billTo.addr.line2}` : ""}
@@ -275,34 +269,34 @@ const QuotationPrint = () => {
           </div>
 
           {/* Items table */}
-          <div className="px-10">
+          <div className="px-7">
             <div className="rounded border border-gray-200 overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-gradient-to-r from-[color:var(--brand)] to-[color:var(--brand-2)] text-white">
                   <tr>
-                    <th className="text-left p-4 font-semibold" colSpan={2}>Description</th>
-                    <th className="text-right p-4 font-semibold">Unit Price</th>
-                    <th className="text-right p-4 font-semibold">Quantity</th>
-                    <th className="text-right p-4 font-semibold">Total</th>
+                    <th className="text-left px-3 py-1.5 font-semibold" colSpan={2}>Description</th>
+                    <th className="text-right px-3 py-1.5 font-semibold">Unit Price</th>
+                    <th className="text-right px-3 py-1.5 font-semibold">Quantity</th>
+                    <th className="text-right px-3 py-1.5 font-semibold">Total</th>
                   </tr>
                 </thead>
                 <tbody>
                   {q.items.map((it) => (
                     <tr key={it.id} className="border-b border-gray-100">
-                      <td className="p-4 align-top" colSpan={2}>
-                        <div className="font-medium text-gray-900">{it.name}</div>
-                        {it.description && <div className="text-xs text-gray-600 mt-1">{it.description}</div>}
+                      <td className="px-3 py-1 align-top" colSpan={2}>
+                        <div className="text-xs font-medium text-gray-900">{it.name}</div>
+                        {it.description && <div className="mt-0.5 text-[11px] leading-snug text-gray-600">{it.description}</div>}
                       </td>
-                      <td className="p-4 text-right align-top text-gray-900">{currency(it.price, c.currencySymbol)}</td>
-                      <td className="p-4 text-right align-top text-gray-900">{it.qty}</td>
-                      <td className="p-4 text-right align-top text-gray-900">{currency(it.qty * it.price, c.currencySymbol)}</td>
+                      <td className="px-3 py-1 text-right align-top text-gray-900">{currency(it.price, c.currencySymbol)}</td>
+                      <td className="px-3 py-1 text-right align-top text-gray-900">{it.qty}</td>
+                      <td className="px-3 py-1 text-right align-top text-gray-900">{currency(it.qty * it.price, c.currencySymbol)}</td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-[color:var(--brand)] bg-gradient-to-r from-[color:var(--brand)] to-[color:var(--brand-2)]">
-                    <td className="p-4" colSpan={3}></td>
-                    <td className="p-4 text-right text-base font-extrabold text-white whitespace-nowrap">GRAND TOTAL</td>
+                    <td className="px-3 py-1.5" colSpan={3}></td>
+                    <td className="px-3 py-1.5 text-right text-sm font-extrabold text-white whitespace-nowrap">GRAND TOTAL</td>
                   </tr>
                 </tfoot>
               </table>
@@ -310,19 +304,19 @@ const QuotationPrint = () => {
           </div>
 
           {/* Summary — mt-auto pins this to the bottom of the sheet. */}
-          <div className="doc__footer avoid-break mt-auto px-10 pt-8">
+          <div className="doc__footer avoid-break mt-auto px-7 pt-8">
             <div className="text-sm text-gray-600">
-              <div className="mb-4 font-medium">Thank You For Your Business!</div>
+              <div className="mb-1.5 font-medium">Thank You For Your Business!</div>
               <div className="mb-4 font-medium">Quotation Terms:</div>
               <div className="text-xs text-gray-600">This quotation is valid until {new Date(q.expiryDate).toLocaleDateString('en-GB')}</div>
-              <div className="mt-4">Payment via bank transfer. Please include quotation number as reference.</div>
+              <div className="mt-3">Payment via bank transfer. Please include quotation number as reference.</div>
             </div>
           </div>
         </div>
       </div>
 
       {/* Bottom colored edge */}
-      <div className="h-2 bg-gradient-to-r from-[color:var(--brand)] to-[color:var(--brand-2)]"></div>
+      <div className="h-1.5 shrink-0 bg-gradient-to-r from-[color:var(--brand)] to-[color:var(--brand-2)]"></div>
     </div>
     <style>{a4PrintCss(c.primaryColor || '#128768', c.secondaryColor || '#1BA37E')}</style>
     </>
