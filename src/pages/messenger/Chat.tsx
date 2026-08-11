@@ -114,7 +114,7 @@ const Chat = () => {
     <div className="p-0 sm:p-6 flex flex-col h-[calc(100vh-80px)]">
       <div className="flex items-center justify-between px-4 sm:px-0 py-3 sm:mb-2 border-b sm:border-0 bg-card/30">
         <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-full bg-success text-success-foreground flex items-center justify-center font-semibold">
+          <div className="h-9 w-9 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-semibold">
             {getInitials(c.isGroup ? c.name : users.find(u=>u.id!==me && c.members.includes(u.id))?.name)}
           </div>
           <div>
@@ -141,10 +141,10 @@ const Chat = () => {
                       {getInitials(users.find(u=>u.id===it.msg!.authorId)?.name)}
                     </div>
                   )}
-                  <div className={`${it.msg!.authorId===me ? 'bg-success text-success-foreground' : 'bg-card text-foreground'} rounded-2xl px-3 py-2 shadow-sm border ${it.msg!.authorId===me ? 'border-success/40' : 'border-border'}`}>
-                    <div className={`text-[10px] mb-1 font-medium ${it.msg!.authorId===me ? 'text-success-foreground/90' : 'text-success'}`}>{getUserMeta(it.msg!.authorId)}</div>
+                  <div className={`${it.msg!.authorId===me ? 'bg-primary text-primary-foreground' : 'bg-card text-foreground'} rounded-2xl px-3 py-2 shadow-sm border ${it.msg!.authorId===me ? 'border-primary/40' : 'border-border'}`}>
+                    <div className={`text-[10px] mb-1 font-medium ${it.msg!.authorId===me ? 'text-primary-foreground/90' : 'text-primary'}`}>{getUserMeta(it.msg!.authorId)}</div>
                     {it.msg!.replyToId && (
-                      <div className={`mb-1 text-[11px] border-l-2 pl-2 ${it.msg!.authorId===me ? 'border-success-foreground/50 text-success-foreground/90' : 'border-success/40 text-success/90'}`}>
+                      <div className={`mb-1 text-[11px] border-l-2 pl-2 ${it.msg!.authorId===me ? 'border-primary-foreground/50 text-primary-foreground/90' : 'border-primary/40 text-primary/90'}`}>
                         <Quote className="inline w-3 h-3 mr-1" />
                         {msgs.find(x=>x.id===it.msg!.replyToId)?.body?.slice(0, 120) || 'Reply'}
                       </div>
@@ -161,7 +161,7 @@ const Chat = () => {
                         ))}
                       </div>
                     )}
-                    <div className={`flex items-center gap-1 text-[10px] mt-1 ${it.msg!.authorId===me ? 'text-success-foreground/80' : 'text-muted-foreground'}`}>
+                    <div className={`flex items-center gap-1 text-[10px] mt-1 ${it.msg!.authorId===me ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>
                       <span>{new Date(it.msg!.ts).toLocaleTimeString()}</span>
                       {it.msg!.authorId===me && (
                         (c.members.every(uid => (it.msg!.readBy||[]).includes(uid))) ? <CheckCheck className="w-3 h-3" /> : <Check className="w-3 h-3" />
@@ -169,7 +169,7 @@ const Chat = () => {
                     </div>
                   </div>
                   {it.msg!.authorId===me && (
-                    <div className="h-7 w-7 rounded-full bg-success/20 flex items-center justify-center text-[10px] font-semibold text-success">
+                    <div className="h-7 w-7 rounded-full bg-primary/15 flex items-center justify-center text-[10px] font-semibold text-primary">
                       {getInitials(users.find(u=>u.id===me)?.name)}
                     </div>
                   )}

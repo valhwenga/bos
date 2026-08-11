@@ -1,13 +1,11 @@
-import { useState } from "react";
-import { ProjectCard } from "@/components/ProjectCard";
+import { useMemo, useState } from "react";
+import { ProjectCard, type ProjectCardStatus } from "@/components/ProjectCard";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatCard } from "@/components/ui/stat-card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Plus, Filter, Grid3x3 } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Plus, Search, FolderKanban, Play, AlertCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { ProjectStore, type ProjectFile, type Milestone } from "@/lib/projectStore";
@@ -31,6 +29,8 @@ const Projects = () => {
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [msTitle, setMsTitle] = useState("");
   const [files, setFiles] = useState<ProjectFile[]>([]);
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [list, setList] = useState(ProjectStore.listProjects().filter(p => (myClientId ? p.clientId === myClientId : true)));
   const add = () => {
     if (!name.trim()) return;
@@ -78,62 +78,113 @@ const Projects = () => {
       reader.readAsDataURL(file);
     });
   };
+  const STATUS_LABEL: Record<string, ProjectCardStatus> = {
+    open: "Open",
+    in_progress: "In Progress",
+    pending_approval: "Pending",
+    rejected: "Rejected",
+    closed: "Complete",
+  };
+
+  const isOverdue = (p: { status?: string; dueAt?: string }) =>
+    p.status !== "closed" && !!p.dueAt && new Date(p.dueAt).getTime() < Date.now();
+
+  const filtered = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return list.filter((p) => {
+      if (statusFilter !== "all" && (p.status || "open") !== statusFilter) return false;
+      if (!needle) return true;
+      return `${p.name} ${p.description ?? ""}`.toLowerCase().includes(needle);
+    });
+  }, [list, query, statusFilter]);
+
+  const activeCount = list.filter((p) => p.status === "open" || p.status === "in_progress").length;
+  const overdueCount = list.filter(isOverdue).length;
+
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground">Manage Projects</h1>
-          <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span>Dashboard</span>
-            <span>›</span>
-            <span className="text-foreground">Projects</span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Filter className="w-4 h-4 mr-2" />
-                Filter
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem>All Projects</DropdownMenuItem>
-              <DropdownMenuItem>On Hold</DropdownMenuItem>
-              <DropdownMenuItem>In Progress</DropdownMenuItem>
-              <DropdownMenuItem>Complete</DropdownMenuItem>
-              <DropdownMenuItem>Canceled</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <Button variant="outline" size="sm">
-            <Grid3x3 className="w-4 h-4 mr-2" />
-            Status
+    <div className="flex flex-col gap-6 p-6">
+      <PageHeader
+        title="Projects"
+        description="Work in flight, who it's for and when it's due."
+        breadcrumbs={[{ label: "Projects", to: "/projects" }, { label: "All projects" }]}
+        actions={
+          <Button onClick={() => setOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+            Add project
           </Button>
-
-          <Button size="sm" onClick={()=> setOpen(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            Add Project
-          </Button>
+        }
+      >
+        <div className="grid gap-3 sm:grid-cols-3">
+          <StatCard label="Projects" value={list.length} hint="All time" icon={FolderKanban} />
+          <StatCard label="Active" value={activeCount} hint="Open or in progress" icon={Play} tone="info" />
+          <StatCard
+            label="Overdue"
+            value={overdueCount}
+            hint={overdueCount ? "Past their due date" : "Nothing overdue"}
+            icon={AlertCircle}
+            tone={overdueCount ? "danger" : "neutral"}
+          />
         </div>
+      </PageHeader>
+
+      {/* These controls previously did nothing: the Filter menu items had no
+          handlers and the Status button had no action at all. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-0 flex-1 sm:max-w-xs">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search projects…"
+            aria-label="Search projects"
+            className="h-9 pl-8"
+          />
+        </div>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="h-9 w-44"><SelectValue placeholder="Status" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All statuses</SelectItem>
+            <SelectItem value="open">Open</SelectItem>
+            <SelectItem value="in_progress">In progress</SelectItem>
+            <SelectItem value="pending_approval">Pending approval</SelectItem>
+            <SelectItem value="rejected">Rejected</SelectItem>
+            <SelectItem value="closed">Complete</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-        {list.map((project) => (
-          <Link key={project.id} to={`/projects/${project.id}`} className="block">
-            <ProjectCard
-              icon={project.name[0] || "P"}
-              title={project.name}
-              description={project.description || ""}
-              status={project.status === "closed" ? ("Complete" as const) : project.status === "pending_approval" ? ("Pending" as const) : ("In Progress" as const)}
-              members={[]}
-              startDate={project.startDate || ""}
-              dueDate={project.dueAt ? new Date(project.dueAt).toLocaleDateString() : (project.endDate || "")}
-            />
-          </Link>
-        ))}
-      </div>
+      {filtered.length === 0 ? (
+        <div className="rounded-md border border-border bg-card">
+          <EmptyState
+            icon={FolderKanban}
+            variant={list.length ? "search" : "empty"}
+            title={list.length ? "No projects match" : "No projects yet"}
+            description={
+              list.length
+                ? "Try a different search term or clear the status filter."
+                : "Create a project to track its tasks, milestones and time."
+            }
+            action={list.length ? undefined : <Button onClick={() => setOpen(true)}>Add project</Button>}
+          />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          {filtered.map((project) => (
+            <Link key={project.id} to={`/projects/${project.id}`} className="block h-full rounded-md focus-visible:outline-none">
+              <ProjectCard
+                icon={project.name[0] || "P"}
+                title={project.name}
+                description={project.description || ""}
+                status={STATUS_LABEL[project.status || "open"] ?? "Open"}
+                members={[]}
+                startDate={project.startDate || ""}
+                dueDate={project.dueAt ? new Date(project.dueAt).toLocaleDateString() : (project.endDate || "")}
+                overdue={isOverdue(project)}
+              />
+            </Link>
+          ))}
+        </div>
+      )}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>

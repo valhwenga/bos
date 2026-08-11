@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { MessengerStore, type Conversation } from "@/lib/messengerStore";
 import { UsersStore } from "@/lib/usersStore";
+import { PenSquare, Search, UsersRound, MessagesSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/empty-state";
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input as TextInput } from "@/components/ui/input";
@@ -35,45 +39,127 @@ const Conversations = () => {
 
   const navigate = useNavigate();
 
+  const me = users[0]?.id;
+
+  const titleFor = (c: Conversation) =>
+    c.isGroup
+      ? c.name || "Group"
+      : c.members.filter((id) => id !== me).map((id) => users.find((u) => u.id === id)?.name || id).join(", ") || "Direct message";
+
+  const previewFor = (c: Conversation) => {
+    const msgs = MessengerStore.messagesFor(c.id);
+    const last = msgs[msgs.length - 1];
+    if (!last) return "No messages yet";
+    const who = last.authorId === me ? "You" : users.find((u) => u.id === last.authorId)?.name?.split(" ")[0] || "";
+    return `${who ? who + ": " : ""}${last.body || (last.attachments?.length ? "Attachment" : "")}`;
+  };
+
+  const whenFor = (c: Conversation) => {
+    if (!c.lastMessageAt) return "";
+    const d = new Date(c.lastMessageAt);
+    return new Date().toDateString() === d.toDateString()
+      ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      : d.toLocaleDateString();
+  };
+
+  const unreadFor = (c: Conversation) => (me ? c.unreadBy?.[me] || 0 : 0);
+
+  // Most recently active first — the list was previously in insertion order.
+  const ordered = useMemo(
+    () => [...filtered].sort((a, b) => (b.lastMessageAt || "").localeCompare(a.lastMessageAt || "")),
+    [filtered],
+  );
+
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold mb-1">Messenger</h1>
-          <p className="text-sm text-muted-foreground">Direct and group conversations</p>
-        </div>
-        <div className="flex gap-2">
-          <Button onClick={()=> startNew(false)}>New Message</Button>
-          <Button variant="secondary" onClick={()=> startNew(true)}>New Group</Button>
-        </div>
+    <div className="flex flex-col gap-6 p-6">
+      <PageHeader
+        title="Messenger"
+        description="Direct and group conversations with your team."
+        breadcrumbs={[{ label: "Messenger" }]}
+        actions={
+          <>
+            <Button variant="outline" onClick={() => startNew(true)}>
+              <UsersRound className="mr-2 h-4 w-4" aria-hidden="true" />
+              New group
+            </Button>
+            <Button onClick={() => startNew(false)}>
+              <PenSquare className="mr-2 h-4 w-4" aria-hidden="true" />
+              New message
+            </Button>
+          </>
+        }
+      />
+
+      <div className="relative w-full sm:max-w-xs">
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+        <Input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search conversations…"
+          aria-label="Search conversations"
+          className="h-9 pl-8"
+        />
       </div>
 
-      <div className="flex items-center gap-2">
-        <Input placeholder="Search conversations..." value={q} onChange={(e)=> setQ(e.target.value)} className="w-64" />
-      </div>
+      <div className="overflow-hidden rounded-md border border-border bg-card">
+        {ordered.length === 0 ? (
+          <EmptyState
+            icon={MessagesSquare}
+            variant={list.length ? "search" : "empty"}
+            title={list.length ? "No conversations match" : "No conversations yet"}
+            description={list.length ? "Try a different name." : "Start a direct message or create a group to get talking."}
+            action={list.length ? undefined : <Button onClick={() => startNew(false)}>New message</Button>}
+          />
+        ) : (
+          <ul>
+            {ordered.map((c) => {
+              const unread = unreadFor(c);
+              const title = titleFor(c);
+              return (
+                <li key={c.id}>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/messenger/${c.id}`)}
+                    className="flex w-full items-center gap-3 border-b border-border px-3 py-2.5 text-left transition-colors duration-fast ease-standard last:border-0 hover:bg-surface-raised"
+                  >
+                    <span
+                      className={cn(
+                        "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-medium",
+                        c.isGroup ? "bg-info-soft text-info" : "bg-primary text-primary-foreground",
+                      )}
+                      aria-hidden="true"
+                    >
+                      {c.isGroup ? <UsersRound className="h-4 w-4" /> : title.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
+                    </span>
 
-      <div className="bg-card rounded-lg border overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-secondary/50">
-              <tr>
-                <th className="text-left p-3 text-sm">NAME</th>
-                <th className="text-left p-3 text-sm">MEMBERS</th>
-                <th className="text-left p-3 text-sm">LAST MESSAGE</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(c => (
-                <tr key={c.id} className="border-t hover:bg-secondary/30 cursor-pointer" onClick={()=> navigate(`/messenger/${c.id}`)}>
-                  <td className="p-3 text-sm">{c.isGroup ? (c.name || 'Group') : 'Direct Message'}</td>
-                  <td className="p-3 text-sm">{c.members.map(id=> users.find(u=>u.id===id)?.name||id).join(', ')}</td>
-                  <td className="p-3 text-sm">{c.lastMessageAt ? new Date(c.lastMessageAt).toLocaleString() : '-'}</td>
-                </tr>
-              ))}
-              {filtered.length===0 && (<tr><td className="p-6 text-sm text-muted-foreground" colSpan={3}>No conversations</td></tr>)}
-            </tbody>
-          </table>
-        </div>
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="flex items-baseline gap-2">
+                        <span className={cn("truncate text-sm", unread ? "font-semibold text-foreground" : "text-foreground")}>
+                          {title}
+                        </span>
+                        {c.isGroup && (
+                          <span className="shrink-0 text-xs text-subtle">{c.members.length} members</span>
+                        )}
+                      </span>
+                      <span className={cn("truncate text-xs", unread ? "text-foreground" : "text-muted-foreground")}>
+                        {previewFor(c)}
+                      </span>
+                    </span>
+
+                    <span className="flex shrink-0 flex-col items-end gap-1">
+                      <span className="text-xs text-muted-foreground">{whenFor(c)}</span>
+                      {unread > 0 && (
+                        <span className="min-w-4 rounded-full bg-primary px-1.5 text-center text-2xs font-medium text-primary-foreground">
+                          {unread}
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
