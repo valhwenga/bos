@@ -9,12 +9,13 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { SalesStore, type Sale, type SaleItem } from "@/lib/salesStore";
+import { previewNextNumber, resolveNumberOnSave } from "@/lib/documentNumbers";
 import { ProductsStore } from "@/lib/productsStore";
 import { CompanySettingsStore } from "@/lib/companySettings";
 
 const SalesDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void; onSaved: ()=>void }> = ({ open, onOpenChange, onSaved }) => {
   const products = ProductsStore.list();
-  const [number] = useState(`S-${new Date().getFullYear()}-${Math.floor(Math.random()*9000+1000)}`);
+  const [number, setNumber] = useState(() => previewNextNumber("sale"));
   const [date, setDate] = useState<string>(new Date().toISOString().slice(0,10));
   const [customerName, setCustomerName] = useState<string>("");
   const [method, setMethod] = useState<string>("Cash");
@@ -30,7 +31,9 @@ const SalesDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void; on
 
   const save = () => {
     if (items.length===0 || items.some(i=> !i.name.trim())) return;
-    const sale: Sale = { id: `s_${Date.now()}`, number, date, customerName: customerName || undefined, items, method, reference, notes, createdAt: new Date().toISOString() };
+    // Allocated on save, not on open.
+    const allocated = resolveNumberOnSave("sale", number, previewNextNumber("sale"));
+    const sale: Sale = { id: `s_${Date.now()}`, number: allocated, date, customerName: customerName || undefined, items, method, reference, notes, createdAt: new Date().toISOString() };
     SalesStore.upsert(sale);
     onSaved();
     onOpenChange(false);

@@ -1,5 +1,6 @@
 import { PaymentStore } from "@/lib/paymentStore";
 import type { Customer as RichCustomer } from "@/lib/customersStore";
+import { allocateNumber } from "@/lib/documentNumbers";
 
 export type Customer = RichCustomer;
 export type LineItem = { id: string; name: string; qty: number; price: number; description?: string };
@@ -76,7 +77,7 @@ export const AccountingStore = {
     if (!q) return undefined;
     const invoice: Invoice = {
       id: `inv_${Date.now()}`,
-      number: `INV-${new Date().getFullYear()}-${Math.floor(Math.random() * 9000 + 1000)}`,
+      number: allocateNumber("invoice"),
       customer: q.customer,
       items: q.items,
       status: "draft",

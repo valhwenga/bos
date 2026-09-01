@@ -11,6 +11,7 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { Payment, PaymentMethod, PaymentStore } from "@/lib/paymentStore";
+import { allocateNumber } from "@/lib/documentNumbers";
 import { AccountingStore, Invoice, Quotation } from "@/lib/accountingStore";
 import { CompanySettingsStore } from "@/lib/companySettings";
 import { toast } from "@/components/ui/use-toast";
@@ -82,7 +83,7 @@ const Payments: React.FC = () => {
       // Convert quote to invoice
       const invoice: Invoice = {
         id: `inv_${Date.now()}_${convertedCount}`,
-        number: `INV-${new Date().getFullYear()}-${Math.floor(Math.random()*9000+1000)}`,
+        number: allocateNumber("invoice"),
         customer: quote.customer,
         items: quote.items,
         status: "sent",

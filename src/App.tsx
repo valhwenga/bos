@@ -73,6 +73,7 @@ import { AccountingStore } from "./lib/accountingStore";
 import { EmailStore } from "./lib/emailStore";
 import { Invoice } from "./lib/accountingStore";
 import { CompanySettingsStore } from "./lib/companySettings";
+import { allocateNumber } from "./lib/documentNumbers";
 import Login from "./pages/auth/Login";
 import Signup from "./pages/auth/Signup";
 import InviteAccept from "./pages/auth/InviteAccept";
@@ -149,7 +150,11 @@ const App = () => {
         const at = new Date(t.nextRunAt).getTime();
         if (Math.abs(now - at) <= windowMs) {
           // Generate invoice dated at run date/time
-          const num = `${t.seqPrefix || 'INV-'}${String(t.nextNumber || 1).padStart(4,'0')}`;
+          // Recurring invoices draw from the same series as manual ones.
+          // Each template used to keep its own counter starting at 1 with a
+          // default 'INV-' prefix, so two templates both produced INV-0001,
+          // and neither series knew about manually created invoices.
+          const num = allocateNumber('invoice');
           const inv = {
             id: `inv_${Date.now()}`,
             number: num,
@@ -161,7 +166,7 @@ const App = () => {
           };
           AccountingStore.upsertInvoice(inv as Invoice);
           // Advance template schedule
-          RecurringStore.upsert({ ...t, lastRunAt: new Date().toISOString(), nextRunAt: RecurringStore.computeNextRun(t), nextNumber: (t.nextNumber || 1) + 1 });
+          RecurringStore.upsert({ ...t, lastRunAt: new Date().toISOString(), nextRunAt: RecurringStore.computeNextRun(t) });
           // Auto-send email with generic subject and PDF attachment (company template reused conceptually)
           if (t.autoSend && t.customer.email) {
             const cs = CompanySettingsStore.get();

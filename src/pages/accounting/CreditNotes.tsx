@@ -9,6 +9,7 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { CreditNotesStore, type CreditNote } from "@/lib/creditNotesStore";
+import { previewNextNumber, resolveNumberOnSave } from "@/lib/documentNumbers";
 import { AccountingStore } from "@/lib/accountingStore";
 import { CompanySettingsStore } from "@/lib/companySettings";
 
@@ -16,7 +17,7 @@ const NewCreditDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void
   const customers = useMemo(() => AccountingStore.listInvoices().map(i=> i.customer)
     .concat(AccountingStore.listQuotes().map(q=> q.customer))
     .reduce((acc, cur)=> acc.find(x=> x.id===cur.id) ? acc : acc.concat(cur), [] as {id:string; name:string}[]), []);
-  const [number] = useState(`CN-${new Date().getFullYear()}-${Math.floor(Math.random()*9000+1000)}`);
+  const [number, setNumber] = useState(() => previewNextNumber("credit_note"));
   const [date, setDate] = useState<string>(new Date().toISOString().slice(0,10));
   const [customerId, setCustomerId] = useState<string>(customers[0]?.id || "");
   const [amount, setAmount] = useState<number>(0);
@@ -25,7 +26,10 @@ const NewCreditDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void
   const save = () => {
     if (!customerId || amount<=0) return;
     const custName = customers.find(c=> c.id===customerId)?.name;
-    const cn: CreditNote = { id: `cn_${Date.now()}`, number, date, customerId, customerName: custName, amount, applied: [], notes, createdAt: new Date().toISOString() };
+    // Allocated here rather than on open, so cancelling the dialog does not
+    // consume a number and leave a gap.
+    const allocated = resolveNumberOnSave("credit_note", number, previewNextNumber("credit_note"));
+    const cn: CreditNote = { id: `cn_${Date.now()}`, number: allocated, date, customerId, customerName: custName, amount, applied: [], notes, createdAt: new Date().toISOString() };
     CreditNotesStore.upsert(cn);
     onSaved();
     onOpenChange(false);

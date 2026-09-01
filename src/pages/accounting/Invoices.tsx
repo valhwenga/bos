@@ -6,6 +6,7 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { AccountingStore, Invoice } from "@/lib/accountingStore";
+import { previewNextNumber, resolveNumberOnSave } from "@/lib/documentNumbers";
 import { Button } from "@/components/ui/button";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { PaymentStore } from "@/lib/paymentStore";
@@ -34,8 +35,11 @@ const NewInvoiceDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>voi
   const products = useMemo(() => ProductsStore.list(), []);
   const [items, setItems] = useState<any[]>([]);
 
-  // Initialize form when editingInvoice changes
+  // Re-seed whenever the dialog opens. Keying this on editingInvoice alone
+  // meant reopening for a new invoice kept the previous number, so the
+  // preview went stale and a second save could duplicate it.
   useEffect(() => {
+    if (!open) return;
     if (editingInvoice) {
       setCustomerId(editingInvoice.customer.id);
       setInvoiceNo(editingInvoice.number);
@@ -50,7 +54,9 @@ const NewInvoiceDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>voi
     } else {
       // Reset for new invoice
       setCustomerId(preselectedCustomerId || customers[0]?.id || "");
-      setInvoiceNo(`INV-${new Date().getFullYear()}-${Math.floor(Math.random()*9000+1000)}`);
+      // Preview only; the number is allocated on save so cancelling this dialog
+      // does not consume one and leave a gap in the sequence.
+      setInvoiceNo(previewNextNumber("invoice"));
       setInvoiceDate(new Date().toISOString().slice(0,10));
       setDueDate(() => {
         const date = new Date();
@@ -72,7 +78,10 @@ const NewInvoiceDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>voi
         description: defaultProduct.description 
       }]);
     }
-  }, [editingInvoice, preselectedCustomerId, customers, products]);
+    // customers/products are re-read per open; including them would re-seed
+    // mid-edit and discard the user's input.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, editingInvoice, preselectedCustomerId]);
 
   const addItem = () => {
   const defaultProduct = products[0] || { name: "New Item", price: 0, description: "" };
@@ -103,9 +112,14 @@ const NewInvoiceDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>voi
     if (!customerId) { toast({ title: "Customer required", variant: "destructive" }); return; }
     if (items.length===0 || items.some(i=> !i.name.trim())) { toast({ title: "Add at least one item", variant: "destructive" }); return; }
     
+    // Editing keeps the existing number; a new invoice consumes one now.
+    const number = editingInvoice
+      ? invoiceNo
+      : resolveNumberOnSave("invoice", invoiceNo, previewNextNumber("invoice"));
+
     const invoice: Invoice = {
       id: editingInvoice?.id || `inv_${Date.now()}`,
-      number: invoiceNo,
+      number,
       customer: customers.find(c => c.id === customerId)!,
       items,
       status: editingInvoice?.status || "sent",

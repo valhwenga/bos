@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { AccountingStore, Quotation, LineItem } from "@/lib/accountingStore";
+import { previewNextNumber, resolveNumberOnSave } from "@/lib/documentNumbers";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
@@ -35,7 +36,7 @@ const computeTotals = (q: Quotation) => {
 const NewQuoteDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void; onAdd: (q: Quotation) => void; editing?: Quotation }>= ({ open, onOpenChange, onAdd, editing }) => {
   const customers = CustomersStore.list();
   const [customerId, setCustomerId] = useState<string>(customers[0]?.id || "");
-  const [estimateNo, setEstimateNo] = useState(`Q-${new Date().getFullYear()}-${Math.floor(Math.random()*9000+1000)}`);
+  const [estimateNo, setEstimateNo] = useState(() => previewNextNumber("quotation"));
   const [estimateDate, setEstimateDate] = useState(new Date().toISOString().slice(0,10));
   const [expiryDate, setExpiryDate] = useState("");
   const [reference, setReference] = useState("");
@@ -69,7 +70,7 @@ const NewQuoteDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void;
       setItems(editing.items?.length ? editing.items.map((i) => ({ ...i })) : []);
     } else {
       setCustomerId(customers[0]?.id || "");
-      setEstimateNo(`Q-${new Date().getFullYear()}-${Math.floor(Math.random() * 9000 + 1000)}`);
+      setEstimateNo(previewNextNumber("quotation"));
       setEstimateDate(new Date().toISOString().slice(0, 10));
       setExpiryDate("");
       setReference("");
@@ -121,7 +122,11 @@ const NewQuoteDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void;
   const save = () => {
     if (!customerId) { toast({ title: "Customer required", variant: "destructive" }); return; }
     if (items.length===0 || items.some(i=> !i.name.trim())) { toast({ title: "Add at least one item", variant: "destructive" }); return; }
-    onAdd(quote);
+    // Editing keeps the existing number; a new quotation consumes one now.
+    const number = editing
+      ? quote.number
+      : resolveNumberOnSave("quotation", estimateNo, previewNextNumber("quotation"));
+    onAdd({ ...quote, number });
     onOpenChange(false);
   };
 
