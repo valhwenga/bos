@@ -1,30 +1,33 @@
 import { describe, it, expect } from "vitest";
-import { computeTaxUS, generateACH, generateBACS, CURRENCY_SYMBOLS, COUNTRY_TO_CURRENCY, MissingBankDetailsError } from "./payrollAdvanced";
+import { generateBACS, CURRENCY_SYMBOLS, COUNTRY_TO_CURRENCY, MissingBankDetailsError } from "./payrollAdvanced";
+import { computeTax } from "./taxEngine";
 import { countWorkingDays } from "./leaveBalance";
 
-describe("computeTaxUS", () => {
+describe("PAYE (South Africa)", () => {
+  const paye = (gross: number) => computeTax(gross, "ZA").incomeTax;
+
   it("charges nothing on zero", () => {
-    expect(computeTaxUS(0)).toBe(0);
+    expect(paye(0)).toBe(0);
   });
 
   it("is monotonic", () => {
     let previous = -1;
-    for (let gross = 0; gross <= 500_000; gross += 5_000) {
-      const tax = computeTaxUS(gross);
+    for (let gross = 0; gross <= 1_500_000; gross += 25_000) {
+      const tax = paye(gross);
       expect(tax).toBeGreaterThanOrEqual(previous);
       previous = tax;
     }
   });
 
   it("never exceeds the gross it is charged on", () => {
-    for (const gross of [10_000, 100_000, 1_000_000]) {
-      expect(computeTaxUS(gross)).toBeLessThan(gross);
+    for (const gross of [50_000, 500_000, 5_000_000]) {
+      expect(paye(gross)).toBeLessThan(gross);
     }
   });
 
   it("applies the lowest band only, below the first threshold", () => {
-    // 10% on the first band; a salary inside it cannot attract a higher rate.
-    expect(computeTaxUS(10_000)).toBeCloseTo(1_000, 0);
+    // 18% on the first band, up to R95,750.
+    expect(paye(50_000)).toBeCloseTo(9_000, 0);
   });
 });
 
@@ -47,12 +50,6 @@ describe("bank export files", () => {
     { employee: "John Roe", employeeId: "E2", employeeName: "John Roe", netSalary: 3980, bankAccount: "87654321", routingNumber: "111000025", accountNumber: "87654321", sortCode: "203045" },
   ];
 
-  it("writes one ACH line per employee", () => {
-    const out = generateACH(withBank);
-    expect(out).toContain("Jane Doe");
-    expect(out).toContain("John Roe");
-  });
-
   it("writes one BACS line per employee", () => {
     const out = generateBACS(withBank);
     expect(out).toContain("Jane Doe");
@@ -62,20 +59,20 @@ describe("bank export files", () => {
   it("includes an employee on zero net pay rather than dropping them", () => {
     // Someone on unpaid leave still belongs in the run; omitting them hides it.
     const withZero = [...withBank, { ...withBank[0], employeeId: "E3", employeeName: "Zero Pay", netSalary: 0 }];
-    expect(generateACH(withZero)).toContain("Zero Pay");
+    expect(generateBACS(withZero)).toContain("Zero Pay");
   });
 
   it("refuses to build a file from placeholder account numbers", () => {
     // The panel used to pass all-zero placeholders and still produce a
     // downloadable file, which looked like a working export but was unusable.
     const placeholders = withBank.map((r) => ({ ...r, bankAccount: "000000000", accountNumber: "00000000" }));
-    expect(() => generateACH(placeholders)).toThrow(MissingBankDetailsError);
+    expect(() => generateBACS(placeholders)).toThrow(MissingBankDetailsError);
     expect(() => generateBACS(placeholders)).toThrow(MissingBankDetailsError);
   });
 
   it("names the employees whose details are missing", () => {
     const placeholders = withBank.map((r) => ({ ...r, bankAccount: "0", accountNumber: "0" }));
-    expect(() => generateACH(placeholders)).toThrow(/Jane Doe/);
+    expect(() => generateBACS(placeholders)).toThrow(/Jane Doe/);
   });
 });
 

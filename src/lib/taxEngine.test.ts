@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeTax, type TaxCountry } from "./taxEngine";
-import { computeTaxUS, TAX_BRACKETS_US } from "./payrollAdvanced";
+import { computeTax } from "./taxEngine";
 
 /**
  * These assert properties that must hold for any progressive tax system,
@@ -8,9 +7,8 @@ import { computeTaxUS, TAX_BRACKETS_US } from "./payrollAdvanced";
  * currently returns would pass just as happily with the brackets wrong.
  */
 
-const COUNTRIES: TaxCountry[] = ["US", "GB", "ZA"];
-
-describe.each(COUNTRIES)("computeTax(%s)", (country) => {
+describe("computeTax (South Africa)", () => {
+  const country = "ZA" as const;
   it("charges nothing on zero income", () => {
     const result = computeTax(0, country);
     expect(result.incomeTax).toBe(0);
@@ -39,7 +37,7 @@ describe.each(COUNTRIES)("computeTax(%s)", (country) => {
     }
   });
 
-  it("never taxes an extra pound more than it is worth (marginal rate below 100%)", () => {
+  it("never taxes an extra rand more than it is worth (marginal rate below 100%)", () => {
     // A raise must always leave the employee better off.
     let previousNet = -Infinity;
     for (let gross = 0; gross <= 800_000; gross += 5_000) {
@@ -69,47 +67,20 @@ describe("South Africa statutory caps", () => {
   });
 });
 
-describe("United States statutory caps", () => {
-  it("caps social security contributions", () => {
-    const high = computeTax(2_000_000, "US");
-    expect(high.statutoryDeductions.socialSecurity).toBeLessThanOrEqual(11_700);
+describe("single tax engine", () => {
+  it("rejects a country it does not implement rather than guessing", () => {
+    // CA, AU, DE and FR previously fell through to a flat 20% placeholder that
+    // was returned as though it were a real calculation.
+    expect(() => computeTax(100_000, "US" as unknown as "ZA")).toThrow(/not implemented/);
   });
 
-  it("charges medicare on the full amount", () => {
-    expect(computeTax(100_000, "US").statutoryDeductions.medicare).toBeCloseTo(1_450, 6);
+  it("treats a negative gross as zero rather than refunding tax", () => {
+    const r = computeTax(-50_000);
+    expect(r.incomeTax).toBe(0);
+    expect(r.netPay).toBe(0);
   });
-});
 
-describe("bracket tables", () => {
-  it("US brackets are contiguous and ascending", () => {
-    for (let i = 1; i < TAX_BRACKETS_US.length; i++) {
-      const previous = TAX_BRACKETS_US[i - 1];
-      const current = TAX_BRACKETS_US[i];
-      expect(previous.max).not.toBeNull();
-      // Each band must start where the previous one ended.
-      expect(current.min).toBe((previous.max as number) + 1);
-      expect(current.rate).toBeGreaterThan(previous.rate);
-    }
-  });
-});
-
-/**
- * There are two independent US tax tables in the codebase — taxEngine.ts drives
- * computeTax('US') and payrollAdvanced.ts drives computeTaxUS(). They disagree,
- * so the figure an employee sees depends on which module a page imported.
- *
- * This test documents the discrepancy rather than asserting either is correct;
- * which brackets are right is a tax question. When the tables are reconciled
- * this should be changed to assert the two agree.
- */
-describe("known defect: two disagreeing US tax tables", () => {
-  it("produces different tax for the same salary", () => {
-    const gross = 60_000;
-    const viaTaxEngine = computeTax(gross, "US").incomeTax;
-    const viaPayrollAdvanced = computeTaxUS(gross);
-
-    // Fails once the tables are reconciled, which is the point: it will force
-    // this test to be updated rather than letting the conflict persist quietly.
-    expect(viaTaxEngine).not.toBeCloseTo(viaPayrollAdvanced, 2);
+  it("defaults to South Africa when no country is given", () => {
+    expect(computeTax(500_000)).toEqual(computeTax(500_000, "ZA"));
   });
 });
