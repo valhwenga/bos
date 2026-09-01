@@ -139,16 +139,36 @@ const App = () => {
     };
   }, []);
 
-  // Recurring Invoices: auto-generate and auto-send with attachment
+  // Recurring Invoices: auto-generate and auto-send with attachment.
+  //
+  // This matched templates whose nextRunAt fell within +/- 60 seconds of the
+  // tick, which meant a period was billed only if somebody happened to have the
+  // app open at that exact minute — and a missed window was missed permanently,
+  // because nextRunAt still advanced afterwards.
+  //
+  // It now generates every occurrence that is due, so reopening the app catches
+  // up on anything missed. The authoritative version of this is
+  // generate_due_recurring_invoices() in Postgres, which runs hourly whether or
+  // not anyone is signed in; this stays until the stores move over.
   useEffect(() => {
-    const windowMs = 60 * 1000; // 1 minute window
+    // A template left unrun for a long time should catch up, but a
+    // misconfigured one must not emit hundreds of invoices in one pass.
+    const MAX_PER_TEMPLATE_PER_PASS = 12;
     const run = async () => {
       const now = Date.now();
       const list = RecurringStore.list().filter(t => t.active);
       for (const t of list) {
         if (!t.nextRunAt) continue;
-        const at = new Date(t.nextRunAt).getTime();
-        if (Math.abs(now - at) <= windowMs) {
+        let cursor = { ...t };
+        let generated = 0;
+        while (
+          cursor.nextRunAt &&
+          new Date(cursor.nextRunAt).getTime() <= now &&
+          (!cursor.endDate || new Date(cursor.nextRunAt) <= new Date(cursor.endDate)) &&
+          generated < MAX_PER_TEMPLATE_PER_PASS
+        ) {
+          generated += 1;
+          const t = cursor;
           // Generate invoice dated at run date/time
           // Recurring invoices draw from the same series as manual ones.
           // Each template used to keep its own counter starting at 1 with a
@@ -156,17 +176,19 @@ const App = () => {
           // and neither series knew about manually created invoices.
           const num = allocateNumber('invoice');
           const inv = {
-            id: `inv_${Date.now()}`,
+            id: `inv_${Date.now()}_${generated}`,
             number: num,
             customer: t.customer,
             items: t.items,
             status: "sent" as const,
-            createdAt: new Date().toISOString(),
+            // Dated to the period it bills, not the moment it was caught up.
+            createdAt: t.nextRunAt as string,
             useShippingAddress: false,
           };
           AccountingStore.upsertInvoice(inv as Invoice);
-          // Advance template schedule
-          RecurringStore.upsert({ ...t, lastRunAt: new Date().toISOString(), nextRunAt: RecurringStore.computeNextRun(t) });
+          // Advance the cursor so the loop terminates and the next iteration
+          // bills the following period.
+          cursor = { ...t, lastRunAt: new Date().toISOString(), nextRunAt: RecurringStore.computeNextRun(t) };
           // Auto-send email with generic subject and PDF attachment (company template reused conceptually)
           if (t.autoSend && t.customer.email) {
             const cs = CompanySettingsStore.get();
@@ -204,9 +226,13 @@ const App = () => {
             });
           }
         }
+        if (generated > 0) RecurringStore.upsert(cursor);
       }
     };
-    const id = window.setInterval(run, 60 * 1000);
+    // Hourly, plus on focus and on template changes. The old one-minute tick
+    // existed only because it had to catch an exact moment; generating whatever
+    // is due removes that need.
+    const id = window.setInterval(run, 60 * 60 * 1000);
     window.addEventListener('acct.recurring-changed', run as EventListener);
     window.addEventListener('focus', run);
     run();
