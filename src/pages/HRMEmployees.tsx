@@ -13,6 +13,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { CompanySettingsStore } from "@/lib/companySettings";
 import type { Employee, EmployeeDocument } from "@/lib/hrmStore";
+import { acceptFile, FileTooLargeError, safeSetItem } from "@/lib/fileStorage";
+import { toast } from "@/components/ui/use-toast";
 
 // Simple local HRM store to replace CompanyAwareHRMStore
 const LocalHRMStore = {
@@ -28,7 +30,9 @@ const LocalHRMStore = {
     } else {
       employees.push(employee);
     }
-    localStorage.setItem('hrm_employees', JSON.stringify(employees));
+    // safeSetItem turns a quota failure into a typed error instead of an
+    // unhandled throw that loses the record without explanation.
+    safeSetItem('hrm_employees', JSON.stringify(employees));
     window.dispatchEvent(new Event('hrm_employees-changed'));
   },
   remove: (id: string) => {
@@ -99,17 +103,37 @@ const HRMEmployees = () => {
   const save = () => {
     setAttempted(true);
     if (!allRequiredPresent()) return;
-    LocalHRMStore.upsert({ ...form });
+    try {
+      LocalHRMStore.upsert({ ...form });
+    } catch (err) {
+      toast({
+        title: "Could not save",
+        description: err instanceof Error ? err.message : "Saving this employee failed.",
+        variant: "destructive",
+      });
+      return;
+    }
     setOpen(false);
     refresh();
   };
 
-  const toDoc = (f: File, cb: (d: EmployeeDocument)=> void) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      cb({ name: f.name, type: f.type, size: f.size, dataUrl: String(reader.result) });
-    };
-    reader.readAsDataURL(f);
+  /**
+   * Employee records hold three documents each (CV, qualifications, ID copy),
+   * so this is the fastest way to exhaust browser storage. acceptFile refuses
+   * a file that would do so and explains why, rather than letting the save
+   * throw QuotaExceededError and lose the record.
+   */
+  const toDoc = async (f: File, cb: (d: EmployeeDocument) => void) => {
+    try {
+      const stored = await acceptFile("employee-documents", f);
+      cb({ name: stored.name, type: stored.type, size: stored.size, dataUrl: stored.dataUrl ?? "" });
+    } catch (err) {
+      toast({
+        title: err instanceof FileTooLargeError ? "File too large" : "Storage full",
+        description: err instanceof Error ? err.message : "That file could not be attached.",
+        variant: "destructive",
+      });
+    }
   };
   const columns: Column<Employee>[] = [
     {
