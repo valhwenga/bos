@@ -6,14 +6,12 @@ import { CompanySettingsStore } from "./companySettingsStore";
  * Calculate working days in a date range, excluding weekends and public holidays.
  */
 export function countWorkingDays(startDate: string, endDate: string): number {
-  const company = CompanySettingsStore.get();
-  const country = company.country as keyof typeof import("./holidays").PUBLIC_HOLIDAYS;
   const start = new Date(startDate);
   const end = new Date(endDate);
   let count = 0;
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
     const day = d.getDay();
-    if (day >= 1 && day <= 5 && !isPublicHoliday(d.toISOString().slice(0, 10), country)) {
+    if (day >= 1 && day <= 5 && !isPublicHoliday(d.toISOString().slice(0, 10))) {
       count++;
     }
   }

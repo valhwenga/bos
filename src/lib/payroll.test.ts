@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { generateBACS, CURRENCY_SYMBOLS, COUNTRY_TO_CURRENCY, MissingBankDetailsError } from "./payrollAdvanced";
 import { computeTax } from "./taxEngine";
 import { countWorkingDays } from "./leaveBalance";
+import { publicHolidays, isPublicHoliday } from "./holidays";
 
 describe("PAYE (South Africa)", () => {
   const paye = (gross: number) => computeTax(gross, "ZA").incomeTax;
@@ -116,5 +117,44 @@ describe("payroll entry arithmetic", () => {
     const partial = { housing: 1_000, transport: undefined as unknown as number };
     expect(Number.isNaN(sum(partial))).toBe(false);
     expect(sum(partial)).toBe(1_000);
+  });
+});
+
+describe("South African public holidays", () => {
+  it("includes all twelve statutory holidays every year", () => {
+    for (const year of [2024, 2025, 2026, 2027, 2030]) {
+      const names = publicHolidays(year).filter((h) => !h.observed).map((h) => h.name);
+      expect(names).toHaveLength(12);
+      expect(names).toContain("Freedom Day");
+      expect(names).toContain("Day of Reconciliation");
+    }
+  });
+
+  it("moves Good Friday and Family Day with Easter", () => {
+    // Easter Sunday 2026 is 5 April, so Good Friday is the 3rd and Family Day
+    // the 6th. These cannot be hardcoded, which the old fixed lists tried to do.
+    const dates = Object.fromEntries(publicHolidays(2026).map((h) => [h.name, h.date]));
+    expect(dates["Good Friday"]).toBe("2026-04-03");
+    expect(dates["Family Day"]).toBe("2026-04-06");
+  });
+
+  it("observes the Monday when a holiday falls on a Sunday", () => {
+    // Christmas Day 2022 fell on a Sunday, so 27 December was granted
+    // (26 December is already Day of Goodwill).
+    const observed = publicHolidays(2022).filter((h) => h.observed).map((h) => h.date);
+    expect(observed).toContain("2022-12-26");
+  });
+
+  it("recognises holidays in years the old fixed list never covered", () => {
+    // The previous implementation only listed 2025, so leave taken in any later
+    // year was charged for public holidays.
+    expect(isPublicHoliday("2026-12-25")).toBe(true);
+    expect(isPublicHoliday("2027-04-27")).toBe(true);
+    expect(isPublicHoliday("2026-12-24")).toBe(false);
+  });
+
+  it("excludes public holidays from a leave request", () => {
+    // 16 to 18 June 2026: Youth Day (Tue) plus two ordinary working days.
+    expect(countWorkingDays("2026-06-16", "2026-06-18")).toBe(2);
   });
 });

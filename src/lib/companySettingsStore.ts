@@ -1,9 +1,12 @@
 /**
- * Company-wide settings, including country for holidays.
+ * Company-wide settings.
+ *
+ * `country` is retained because stored records carry it, but the app is South
+ * Africa only: holidays and PAYE no longer branch on it.
  */
 export type CompanySettings = {
   name: string;
-  country: keyof typeof import("./holidays").PUBLIC_HOLIDAYS;
+  country: "ZA";
   currencySymbol: string;
   fiscalYearStart: string; // MM-DD
 };

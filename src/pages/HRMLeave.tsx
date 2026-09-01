@@ -23,7 +23,6 @@ import { canAccess, getCurrentRole } from "@/lib/accessControl";
 import { AuthStore } from "@/lib/authStore";
 import { UserStore } from "@/lib/userStore";
 import { countWorkingDays, updateLeaveBalances } from "@/lib/leaveBalance";
-import { PUBLIC_HOLIDAYS } from "@/lib/holidays";
 import { notifyManagerOfLeaveRequest, notifyEmployeeOfLeaveDecision } from "@/lib/emailNotifier";
 import { LeaveBalanceStore } from "@/lib/leaveBalanceStore";
 import { LeaveBalanceDisplay } from "@/components/LeaveBalanceDisplay";

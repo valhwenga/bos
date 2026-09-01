@@ -7,25 +7,15 @@
  * taxEngine.ts and is now the only tax calculation.
  */
 
-export type Currency = "USD" | "GBP" | "EUR" | "CAD" | "AUD" | "ZAR";
+export type Currency = "ZAR";
 
 export const CURRENCY_SYMBOLS: Record<Currency, string> = {
-  USD: "$",
-  GBP: "£",
-  EUR: "€",
-  CAD: "C$",
-  AUD: "A$",
   ZAR: "R",
 };
 
+/** Retained so callers reading a stored country setting still resolve. */
 export const COUNTRY_TO_CURRENCY: Record<string, Currency> = {
   ZA: "ZAR",
-  US: "USD",
-  GB: "GBP",
-  DE: "EUR",
-  FR: "EUR",
-  CA: "CAD",
-  AU: "AUD",
 };
 
 /**
