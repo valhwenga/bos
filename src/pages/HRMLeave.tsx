@@ -27,6 +27,7 @@ import { notifyManagerOfLeaveRequest, notifyEmployeeOfLeaveDecision } from "@/li
 import { LeaveBalanceStore } from "@/lib/leaveBalanceStore";
 import { LeaveBalanceDisplay } from "@/components/LeaveBalanceDisplay";
 import { HolidayCalendar } from "@/components/HolidayCalendar";
+import { LeaveRecalculationNotice } from "@/components/LeaveRecalculationNotice";
 
 const statusColors = {
   Pending: "bg-warning text-warning-foreground",
@@ -256,6 +257,8 @@ export default function HRMLeave() {
           ))}
         </div>
       </PageHeader>
+
+      <LeaveRecalculationNotice canApply={canReviewAll} />
 
       <DataTable
         rows={visibleLeaves}
