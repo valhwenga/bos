@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Download, Calculator } from "lucide-react";
 import { CompanySettingsStore } from "@/lib/companySettingsStore";
+import { toast } from "@/components/ui/use-toast";
 import { COUNTRY_TO_CURRENCY, CURRENCY_SYMBOLS, computeTaxUS, generateACH, generateBACS } from "@/lib/payrollAdvanced";
 
 type PayrollRow = {
@@ -47,7 +48,20 @@ export function PayrollAdvancedPanel({ data }: Props) {
       sortCode: "000000", // placeholder
       accountNumber: "00000000", // placeholder
     }));
-    const content = country === "US" ? generateACH(enriched) : generateBACS(enriched);
+    let content: string;
+    try {
+      content = country === "US" ? generateACH(enriched) : generateBACS(enriched);
+    } catch (err) {
+      // Bank details are not captured against employees yet, so the export
+      // cannot produce a usable file. Say so rather than downloading one full
+      // of zeros that looks valid.
+      toast({
+        title: "Bank export unavailable",
+        description: err instanceof Error ? err.message : "Could not build the bank file.",
+        variant: "destructive",
+      });
+      return;
+    }
     const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");

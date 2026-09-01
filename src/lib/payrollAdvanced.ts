@@ -54,6 +54,37 @@ export function computeTaxUS(annualGross: number): number {
 /**
  * Generate ACH (US) bank export format (simplified).
  */
+/**
+ * Refuses to build a payment file from placeholder bank details.
+ *
+ * The export previously filled every account and routing number with zeros and
+ * still produced a downloadable file, so it looked like a working payroll
+ * export while being unusable — or worse, ambiguous — if anyone submitted it to
+ * a bank. Employee bank details are not captured anywhere yet, so the honest
+ * behaviour is to fail and say so.
+ */
+export class MissingBankDetailsError extends Error {
+  constructor(readonly employees: string[]) {
+    super(
+      `Cannot build a bank file: no account details for ${employees.length} ` +
+        `employee${employees.length === 1 ? "" : "s"} (${employees.slice(0, 3).join(", ")}` +
+        `${employees.length > 3 ? ", …" : ""}). Add their bank details first.`,
+    );
+    this.name = "MissingBankDetailsError";
+  }
+}
+
+const isPlaceholder = (value?: string) => !value || /^0+$/.test(value.trim());
+
+function assertBankDetails(
+  rows: Array<{ employeeName: string; bankAccount?: string; accountNumber?: string }>,
+) {
+  const missing = rows
+    .filter((r) => isPlaceholder(r.bankAccount) && isPlaceholder(r.accountNumber))
+    .map((r) => r.employeeName || "(unnamed)");
+  if (missing.length) throw new MissingBankDetailsError(missing);
+}
+
 export function generateACH(payrolls: Array<{
   employeeId: string;
   employeeName: string;
@@ -61,6 +92,7 @@ export function generateACH(payrolls: Array<{
   bankAccount?: string;
   routingNumber?: string;
 }>) {
+  assertBankDetails(payrolls);
   const lines = [
     "101 1220000001 123456789 202502070000A094101Company Name           222222222",
     ...payrolls.map(p => [
@@ -84,6 +116,7 @@ export function generateBACS(payrolls: Array<{
   sortCode?: string;
   accountNumber?: string;
 }>) {
+  assertBankDetails(payrolls);
   const lines = [
     "HDR1,COMPANY,20250207,GBP",
     ...payrolls.map(p => [
