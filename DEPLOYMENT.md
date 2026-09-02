@@ -48,30 +48,33 @@ stay readable without exposing where colleagues are paid. Verified that a user
 with employee access but no payroll access sees the directory and no account
 numbers.
 
-### 3. Turn on email confirmation
+### 3. Configure SMTP — the last blocker
 
-`supabase/config.toml` has `enable_confirmations = false`, so anyone can
-register with an address they do not own. Approval mitigates it, but set:
+Email confirmation is **on** in `supabase/config.toml`, along with
+`secure_password_change` and a 60-second limit between reset emails. Verified
+locally: a new signup gets no session, sign-in is refused with
+`email_not_confirmed`, and the confirmation email is sent.
 
-```toml
-[auth.email]
-enable_confirmations = true
-```
+What is left is delivery. Locally, mail is caught by Mailpit
+(http://127.0.0.1:54424), which is why this works in development with nothing
+configured. **A hosted project has no such catcher.** Without a real SMTP
+provider, confirmation and reset emails are never delivered, and since
+confirmation is now required, nobody can complete a signup or recover an
+account.
 
-and configure a real SMTP provider under `[auth.email.smtp]`. Without SMTP,
-password reset and confirmation emails go nowhere in production — the local
-stack only catches them in Mailpit.
+Set it in the hosted project's dashboard under **Authentication → SMTP
+Settings**, not in `config.toml` — that file is committed and the password must
+not be. Then send yourself a test signup and confirm the mail arrives before
+letting anyone else register.
 
-### 4. Patch the dependency vulnerabilities
+### 4. Dependency vulnerabilities — done
 
-Three high severity in production dependencies:
+`npm audit --omit=dev` reports **0 vulnerabilities**. The three high-severity
+ones were patched in place; the two moderate React Router advisories needed the
+major upgrade to v7, which was taken and verified across 24 routes.
 
-```bash
-npm audit fix
-```
-
-Re-run the build and tests afterwards; if `audit fix` wants a major bump, take
-it deliberately rather than with `--force`.
+Re-run `npm audit --omit=dev` before each deploy — this only stays true if
+somebody keeps checking.
 
 ---
 
@@ -123,47 +126,35 @@ Without this, "create client login" and any admin-created account will fail.
 
 ### 8. Build and host the front end
 
-Fly serves the built static files. Two things to change first.
+`Dockerfile`, `nginx.conf` and `fly.toml` are in the repo and the image has been
+built and served locally. `base` is `/`; it used to be `/bos/` for GitHub Pages,
+which 404s every asset on a host that serves from the domain root.
 
-**The base path.** `vite.config.ts` sets `base: "/bos/"` in production, which is
-a GitHub Pages path. On Fly the app is served from the root:
-
-```ts
-base: "/",
-```
-
-**The environment.** Build-time variables are baked into the bundle, so they are
-set at build time, not as Fly runtime secrets:
+Create the app once:
 
 ```bash
-fly launch --no-deploy
+fly launch --no-deploy --name bos --region jnb
 ```
 
-Then build with the hosted values and deploy:
-
-```bash
-VITE_SUPABASE_URL=https://<ref>.supabase.co VITE_SUPABASE_ANON_KEY=<anon-key> npm run build
-```
+Then deploy, passing the Supabase values as **build arguments**:
 
 ```bash
-fly deploy
+fly deploy --build-arg VITE_SUPABASE_URL=https://<ref>.supabase.co --build-arg VITE_SUPABASE_ANON_KEY=<anon-key>
 ```
+
+They are build arguments and not Fly secrets because Vite compiles them into
+the bundle: by the time a secret would be read, the JavaScript is already
+written. Changing either needs a rebuild, not a restart. The build fails fast if
+they are missing, rather than shipping a bundle that throws on load.
 
 The anon key belongs in the bundle — it is public by design and every request it
 makes is still subject to row level security. The **service role key must never
 be built into the front end**; it exists only in the edge function's
-environment, where Supabase sets it for you.
+environment, where Supabase sets it.
 
-Because this is a single-page app, the host must serve `index.html` for unknown
-paths, or a refresh on `/accounting/invoices` returns 404. In `fly.toml`:
-
-```toml
-[[statics]]
-guest_path = "/app/dist"
-url_prefix = "/"
-```
-
-If you use a Node or nginx image instead, add the SPA fallback there.
+nginx serves `index.html` for unknown paths, so a refresh on
+`/accounting/invoices` works. Verified: that path returns the app shell, while a
+missing asset still returns 404 rather than being masked by the fallback.
 
 ### 9. Point Supabase at the deployed URL
 

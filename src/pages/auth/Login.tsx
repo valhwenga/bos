@@ -11,6 +11,22 @@ interface LoginLocationState {
   from?: string;
 }
 
+/**
+ * Where to go after signing in.
+ *
+ * Only an internal path is accepted. A value like "//evil.example.com" or
+ * "\\evil.example.com" is treated by browsers as protocol-relative, so passing
+ * it straight to navigate() would send someone off-site immediately after
+ * authenticating — the shape of open redirect that phishing relies on.
+ */
+export function safeReturnPath(from: unknown): string {
+  if (typeof from !== "string") return "/";
+  const path = from.trim();
+  // Must be a single leading slash, and not a scheme or a backslash escape.
+  if (!/^\/(?!\/)/.test(path) || path.includes("\\") || /^\/\s*\w+:/.test(path)) return "/";
+  return path;
+}
+
 const Login: React.FC = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -28,7 +44,7 @@ const Login: React.FC = () => {
     setSubmitting(true);
     try {
       await AuthStore.signIn(email, password);
-      navigate(location.state?.from || "/", { replace: true });
+      navigate(safeReturnPath(location.state?.from), { replace: true });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "We couldn't sign you in. Check your details and try again.");
       setSubmitting(false);

@@ -8,7 +8,10 @@ export default defineConfig(({ mode }) => ({
     host: "::",
     port: 8080,
   },
-  base: mode === 'production' ? "/bos/" : "/", // Use /bos/ only in production for GitHub Pages
+  // Served from the root. This was "/bos/" in production for GitHub Pages; on
+  // any host that serves the app at the domain root — Fly included — that
+  // prefix makes every asset 404.
+  base: "/",
   plugins: [react()],
   resolve: {
     alias: {

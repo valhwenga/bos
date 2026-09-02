@@ -27,14 +27,27 @@ const Signup: React.FC = () => {
 
   if (submitted) {
     return (
-      <AuthShell title="Request sent" subtitle="An administrator needs to approve your access.">
+      <AuthShell title="Check your email" subtitle="Two things happen before you can sign in.">
         <div className="flex flex-col gap-4">
+          {/* There are two gates now — confirming the address, then an
+              administrator approving the account. Mentioning only the second
+              would leave people waiting on an approval that cannot happen
+              until they click the link. */}
           <div className="flex items-start gap-3 rounded-md border border-border bg-success-soft px-3 py-3">
             <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-hidden="true" />
-            <p className="text-sm text-foreground">
-              We've sent your request for <span className="font-medium">{email}</span>. You'll be able to
-              sign in as soon as it's approved.
-            </p>
+            <div className="text-sm text-foreground">
+              <p>
+                We've sent a confirmation link to{" "}
+                <span className="font-medium">{email}</span>.
+              </p>
+              <ol className="mt-2 list-decimal space-y-1 pl-4 text-muted-foreground">
+                <li>Open the link to confirm the address is yours.</li>
+                <li>An administrator then approves the account and sets your role.</li>
+              </ol>
+              <p className="mt-2 text-muted-foreground">
+                Check your spam folder if the email hasn't arrived.
+              </p>
+            </div>
           </div>
           <Button asChild variant="outline" className="w-full">
             <Link to="/auth/login">Back to sign in</Link>

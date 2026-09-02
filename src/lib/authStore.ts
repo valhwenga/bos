@@ -101,10 +101,21 @@ export const AuthStore = {
 
   async signIn(email: string, password: string): Promise<Account> {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    // Supabase deliberately returns the same message whether the address is
-    // unknown or the password is wrong, so the form cannot be used to discover
-    // who has an account. Keep it that way.
-    if (error) throw new Error("Invalid email or password.");
+    if (error) {
+      // An unconfirmed address is only reported once the password is correct,
+      // so saying so reveals nothing the caller does not already know — and
+      // "invalid email or password" would send someone off resetting a
+      // password that was never the problem.
+      if (error.code === "email_not_confirmed" || /not confirmed/i.test(error.message)) {
+        throw new Error(
+          "Confirm your email address first — open the link we sent you when you signed up.",
+        );
+      }
+      // Otherwise Supabase deliberately returns the same message whether the
+      // address is unknown or the password is wrong, so the form cannot be used
+      // to discover who has an account. Keep it that way.
+      throw new Error("Invalid email or password.");
+    }
 
     await refreshSession();
 

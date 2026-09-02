@@ -223,25 +223,43 @@ enable_signup = true
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
 # If enabled, users need to confirm their email address before signing in.
-enable_confirmations = false
-# If enabled, users will need to reauthenticate or have logged in recently to change their password.
-secure_password_change = false
+#
+# On, so that signing up proves control of the address. An account still has to
+# be approved by an administrator afterwards, but without this anyone could
+# register under a colleague's address and appear in the approvals queue as
+# them.
+enable_confirmations = true
+# Requires a recent sign-in before a password can be changed, so someone who
+# walks up to an unlocked machine cannot take the account over.
+secure_password_change = true
 # Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.
-max_frequency = "1s"
+#
+# One second let the reset form be used to flood an address; a minute is enough
+# to stop that without getting in the way of somebody who mistyped.
+max_frequency = "60s"
 # Number of characters used in the email OTP.
 otp_length = 6
 # Number of seconds before the email OTP expires (defaults to 1 hour).
 otp_expiry = 3600
 
-# Use a production-ready SMTP server
+# Production SMTP.
+#
+# Locally these settings are ignored and mail is caught by Mailpit
+# (http://127.0.0.1:54424), which is why confirmation works in development with
+# nothing configured. A deployed project has no such catcher: without a real
+# SMTP provider, confirmation and password-reset emails are never delivered and
+# nobody can complete a signup or recover an account.
+#
+# Set these in the hosted project's dashboard (Authentication -> SMTP Settings)
+# rather than here — this file is committed, and the password must not be.
 # [auth.email.smtp]
 # enabled = true
-# host = "smtp.sendgrid.net"
+# host = "smtp.example.co.za"
 # port = 587
 # user = "apikey"
-# pass = "env(SENDGRID_API_KEY)"
-# admin_email = "admin@email.com"
-# sender_name = "Admin"
+# pass = "env(SMTP_PASSWORD)"
+# admin_email = "noreply@yourcompany.co.za"
+# sender_name = "Your Company"
 
 # Uncomment to customize email template
 # [auth.email.template.invite]
