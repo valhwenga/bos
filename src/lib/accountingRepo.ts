@@ -24,6 +24,11 @@ import { supabase } from "./supabase";
 import type { Customer } from "./customersStore";
 import type { Invoice, LineItem, Quotation } from "./accountingStore";
 import type { Payment, PaymentMethod } from "./paymentStore";
+import type { Product } from "./productsStore";
+import type { Expense } from "./expenseStore";
+import type { Sale, SaleItem } from "./salesStore";
+import type { CreditNote, CreditApply } from "./creditNotesStore";
+import type { RecurringTemplate } from "./recurringStore";
 
 /** The app's id for a row: its legacy id if it has one, else the uuid. */
 const appId = (row: { id: string; legacy_id: string | null }) => row.legacy_id ?? row.id;
@@ -67,6 +72,11 @@ const toDate = (iso: string | undefined | null): string | null =>
  */
 const DEFAULTED_COLUMNS: Record<string, readonly string[]> = {
   customers: ["shipping_same_as_billing", "tags"],
+  products: ["price"],
+  expenses: ["amount", "currency_code", "spent_on", "tax"],
+  sales: ["items", "sold_on"],
+  credit_notes: ["amount", "issue_date"],
+  recurring_templates: ["active", "auto_send", "cadence", "items", "start_date", "time_of_day"],
   quotations: ["discount_pct", "issue_date", "shipping", "status", "use_shipping_address"],
   invoices: ["discount_pct", "issue_date", "shipping", "status", "use_shipping_address"],
   payments: ["currency_code", "method", "paid_on"],
@@ -576,6 +586,489 @@ export const PaymentRepo = {
 
   async remove(id: string): Promise<void> {
     const { error } = await supabase.from("payments").delete().eq(...idFilter(id));
+    if (error) throw new Error(error.message);
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Products
+// ---------------------------------------------------------------------------
+
+type ProductRow = {
+  id: string;
+  legacy_id: string | null;
+  name: string;
+  price: number | string;
+  description: string | null;
+};
+
+export const ProductRepo = {
+  async list(): Promise<Product[]> {
+    const { data, error } = await supabase
+      .from("products")
+      .select("id, legacy_id, name, price, description")
+      .order("name");
+    if (error) throw new Error(error.message);
+    return (data as ProductRow[]).map((row) => ({
+      id: appId(row),
+      name: row.name,
+      price: Number(row.price),
+      description: row.description ?? undefined,
+    }));
+  },
+
+  async upsert(p: Product): Promise<Product> {
+    const payload = {
+      name: p.name,
+      price: p.price,
+      description: p.description ?? null,
+    };
+    const { data: existing } = await supabase
+      .from("products")
+      .select("id")
+      .eq(...idFilter(p.id))
+      .maybeSingle();
+
+    if (existing) {
+      const { error } = await supabase
+        .from("products")
+        .update(applyDefaults("products", payload))
+        .eq("id", existing.id);
+      if (error) throw new Error(error.message);
+    } else {
+      const { error } = await supabase
+        .from("products")
+        .insert(applyDefaults("products", { ...payload, legacy_id: isUuid(p.id) ? null : p.id }));
+      if (error) throw new Error(error.message);
+    }
+    return p;
+  },
+
+  async remove(id: string): Promise<void> {
+    const { error } = await supabase.from("products").delete().eq(...idFilter(id));
+    if (error) throw new Error(error.message);
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Expenses
+// ---------------------------------------------------------------------------
+
+type ExpenseRow = {
+  id: string;
+  legacy_id: string | null;
+  vendor: string;
+  category: string | null;
+  amount: number | string;
+  tax: number | string | null;
+  currency_code: string;
+  spent_on: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
+export const ExpenseRepo = {
+  async list(): Promise<Expense[]> {
+    const { data, error } = await supabase
+      .from("expenses")
+      .select("id, legacy_id, vendor, category, amount, tax, currency_code, spent_on, notes, created_at")
+      .order("spent_on", { ascending: false });
+    if (error) throw new Error(error.message);
+    return (data as ExpenseRow[]).map((row) => ({
+      id: appId(row),
+      vendor: row.vendor,
+      category: row.category ?? "",
+      amount: Number(row.amount),
+      tax: row.tax === null ? undefined : Number(row.tax),
+      currencyCode: row.currency_code,
+      date: toIso(row.spent_on) ?? row.created_at,
+      notes: row.notes ?? undefined,
+    }));
+  },
+
+  async upsert(e: Expense): Promise<Expense> {
+    // receiptDataUrl is deliberately not persisted. It was a base64 image
+    // inlined into the row; receipts belong in the expense-receipts storage
+    // bucket, which the file_storage migration created for the purpose.
+    const payload = {
+      vendor: e.vendor,
+      category: e.category || null,
+      amount: e.amount,
+      tax: e.tax ?? null,
+      currency_code: e.currencyCode || null,
+      spent_on: toDate(e.date),
+      notes: e.notes ?? null,
+    };
+    const { data: existing } = await supabase
+      .from("expenses")
+      .select("id")
+      .eq(...idFilter(e.id))
+      .maybeSingle();
+
+    if (existing) {
+      const { error } = await supabase
+        .from("expenses")
+        .update(applyDefaults("expenses", payload))
+        .eq("id", existing.id);
+      if (error) throw new Error(error.message);
+    } else {
+      const { error } = await supabase
+        .from("expenses")
+        .insert(applyDefaults("expenses", { ...payload, legacy_id: isUuid(e.id) ? null : e.id }));
+      if (error) throw new Error(error.message);
+    }
+    return e;
+  },
+
+  async remove(id: string): Promise<void> {
+    const { error } = await supabase.from("expenses").delete().eq(...idFilter(id));
+    if (error) throw new Error(error.message);
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Sales
+// ---------------------------------------------------------------------------
+
+type SaleRow = {
+  id: string;
+  legacy_id: string | null;
+  number: string;
+  customer_id: string | null;
+  customer_name: string | null;
+  sold_on: string | null;
+  method: string | null;
+  reference: string | null;
+  notes: string | null;
+  items: SaleItem[] | null;
+  created_at: string;
+};
+
+const SALE_COLUMNS =
+  "id, legacy_id, number, customer_id, customer_name, sold_on, method, reference, notes, items, created_at";
+
+export const SaleRepo = {
+  async list(): Promise<Sale[]> {
+    const [{ data, error }, { data: customers }] = await Promise.all([
+      supabase.from("sales").select(SALE_COLUMNS).order("sold_on", { ascending: false }),
+      supabase.from("customers").select("id, legacy_id"),
+    ]);
+    if (error) throw new Error(error.message);
+
+    const customerIds = new Map<string, string>();
+    for (const c of (customers ?? []) as { id: string; legacy_id: string | null }[]) {
+      customerIds.set(c.id, c.legacy_id ?? c.id);
+    }
+
+    return (data as SaleRow[]).map((row) => ({
+      id: appId(row),
+      number: row.number,
+      date: (toIso(row.sold_on) ?? row.created_at).slice(0, 10),
+      customerId: row.customer_id ? customerIds.get(row.customer_id) ?? row.customer_id : undefined,
+      customerName: row.customer_name ?? undefined,
+      items: row.items ?? [],
+      method: row.method ?? undefined,
+      reference: row.reference ?? undefined,
+      notes: row.notes ?? undefined,
+      createdAt: row.created_at,
+    }));
+  },
+
+  async upsert(s: Sale): Promise<Sale> {
+    let customerUuid: string | null = null;
+    if (s.customerId) {
+      const { data } = await supabase
+        .from("customers")
+        .select("id")
+        .eq(...idFilter(s.customerId))
+        .maybeSingle();
+      customerUuid = data?.id ?? null;
+    }
+
+    // Items stay denormalised, matching the column the schema provides. A sale
+    // is a till receipt: it records what was sold at that moment and is not
+    // edited line by line the way an invoice is.
+    const payload = {
+      number: s.number,
+      customer_id: customerUuid,
+      customer_name: s.customerName ?? null,
+      sold_on: toDate(s.date),
+      method: s.method ?? null,
+      reference: s.reference ?? null,
+      notes: s.notes ?? null,
+      items: s.items ?? [],
+    };
+
+    const { data: existing } = await supabase
+      .from("sales")
+      .select("id")
+      .eq(...idFilter(s.id))
+      .maybeSingle();
+
+    if (existing) {
+      const { error } = await supabase
+        .from("sales")
+        .update(applyDefaults("sales", payload))
+        .eq("id", existing.id);
+      if (error) throw new Error(error.message);
+    } else {
+      const { error } = await supabase
+        .from("sales")
+        .insert(applyDefaults("sales", { ...payload, legacy_id: isUuid(s.id) ? null : s.id }));
+      if (error) throw new Error(error.message);
+    }
+    return s;
+  },
+
+  async remove(id: string): Promise<void> {
+    const { error } = await supabase.from("sales").delete().eq(...idFilter(id));
+    if (error) throw new Error(error.message);
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Credit notes
+//
+// Applications live in their own table rather than a jsonb column, because a
+// credit applied to an invoice is a financial link that should be joinable and
+// constrained, not a blob.
+// ---------------------------------------------------------------------------
+
+type CreditNoteRow = {
+  id: string;
+  legacy_id: string | null;
+  number: string;
+  customer_id: string | null;
+  customer_name: string | null;
+  issue_date: string | null;
+  amount: number | string;
+  notes: string | null;
+  created_at: string;
+  credit_note_applications: { invoice_id: string; amount: number | string }[];
+};
+
+const CREDIT_NOTE_COLUMNS = `
+  id, legacy_id, number, customer_id, customer_name, issue_date, amount, notes, created_at,
+  credit_note_applications ( invoice_id, amount )
+`;
+
+export const CreditNoteRepo = {
+  async list(): Promise<CreditNote[]> {
+    const [{ data, error }, { data: invoices }, { data: customers }] = await Promise.all([
+      supabase.from("credit_notes").select(CREDIT_NOTE_COLUMNS).order("issue_date", { ascending: false }),
+      supabase.from("invoices").select("id, legacy_id"),
+      supabase.from("customers").select("id, legacy_id"),
+    ]);
+    if (error) throw new Error(error.message);
+
+    const appIdOf = (rows: { id: string; legacy_id: string | null }[] | null) => {
+      const m = new Map<string, string>();
+      for (const r of rows ?? []) m.set(r.id, r.legacy_id ?? r.id);
+      return m;
+    };
+    const invoiceIds = appIdOf(invoices);
+    const customerIds = appIdOf(customers);
+
+    return (data as unknown as CreditNoteRow[]).map((row) => ({
+      id: appId(row),
+      number: row.number,
+      date: (toIso(row.issue_date) ?? row.created_at).slice(0, 10),
+      customerId: row.customer_id ? customerIds.get(row.customer_id) ?? row.customer_id : "",
+      customerName: row.customer_name ?? undefined,
+      amount: Number(row.amount),
+      applied: (row.credit_note_applications ?? []).map((a) => ({
+        invoiceId: invoiceIds.get(a.invoice_id) ?? a.invoice_id,
+        amount: Number(a.amount),
+      })),
+      notes: row.notes ?? undefined,
+      createdAt: row.created_at,
+    }));
+  },
+
+  async upsert(cn: CreditNote): Promise<CreditNote> {
+    let customerUuid: string | null = null;
+    if (cn.customerId) {
+      const { data } = await supabase
+        .from("customers")
+        .select("id")
+        .eq(...idFilter(cn.customerId))
+        .maybeSingle();
+      customerUuid = data?.id ?? null;
+    }
+
+    const payload = {
+      number: cn.number,
+      customer_id: customerUuid,
+      customer_name: cn.customerName ?? null,
+      issue_date: toDate(cn.date),
+      amount: cn.amount,
+      notes: cn.notes ?? null,
+    };
+
+    const { data: existing } = await supabase
+      .from("credit_notes")
+      .select("id")
+      .eq(...idFilter(cn.id))
+      .maybeSingle();
+
+    let uuid: string;
+    if (existing) {
+      const { error } = await supabase
+        .from("credit_notes")
+        .update(applyDefaults("credit_notes", payload))
+        .eq("id", existing.id);
+      if (error) throw new Error(error.message);
+      uuid = existing.id;
+    } else {
+      const { data, error } = await supabase
+        .from("credit_notes")
+        .insert(applyDefaults("credit_notes", { ...payload, legacy_id: isUuid(cn.id) ? null : cn.id }))
+        .select("id")
+        .single();
+      if (error) throw new Error(error.message);
+      uuid = data.id;
+    }
+
+    await this.replaceApplications(uuid, cn.applied ?? []);
+    return cn;
+  },
+
+  /** Replaces the credit's applications, resolving invoice ids to uuids. */
+  async replaceApplications(creditNoteUuid: string, applied: CreditApply[]): Promise<void> {
+    const { error: delError } = await supabase
+      .from("credit_note_applications")
+      .delete()
+      .eq("credit_note_id", creditNoteUuid);
+    if (delError) throw new Error(delError.message);
+    if (applied.length === 0) return;
+
+    const rows: { credit_note_id: string; invoice_id: string; amount: number }[] = [];
+    for (const a of applied) {
+      const invoiceUuid = await InvoiceRepo.uuidFor(a.invoiceId);
+      // Refuse rather than drop the link. A credit recorded against nothing
+      // would leave the invoice showing a balance the customer does not owe.
+      if (!invoiceUuid) {
+        throw new Error(`Invoice ${a.invoiceId} was not found, so the credit was not applied.`);
+      }
+      rows.push({ credit_note_id: creditNoteUuid, invoice_id: invoiceUuid, amount: a.amount });
+    }
+
+    const { error } = await supabase.from("credit_note_applications").insert(rows);
+    if (error) throw new Error(error.message);
+  },
+
+  async remove(id: string): Promise<void> {
+    const { error } = await supabase.from("credit_notes").delete().eq(...idFilter(id));
+    if (error) throw new Error(error.message);
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Recurring templates
+// ---------------------------------------------------------------------------
+
+type RecurringRow = {
+  id: string;
+  legacy_id: string | null;
+  name: string;
+  customer_id: string | null;
+  customer_snapshot: Customer | null;
+  items: RecurringTemplate["items"] | null;
+  cadence: string;
+  interval_days: number | null;
+  start_date: string | null;
+  end_date: string | null;
+  time_of_day: string | null;
+  next_run_at: string | null;
+  last_run_at: string | null;
+  active: boolean;
+  auto_send: boolean;
+  seq_prefix: string | null;
+  next_number: number | null;
+  notes: string | null;
+  created_at: string;
+};
+
+const RECURRING_COLUMNS = `
+  id, legacy_id, name, customer_id, customer_snapshot, items, cadence, interval_days,
+  start_date, end_date, time_of_day, next_run_at, last_run_at, active, auto_send,
+  seq_prefix, next_number, notes, created_at
+`;
+
+export const RecurringRepo = {
+  async list(): Promise<RecurringTemplate[]> {
+    const { data, error } = await supabase
+      .from("recurring_templates")
+      .select(RECURRING_COLUMNS)
+      .order("created_at", { ascending: false });
+    if (error) throw new Error(error.message);
+
+    return (data as unknown as RecurringRow[]).map((row) => ({
+      id: appId(row),
+      name: row.name,
+      customer: (row.customer_snapshot ?? { id: "", name: "" }) as Customer,
+      items: row.items ?? [],
+      cadence: row.cadence as RecurringTemplate["cadence"],
+      intervalDays: row.interval_days ?? undefined,
+      startDate: row.start_date ?? "",
+      endDate: row.end_date ?? undefined,
+      timeOfDay: row.time_of_day ?? undefined,
+      nextRunAt: row.next_run_at ?? "",
+      lastRunAt: row.last_run_at ?? undefined,
+      active: row.active,
+      autoSend: row.auto_send,
+      seqPrefix: row.seq_prefix ?? undefined,
+      nextNumber: row.next_number ?? undefined,
+      notes: row.notes ?? undefined,
+      createdAt: row.created_at,
+    }));
+  },
+
+  async upsert(t: RecurringTemplate): Promise<RecurringTemplate> {
+    const customerId = t.customer?.id ? await CustomerRepo.ensure(t.customer) : null;
+
+    const payload = {
+      name: t.name,
+      customer_id: customerId,
+      customer_snapshot: t.customer ?? null,
+      items: t.items ?? [],
+      cadence: t.cadence,
+      interval_days: t.intervalDays ?? null,
+      start_date: t.startDate || null,
+      end_date: t.endDate ?? null,
+      time_of_day: t.timeOfDay ?? null,
+      next_run_at: t.nextRunAt || null,
+      last_run_at: t.lastRunAt ?? null,
+      active: t.active,
+      auto_send: t.autoSend,
+      seq_prefix: t.seqPrefix ?? null,
+      next_number: t.nextNumber ?? null,
+      notes: t.notes ?? null,
+    };
+
+    const { data: existing } = await supabase
+      .from("recurring_templates")
+      .select("id")
+      .eq(...idFilter(t.id))
+      .maybeSingle();
+
+    if (existing) {
+      const { error } = await supabase
+        .from("recurring_templates")
+        .update(applyDefaults("recurring_templates", payload))
+        .eq("id", existing.id);
+      if (error) throw new Error(error.message);
+    } else {
+      const { error } = await supabase
+        .from("recurring_templates")
+        .insert(applyDefaults("recurring_templates", { ...payload, legacy_id: isUuid(t.id) ? null : t.id }));
+      if (error) throw new Error(error.message);
+    }
+    return t;
+  },
+
+  async remove(id: string): Promise<void> {
+    const { error } = await supabase.from("recurring_templates").delete().eq(...idFilter(id));
     if (error) throw new Error(error.message);
   },
 };

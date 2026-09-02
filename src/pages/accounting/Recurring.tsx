@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { toast } from "@/components/ui/use-toast";
+import { useCache } from "@/lib/collectionCache";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +10,7 @@ import { Pencil, Trash2, Repeat, Play, Pause } from "lucide-react";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
-import { RecurringStore, type RecurringTemplate, type RecurringCadence } from "@/lib/recurringStore";
+import { recurringCache, RecurringStore, type RecurringTemplate, type RecurringCadence } from "@/lib/recurringStore";
 import { CustomersStore } from "@/lib/customersStore";
 import { CompanySettingsStore } from "@/lib/companySettings";
 import { AccountingStore } from "@/lib/accountingStore";
@@ -71,7 +73,7 @@ const NewRecurringDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>v
     }
   }, [open]);
 
-  const save = () => {
+  const save = async () => {
     if (!name.trim() || !customerId || items.length===0) return;
     const customer = customers.find(c=> c.id===customerId)!;
     const nextRunAt = editing?.nextRunAt || computeInitialNextRun();
@@ -94,7 +96,16 @@ const NewRecurringDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>v
       seqPrefix: seqPrefix || undefined,
       nextNumber: nextNumber || 1,
     };
-    RecurringStore.upsert(tpl);
+    try {
+      await RecurringStore.upsert(tpl);
+    } catch (err) {
+      toast({
+        title: "Could not save template",
+        description: err instanceof Error ? err.message : "Nothing was saved.",
+        variant: "destructive",
+      });
+      return;
+    }
     onSaved();
     onOpenChange(false);
   };
@@ -160,7 +171,7 @@ const NewRecurringDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>v
         </div>
         <DialogFooter>
           <Button variant="secondary" onClick={()=> onOpenChange(false)}>Cancel</Button>
-          <Button onClick={save} disabled={!name.trim() || !customerId || items.length===0}>Save</Button>
+          <Button onClick={() => void save()} disabled={!name.trim() || !customerId || items.length===0}>Save</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -169,12 +180,13 @@ const NewRecurringDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>v
 
 const Recurring: React.FC = () => {
   const cs = CompanySettingsStore.get();
-  const [list, setList] = useState(RecurringStore.list());
+  // Rows come from Postgres via a cache, so this re-renders when they arrive.
+  const { rows: list } = useCache(recurringCache);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<RecurringTemplate | undefined>(undefined);
 
   useEffect(() => {
-    const refresh = () => setList(RecurringStore.list());
+    const refresh = () => void recurringCache.refresh();
     const onStorage = (e: StorageEvent) => { if (e.key && e.key.startsWith('acct.recurring')) refresh(); };
     window.addEventListener('acct.recurring-changed', refresh as any);
     window.addEventListener('storage', onStorage);
@@ -201,7 +213,9 @@ const Recurring: React.FC = () => {
     // Awaited: if the invoice does not save, the template must not advance its
     // schedule, or the period is billed nowhere and never retried.
     await AccountingStore.upsertInvoice(inv as any);
-    RecurringStore.upsert({ ...t, lastRunAt: new Date().toISOString(), nextRunAt: RecurringStore.computeNextRun(t), nextNumber: (t.nextNumber || 1) + 1 });
+    // Also awaited: the invoice exists now, so failing to advance the schedule
+    // would bill the same period again on the next run.
+    await RecurringStore.upsert({ ...t, lastRunAt: new Date().toISOString(), nextRunAt: RecurringStore.computeNextRun(t), nextNumber: (t.nextNumber || 1) + 1 });
     try {
       if (t.autoSend && t.customer.email) {
         const subject = `Invoice ${inv.number} from ${cs.name || 'Our Company'}`;
@@ -219,7 +233,7 @@ const Recurring: React.FC = () => {
         await EmailStore.send({ from: { name: cs.name || 'Billing', email: cs.email || 'noreply@example.com' }, to: [{ name: t.customer.name, email: t.customer.email }], subject, body, attachments: [{ id: `att_${Date.now()}`, name: `${inv.number}.pdf`, type: 'application/pdf', size: dataUrl.length, dataUrl }] } as any);
       }
     } catch { /* ignore */ }
-    setList(RecurringStore.list());
+    void recurringCache.refresh();
   };
 
   const columns: Column<RecurringTemplate>[] = [
@@ -270,7 +284,15 @@ const Recurring: React.FC = () => {
             size="sm"
             variant="ghost"
             className="h-8"
-            onClick={() => { RecurringStore.upsert({ ...t, active: !t.active }); setList(RecurringStore.list()); }}
+            onClick={() => {
+              void RecurringStore.upsert({ ...t, active: !t.active }).catch((err: unknown) =>
+                toast({
+                  title: "Could not change the template",
+                  description: err instanceof Error ? err.message : "It is unchanged.",
+                  variant: "destructive",
+                }),
+              );
+            }}
           >
             {t.active ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
             <span className="sr-only">{t.active ? "Pause" : "Resume"}</span>
@@ -286,8 +308,13 @@ const Recurring: React.FC = () => {
             aria-label={`Delete ${t.name}`}
             onClick={() => {
               if (!window.confirm(`Delete recurring template "${t.name}"? This cannot be undone.`)) return;
-              RecurringStore.remove(t.id);
-              setList(RecurringStore.list());
+              void RecurringStore.remove(t.id).catch((err: unknown) =>
+                toast({
+                  title: "Could not delete template",
+                  description: err instanceof Error ? err.message : "The template is unchanged.",
+                  variant: "destructive",
+                }),
+              );
             }}
           >
             <Trash2 className="h-3.5 w-3.5" />
@@ -329,7 +356,7 @@ const Recurring: React.FC = () => {
         }}
       />
 
-      <NewRecurringDialog open={open} onOpenChange={(v)=> { setOpen(v); if (!v) { setEditing(undefined); setList(RecurringStore.list()); } }} onSaved={()=> setList(RecurringStore.list())} editing={editing} />
+      <NewRecurringDialog open={open} onOpenChange={(v)=> { setOpen(v); if (!v) { setEditing(undefined); void recurringCache.refresh(); } }} onSaved={()=> void recurringCache.refresh()} editing={editing} />
     </div>
   );
 };

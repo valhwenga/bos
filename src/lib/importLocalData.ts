@@ -10,16 +10,38 @@
  * that would otherwise turn a nervous re-run into double-counted revenue.
  */
 
-import { CustomerRepo, InvoiceRepo, PaymentRepo, QuotationRepo } from "./accountingRepo";
+import {
+  CreditNoteRepo,
+  CustomerRepo,
+  ExpenseRepo,
+  InvoiceRepo,
+  PaymentRepo,
+  ProductRepo,
+  QuotationRepo,
+  RecurringRepo,
+  SaleRepo,
+} from "./accountingRepo";
 import type { Invoice, Quotation } from "./accountingStore";
 import type { Payment } from "./paymentStore";
 import type { Customer } from "./customersStore";
+import type { Product } from "./productsStore";
+import type { Expense } from "./expenseStore";
+import type { Sale } from "./salesStore";
+import type { CreditNote } from "./creditNotesStore";
+import type { RecurringTemplate } from "./recurringStore";
 
 const LEGACY_KEYS = {
+  // Customers were kept under a crm.* key even though the accounting screens
+  // used the same store.
+  customers: "crm.customers",
+  products: "acct.products",
   quotes: "acct.quotes",
   invoices: "acct.invoices",
   payments: "acct.payments",
-  customers: "acct.customers",
+  expenses: "acct.expenses",
+  sales: "acct.sales",
+  creditNotes: "acct.credits",
+  recurring: "acct.recurring",
 } as const;
 
 function readLegacy<T>(key: string): T[] {
@@ -35,9 +57,14 @@ function readLegacy<T>(key: string): T[] {
 
 export type ImportCounts = {
   customers: number;
+  products: number;
   quotations: number;
   invoices: number;
   payments: number;
+  expenses: number;
+  sales: number;
+  creditNotes: number;
+  recurring: number;
 };
 
 export type ImportReport = {
@@ -50,15 +77,23 @@ export type ImportReport = {
 export function findLocalData(): ImportCounts {
   return {
     customers: readLegacy<Customer>(LEGACY_KEYS.customers).length,
+    products: readLegacy<Product>(LEGACY_KEYS.products).length,
     quotations: readLegacy<Quotation>(LEGACY_KEYS.quotes).length,
     invoices: readLegacy<Invoice>(LEGACY_KEYS.invoices).length,
     payments: readLegacy<Payment>(LEGACY_KEYS.payments).length,
+    expenses: readLegacy<Expense>(LEGACY_KEYS.expenses).length,
+    sales: readLegacy<Sale>(LEGACY_KEYS.sales).length,
+    creditNotes: readLegacy<CreditNote>(LEGACY_KEYS.creditNotes).length,
+    recurring: readLegacy<RecurringTemplate>(LEGACY_KEYS.recurring).length,
   };
 }
 
+export function totalLocalRecords(counts: ImportCounts = findLocalData()): number {
+  return Object.values(counts).reduce((sum, n) => sum + n, 0);
+}
+
 export function hasLocalData(): boolean {
-  const c = findLocalData();
-  return c.customers + c.quotations + c.invoices + c.payments > 0;
+  return totalLocalRecords() > 0;
 }
 
 /**
@@ -74,7 +109,17 @@ export function hasLocalData(): boolean {
 export async function importLocalData(): Promise<ImportReport> {
   const report: ImportReport = {
     found: findLocalData(),
-    imported: { customers: 0, quotations: 0, invoices: 0, payments: 0 },
+    imported: {
+      customers: 0,
+      products: 0,
+      quotations: 0,
+      invoices: 0,
+      payments: 0,
+      expenses: 0,
+      sales: 0,
+      creditNotes: 0,
+      recurring: 0,
+    },
     failures: [],
   };
 
@@ -122,6 +167,53 @@ export async function importLocalData(): Promise<ImportReport> {
       report.imported.payments += 1;
     } catch (err) {
       fail("payments", payment.id, payment.reference || payment.id, err);
+    }
+  }
+
+  for (const product of readLegacy<Product>(LEGACY_KEYS.products)) {
+    try {
+      await ProductRepo.upsert(product);
+      report.imported.products += 1;
+    } catch (err) {
+      fail("products", product.id, product.name || product.id, err);
+    }
+  }
+
+  for (const expense of readLegacy<Expense>(LEGACY_KEYS.expenses)) {
+    try {
+      await ExpenseRepo.upsert(expense);
+      report.imported.expenses += 1;
+    } catch (err) {
+      fail("expenses", expense.id, expense.vendor || expense.id, err);
+    }
+  }
+
+  for (const sale of readLegacy<Sale>(LEGACY_KEYS.sales)) {
+    try {
+      await SaleRepo.upsert(sale);
+      report.imported.sales += 1;
+    } catch (err) {
+      fail("sales", sale.id, sale.number || sale.id, err);
+    }
+  }
+
+  // Credit notes after invoices: an application resolves to an invoice row and
+  // is refused if that invoice is missing.
+  for (const creditNote of readLegacy<CreditNote>(LEGACY_KEYS.creditNotes)) {
+    try {
+      await CreditNoteRepo.upsert(creditNote);
+      report.imported.creditNotes += 1;
+    } catch (err) {
+      fail("creditNotes", creditNote.id, creditNote.number || creditNote.id, err);
+    }
+  }
+
+  for (const template of readLegacy<RecurringTemplate>(LEGACY_KEYS.recurring)) {
+    try {
+      await RecurringRepo.upsert(template);
+      report.imported.recurring += 1;
+    } catch (err) {
+      fail("recurring", template.id, template.name || template.id, err);
     }
   }
 

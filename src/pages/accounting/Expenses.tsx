@@ -1,4 +1,6 @@
 import React, { useMemo, useState } from "react";
+import { toast } from "@/components/ui/use-toast";
+import { useCache } from "@/lib/collectionCache";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -8,7 +10,7 @@ import { Pencil, Trash2, ReceiptText, TrendingDown } from "lucide-react";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
-import { Expense, ExpenseStore, DEFAULT_EXPENSE_CATEGORIES } from "@/lib/expenseStore";
+import { expensesCache, Expense, ExpenseStore, DEFAULT_EXPENSE_CATEGORIES } from "@/lib/expenseStore";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { CompanySettingsStore } from "@/lib/companySettings";
 
@@ -65,7 +67,8 @@ const ExpenseDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void; 
 
 const Expenses: React.FC = () => {
   const c = CompanySettingsStore.get();
-  const [expenses, setExpenses] = useState(ExpenseStore.list());
+  // Rows come from Postgres via a cache, so this re-renders when they arrive.
+  const { rows: expenses } = useCache(expensesCache);
   const [q, setQ] = useState("");
   const [category, setCategory] = useState<string>("all");
   const [from, setFrom] = useState<string>("");
@@ -80,12 +83,26 @@ const Expenses: React.FC = () => {
   );
 
   const add = () => { setEditing(undefined); setDlgOpen(true); };
-  const save = (e: Expense) => { editing ? ExpenseStore.update(e) : ExpenseStore.add(e); setExpenses(ExpenseStore.list()); };
+  const save = (e: Expense) => {
+    const write = editing ? ExpenseStore.update(e) : ExpenseStore.add(e);
+    void write.catch((err: unknown) =>
+      toast({
+        title: "Could not save expense",
+        description: err instanceof Error ? err.message : "Nothing was saved.",
+        variant: "destructive",
+      }),
+    );
+  };
   const del = (id: string) => {
     const ok = window.confirm("Delete this expense? This action cannot be undone.");
     if (!ok) return;
-    ExpenseStore.remove(id);
-    setExpenses(ExpenseStore.list());
+    void ExpenseStore.remove(id).catch((err: unknown) =>
+      toast({
+        title: "Could not delete expense",
+        description: err instanceof Error ? err.message : "The expense is unchanged.",
+        variant: "destructive",
+      }),
+    );
   };
 
   const total = useMemo(() => filtered.reduce((s,e)=> s + (e.amount + (e.tax||0)), 0), [filtered]);
@@ -178,7 +195,7 @@ const Expenses: React.FC = () => {
         }}
       />
 
-      <ExpenseDialog open={dlgOpen} onOpenChange={(v)=> { setDlgOpen(v); if (!v) setExpenses(ExpenseStore.list()); }} initial={editing} onSave={save} />
+      <ExpenseDialog open={dlgOpen} onOpenChange={(v)=> { setDlgOpen(v); if (!v) void expensesCache.refresh(); }} initial={editing} onSave={save} />
     </div>
   );
 };

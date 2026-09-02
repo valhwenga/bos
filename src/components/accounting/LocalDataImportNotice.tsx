@@ -7,10 +7,18 @@ import {
   findLocalData,
   hasLocalData,
   importLocalData,
+  totalLocalRecords,
+  type ImportCounts,
   type ImportReport,
 } from "@/lib/importLocalData";
 import { invoicesCache, quotationsCache } from "@/lib/accountingStore";
 import { paymentsCache } from "@/lib/paymentStore";
+import { customersCache } from "@/lib/customersStore";
+import { productsCache } from "@/lib/productsStore";
+import { expensesCache } from "@/lib/expenseStore";
+import { salesCache } from "@/lib/salesStore";
+import { creditNotesCache } from "@/lib/creditNotesStore";
+import { recurringCache } from "@/lib/recurringStore";
 
 /**
  * Offers to copy accounting data left in this browser into the database.
@@ -31,7 +39,26 @@ export function LocalDataImportNotice({ canImport }: { canImport: boolean }) {
 
   if (!present) return null;
 
-  const total = counts.customers + counts.quotations + counts.invoices + counts.payments;
+  const total = totalLocalRecords(counts);
+
+  // Rendered from the counts rather than a hand-written sentence, so a store
+  // added to the import cannot be silently left out of what the user is told.
+  const LABELS: Record<keyof ImportCounts, string> = {
+    customers: "customer",
+    products: "product",
+    quotations: "quotation",
+    invoices: "invoice",
+    payments: "payment",
+    expenses: "expense",
+    sales: "sale",
+    creditNotes: "credit note",
+    recurring: "recurring template",
+  };
+  const describe = (c: ImportCounts) =>
+    (Object.keys(LABELS) as (keyof ImportCounts)[])
+      .filter((k) => c[k] > 0)
+      .map((k) => `${c[k]} ${LABELS[k]}${c[k] === 1 ? "" : "s"}`)
+      .join(", ");
 
   const run = async () => {
     setRunning(true);
@@ -42,12 +69,14 @@ export function LocalDataImportNotice({ canImport }: { canImport: boolean }) {
         quotationsCache.refresh(),
         invoicesCache.refresh(),
         paymentsCache.refresh(),
+        customersCache.refresh(),
+        productsCache.refresh(),
+        expensesCache.refresh(),
+        salesCache.refresh(),
+        creditNotesCache.refresh(),
+        recurringCache.refresh(),
       ]);
-      const moved =
-        result.imported.customers +
-        result.imported.quotations +
-        result.imported.invoices +
-        result.imported.payments;
+      const moved = totalLocalRecords(result.imported);
       toast({
         title: result.failures.length ? "Imported with problems" : "Import complete",
         description: result.failures.length
@@ -84,11 +113,8 @@ export function LocalDataImportNotice({ canImport }: { canImport: boolean }) {
             {total} accounting record{total === 1 ? "" : "s"} in this browser are not in the database
           </p>
           <p className="text-xs text-muted-foreground">
-            {counts.customers} customer{counts.customers === 1 ? "" : "s"}, {counts.quotations}{" "}
-            quotation{counts.quotations === 1 ? "" : "s"}, {counts.invoices} invoice
-            {counts.invoices === 1 ? "" : "s"}, {counts.payments} payment
-            {counts.payments === 1 ? "" : "s"}. Until they are imported only this browser can see
-            them, and clearing it would lose them.
+            {describe(counts)}. Until they are imported only this browser can see them, and
+            clearing it would lose them.
           </p>
         </div>
         {report ? (
@@ -105,10 +131,7 @@ export function LocalDataImportNotice({ canImport }: { canImport: boolean }) {
 
       {report && (
         <div className="rounded-md border border-border bg-surface-raised px-3 py-2 text-xs">
-          <p className="text-foreground">
-            Imported {report.imported.customers} customers, {report.imported.quotations} quotations,{" "}
-            {report.imported.invoices} invoices, {report.imported.payments} payments.
-          </p>
+          <p className="text-foreground">Imported {describe(report.imported) || "nothing"}.</p>
           {report.failures.length > 0 && (
             <ul className="mt-1 list-disc pl-4 text-danger">
               {report.failures.slice(0, 8).map((f) => (

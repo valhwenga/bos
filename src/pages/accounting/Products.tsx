@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { toast } from "@/components/ui/use-toast";
+import { useCache } from "@/lib/collectionCache";
 import { Package, Pencil, Trash2 } from "lucide-react";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { PageHeader } from "@/components/ui/page-header";
@@ -7,17 +9,18 @@ import { CompanySettingsStore } from "@/lib/companySettings";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { ProductsStore, type Product } from "@/lib/productsStore";
+import { productsCache, ProductsStore, type Product } from "@/lib/productsStore";
 
 const Products: React.FC = () => {
-  const [list, setList] = useState<Product[]>(ProductsStore.list());
+  // Rows come from Postgres via a cache, so this re-renders when they arrive.
+  const { rows: list } = useCache(productsCache);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [name, setName] = useState("");
   const [price, setPrice] = useState<number>(0);
   const [description, setDescription] = useState<string>("");
 
-  const refresh = () => setList(ProductsStore.list());
+  const refresh = () => void productsCache.refresh();
   useEffect(()=>{ refresh(); },[]);
 
   const startAdd = () => { setEditing(null); setName(""); setPrice(0); setDescription(""); setOpen(true); };
@@ -25,13 +28,27 @@ const Products: React.FC = () => {
   const remove = (id: string) => {
     const ok = window.confirm("Delete this product? This action cannot be undone.");
     if (!ok) return;
-    ProductsStore.remove(id);
-    refresh();
+    void ProductsStore.remove(id).catch((err: unknown) =>
+      toast({
+        title: "Could not delete product",
+        description: err instanceof Error ? err.message : "The product is unchanged.",
+        variant: "destructive",
+      }),
+    );
   };
-  const save = () => {
+  const save = async () => {
     if (!name.trim()) return;
     const p: Product = { id: editing?.id || `p_${Date.now()}`, name, price, description };
-    ProductsStore.upsert(p);
+    try {
+      await ProductsStore.upsert(p);
+    } catch (err) {
+      toast({
+        title: "Could not save product",
+        description: err instanceof Error ? err.message : "Nothing was saved.",
+        variant: "destructive",
+      });
+      return;
+    }
     setOpen(false);
     refresh();
   };
@@ -136,7 +153,7 @@ const Products: React.FC = () => {
           </div>
           <DialogFooter>
             <Button variant="secondary" onClick={()=> setOpen(false)}>Cancel</Button>
-            <Button onClick={save}>Save</Button>
+            <Button onClick={() => void save()}>Save</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

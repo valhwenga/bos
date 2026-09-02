@@ -1,3 +1,14 @@
+/**
+ * Recurring invoice templates. Rows in Postgres now.
+ *
+ * This matters more than most: the scheduler bills from these, and a template
+ * that lived in one person's browser billed only while that browser was open.
+ * The authoritative schedule is generate_due_recurring_invoices() in Postgres.
+ */
+
+import { createCache } from "./collectionCache";
+import { RecurringRepo } from "./accountingRepo";
+
 import type { Customer, LineItem } from "@/lib/accountingStore";
 
 export type RecurringCadence = "weekly" | "monthly" | "quarterly" | "yearly" | "customDays";
@@ -21,16 +32,35 @@ export type RecurringTemplate = {
   nextNumber?: number;
 };
 
-const K = { rec: "acct.recurring" };
-const r = <T,>(k: string, f: T): T => { try { const v = localStorage.getItem(k); return v ? (JSON.parse(v) as T) : f; } catch { return f; } };
-const w = (k: string, v: unknown) => localStorage.setItem(k, JSON.stringify(v));
-const emit = (name: string) => { try { window.dispatchEvent(new Event(name)); } catch { void 0; } };
+export const recurringCache = createCache<RecurringTemplate>(() => RecurringRepo.list());
+
+const announce = () => {
+  try {
+    window.dispatchEvent(new Event("acct.recurring-changed"));
+  } catch {
+    void 0;
+  }
+};
 
 export const RecurringStore = {
-  list(): RecurringTemplate[] { return r<RecurringTemplate[]>(K.rec, []); },
-  upsert(t: RecurringTemplate) { const all = this.list(); const i = all.findIndex(x=> x.id===t.id); if (i>=0) all[i]=t; else all.unshift(t); w(K.rec, all); emit('acct.recurring-changed'); return t; },
-  remove(id: string) { const all = this.list().filter(x=> x.id!==id); w(K.rec, all); emit('acct.recurring-changed'); },
-  get(id: string) { return this.list().find(x=> x.id===id); },
+  list(): RecurringTemplate[] {
+    return recurringCache.list();
+  },
+  load(): Promise<RecurringTemplate[]> {
+    return recurringCache.ensureLoaded();
+  },
+  get(id: string) {
+    return this.list().find((x) => x.id === id);
+  },
+  async upsert(t: RecurringTemplate): Promise<RecurringTemplate> {
+    await recurringCache.mutate(() => RecurringRepo.upsert(t));
+    announce();
+    return t;
+  },
+  async remove(id: string): Promise<void> {
+    await recurringCache.mutate(() => RecurringRepo.remove(id));
+    announce();
+  },
   computeNextRun(prev: RecurringTemplate): string {
     const cur = new Date(prev.nextRunAt || (prev.startDate + 'T' + (prev.timeOfDay||'09:00') + ':00'));
     const next = new Date(cur.getTime());

@@ -230,7 +230,7 @@ const App = () => {
             });
           }
         }
-        if (generated > 0) RecurringStore.upsert(cursor);
+        if (generated > 0) await RecurringStore.upsert(cursor);
       }
     };
     // Hourly, plus on focus and on template changes. The old one-minute tick

@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { toast } from "@/components/ui/use-toast";
+import { useCache } from "@/lib/collectionCache";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -10,7 +12,7 @@ import { Users, Mail, Pencil, Trash2 } from "lucide-react";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
-import { CustomersStore, type Customer, type CustomerAddress } from "@/lib/customersStore";
+import { customersCache, CustomersStore, type Customer, type CustomerAddress } from "@/lib/customersStore";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CompanySettingsStore } from "@/lib/companySettings";
 
@@ -25,10 +27,19 @@ const CustomerDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void;
     setC(prev => ({ ...prev, shippingAddress: { ...(prev.billingAddress||{}) }, shippingSameAsBilling: true }));
   };
 
-  const save = () => {
+  const save = async () => {
     if (!c.name.trim()) return;
     if (c.shippingSameAsBilling) c.shippingAddress = { ...(c.billingAddress||{}) };
-    CustomersStore.upsert(c);
+    try {
+      await CustomersStore.upsert(c);
+    } catch (err) {
+      toast({
+        title: "Could not save customer",
+        description: err instanceof Error ? err.message : "Nothing was saved.",
+        variant: "destructive",
+      });
+      return;
+    }
     onSaved();
     onOpenChange(false);
   };
@@ -124,7 +135,7 @@ const CustomerDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void;
 
         <DialogFooter>
           <Button variant="secondary" onClick={()=> onOpenChange(false)}>Cancel</Button>
-          <Button onClick={save} disabled={!c.name.trim()}>Save</Button>
+          <Button onClick={() => void save()} disabled={!c.name.trim()}>Save</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -135,16 +146,25 @@ const Customers: React.FC = () => {
   const [open, setOpen] = useState(false);
   const [edit, setEdit] = useState<Customer | undefined>(undefined);
   const [viewing, setViewing] = useState<Customer | undefined>(undefined);
-  const [list, setList] = useState(CustomersStore.list());
+  // Rows come from Postgres via a cache, so this re-renders when they arrive.
+  const { rows: list } = useCache(customersCache);
 
   useEffect(() => {
-    const refresh = () => setList(CustomersStore.list());
+    const refresh = () => void customersCache.refresh();
     const onStorage = (e: StorageEvent) => { if (e.key && e.key.startsWith('crm.customers')) refresh(); };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
   }, []);
 
-  const remove = (id: string) => { CustomersStore.remove(id); setList(CustomersStore.list()); };
+  const remove = (id: string) => {
+    void CustomersStore.remove(id).catch((err: unknown) =>
+      toast({
+        title: "Could not delete customer",
+        description: err instanceof Error ? err.message : "The customer is unchanged.",
+        variant: "destructive",
+      }),
+    );
+  };
 
   const CustomerDetails: React.FC<{ customer: Customer }> = ({ customer }) => {
     return (
@@ -332,7 +352,7 @@ const Customers: React.FC = () => {
         }}
       />
 
-      <CustomerDialog open={open} onOpenChange={(v)=> { setOpen(v); if (!v) { setEdit(undefined); setList(CustomersStore.list()); } }} customer={edit} onSaved={()=> setList(CustomersStore.list())} />
+      <CustomerDialog open={open} onOpenChange={(v)=> { setOpen(v); if (!v) { setEdit(undefined); void customersCache.refresh(); } }} customer={edit} onSaved={()=> void customersCache.refresh()} />
       
       {viewing && (
         <Dialog open={true} onOpenChange={() => setViewing(undefined)}>

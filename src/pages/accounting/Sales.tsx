@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { toast } from "@/components/ui/use-toast";
+import { useCache } from "@/lib/collectionCache";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +10,7 @@ import { Trash2, ShoppingBag, TrendingUp } from "lucide-react";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
-import { SalesStore, type Sale, type SaleItem } from "@/lib/salesStore";
+import { salesCache, SalesStore, type Sale, type SaleItem } from "@/lib/salesStore";
 import { previewNextNumber, resolveNumberOnSave } from "@/lib/documentNumbers";
 import { ProductsStore } from "@/lib/productsStore";
 import { CompanySettingsStore } from "@/lib/companySettings";
@@ -34,7 +36,16 @@ const SalesDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void; on
     // Allocated on save, not on open.
     const allocated = await resolveNumberOnSave("sale", number, await previewNextNumber("sale"));
     const sale: Sale = { id: `s_${Date.now()}`, number: allocated, date, customerName: customerName || undefined, items, method, reference, notes, createdAt: new Date().toISOString() };
-    SalesStore.upsert(sale);
+    try {
+      await SalesStore.upsert(sale);
+    } catch (err) {
+      toast({
+        title: "Could not record sale",
+        description: err instanceof Error ? err.message : "Nothing was saved.",
+        variant: "destructive",
+      });
+      return;
+    }
     onSaved();
     onOpenChange(false);
   };
@@ -94,11 +105,12 @@ const SalesDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void; on
 
 const Sales: React.FC = () => {
   const [open, setOpen] = useState(false);
-  const [list, setList] = useState(SalesStore.list());
+  // Rows come from Postgres via a cache, so this re-renders when they arrive.
+  const { rows: list } = useCache(salesCache);
   const cs = CompanySettingsStore.get();
 
   useEffect(() => {
-    const refresh = () => setList(SalesStore.list());
+    const refresh = () => void salesCache.refresh();
     const onStorage = (e: StorageEvent) => { if (e.key && e.key.startsWith('acct.sales')) refresh(); };
     window.addEventListener('acct.sales-changed', refresh);
     window.addEventListener('storage', onStorage);
@@ -132,8 +144,13 @@ const Sales: React.FC = () => {
             aria-label={`Delete sale ${s.number}`}
             onClick={() => {
               if (!window.confirm(`Delete sale ${s.number}? This cannot be undone.`)) return;
-              SalesStore.remove(s.id);
-              setList(SalesStore.list());
+              void SalesStore.remove(s.id).catch((err: unknown) =>
+      toast({
+        title: "Could not delete sale",
+        description: err instanceof Error ? err.message : "The sale is unchanged.",
+        variant: "destructive",
+      }),
+    );
             }}
           >
             <Trash2 className="h-3.5 w-3.5" />
@@ -172,7 +189,7 @@ const Sales: React.FC = () => {
         }}
       />
 
-      <SalesDialog open={open} onOpenChange={(v)=> { setOpen(v); if (!v) setList(SalesStore.list()); }} onSaved={()=> setList(SalesStore.list())} />
+      <SalesDialog open={open} onOpenChange={(v)=> { setOpen(v); if (!v) void salesCache.refresh(); }} onSaved={()=> void salesCache.refresh()} />
     </div>
   );
 };

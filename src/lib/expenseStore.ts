@@ -1,3 +1,15 @@
+/**
+ * Expenses. Rows in Postgres now, so a claim entered on one machine is visible
+ * to whoever approves or reports on it.
+ *
+ * Receipts are not carried here. They were base64 images inlined into the
+ * record; they belong in the expense-receipts storage bucket that the
+ * file_storage migration created, which is still to be wired up.
+ */
+
+import { createCache } from "./collectionCache";
+import { ExpenseRepo } from "./accountingRepo";
+
 export type Expense = {
   id: string;
   vendor: string;
@@ -23,22 +35,27 @@ export const DEFAULT_EXPENSE_CATEGORIES = [
   "Misc",
 ];
 
-const KEY = { expenses: "acct.expenses" };
-
-const read = <T,>(k: string, fallback: T): T => {
-  try {
-    const v = localStorage.getItem(k);
-    return v ? (JSON.parse(v) as T) : fallback;
-  } catch {
-    return fallback;
-  }
-};
-const write = (k: string, v: unknown) => localStorage.setItem(k, JSON.stringify(v));
+export const expensesCache = createCache<Expense>(() => ExpenseRepo.list());
 
 export const ExpenseStore = {
-  list(): Expense[] { return read<Expense[]>(KEY.expenses, []); },
-  add(e: Expense) { const all = this.list(); all.push(e); write(KEY.expenses, all); return e; },
-  update(e: Expense) { const all = this.list(); const i = all.findIndex(x=> x.id===e.id); if (i>=0) all[i]=e; write(KEY.expenses, all); return e; },
-  remove(id: string) { const all = this.list().filter(x=> x.id!==id); write(KEY.expenses, all); },
-  byCategory(cat: string) { return this.list().filter(e=> e.category===cat); },
+  list(): Expense[] {
+    return expensesCache.list();
+  },
+  load(): Promise<Expense[]> {
+    return expensesCache.ensureLoaded();
+  },
+  async add(e: Expense): Promise<Expense> {
+    await expensesCache.mutate(() => ExpenseRepo.upsert(e));
+    return e;
+  },
+  async update(e: Expense): Promise<Expense> {
+    await expensesCache.mutate(() => ExpenseRepo.upsert(e));
+    return e;
+  },
+  async remove(id: string): Promise<void> {
+    await expensesCache.mutate(() => ExpenseRepo.remove(id));
+  },
+  byCategory(cat: string) {
+    return this.list().filter((e) => e.category === cat);
+  },
 };

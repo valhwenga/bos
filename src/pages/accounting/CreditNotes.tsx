@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { toast } from "@/components/ui/use-toast";
+import { useCache } from "@/lib/collectionCache";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +10,7 @@ import { Trash2, FileMinus, Wallet } from "lucide-react";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
-import { CreditNotesStore, type CreditNote } from "@/lib/creditNotesStore";
+import { creditNotesCache, CreditNotesStore, type CreditNote } from "@/lib/creditNotesStore";
 import { previewNextNumber, resolveNumberOnSave } from "@/lib/documentNumbers";
 import { AccountingStore } from "@/lib/accountingStore";
 import { CompanySettingsStore } from "@/lib/companySettings";
@@ -30,7 +32,16 @@ const NewCreditDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void
     // consume a number and leave a gap.
     const allocated = await resolveNumberOnSave("credit_note", number, await previewNextNumber("credit_note"));
     const cn: CreditNote = { id: `cn_${Date.now()}`, number: allocated, date, customerId, customerName: custName, amount, applied: [], notes, createdAt: new Date().toISOString() };
-    CreditNotesStore.upsert(cn);
+    try {
+      await CreditNotesStore.upsert(cn);
+    } catch (err) {
+      toast({
+        title: "Could not save credit note",
+        description: err instanceof Error ? err.message : "Nothing was saved.",
+        variant: "destructive",
+      });
+      return;
+    }
     onSaved();
     onOpenChange(false);
   };
@@ -75,7 +86,7 @@ const ApplyDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void; cr
     return Math.max(0, (credit?.amount||0) - applied);
   }, [alloc, credit?.amount]);
 
-  const save = () => {
+  const save = async () => {
     if (!credit) return;
     const applied = Object.entries(alloc).filter(([,a])=> (a||0)>0).map(([invoiceId, amount])=> ({ invoiceId, amount }));
     const merged = [...(credit.applied||[])];
@@ -84,7 +95,18 @@ const ApplyDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void; cr
       if (i>=0) merged[i] = { invoiceId: a.invoiceId, amount: (merged[i].amount||0) + a.amount };
       else merged.push(a);
     });
-    CreditNotesStore.upsert({ ...credit, applied: merged });
+    // Applying a credit resolves each invoice link server-side; it refuses
+    // rather than record a credit against an invoice it cannot find.
+    try {
+      await CreditNotesStore.upsert({ ...credit, applied: merged });
+    } catch (err) {
+      toast({
+        title: "Could not apply credit",
+        description: err instanceof Error ? err.message : "The credit is unchanged.",
+        variant: "destructive",
+      });
+      return;
+    }
     onSaved();
     onOpenChange(false);
   };
@@ -129,13 +151,14 @@ const ApplyDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void; cr
 
 const CreditNotes: React.FC = () => {
   const cs = CompanySettingsStore.get();
-  const [list, setList] = useState(CreditNotesStore.list());
+  // Rows come from Postgres via a cache, so this re-renders when they arrive.
+  const { rows: list } = useCache(creditNotesCache);
   const [open, setOpen] = useState(false);
   const [applyOpen, setApplyOpen] = useState(false);
   const [active, setActive] = useState<CreditNote | undefined>(undefined);
 
   useEffect(() => {
-    const refresh = () => setList(CreditNotesStore.list());
+    const refresh = () => void creditNotesCache.refresh();
     const onStorage = (e: StorageEvent) => { if (e.key && e.key.startsWith('acct.credits')) refresh(); };
     window.addEventListener('acct.credits-changed', refresh as any);
     window.addEventListener('storage', onStorage);
@@ -180,8 +203,13 @@ const CreditNotes: React.FC = () => {
             aria-label={`Delete credit note ${cn.number}`}
             onClick={() => {
               if (!window.confirm(`Delete credit note ${cn.number}? This cannot be undone.`)) return;
-              CreditNotesStore.remove(cn.id);
-              setList(CreditNotesStore.list());
+              void CreditNotesStore.remove(cn.id).catch((err: unknown) =>
+                toast({
+                  title: "Could not delete credit note",
+                  description: err instanceof Error ? err.message : "The credit note is unchanged.",
+                  variant: "destructive",
+                }),
+              );
             }}
           >
             <Trash2 className="h-3.5 w-3.5" />
@@ -226,8 +254,8 @@ const CreditNotes: React.FC = () => {
         }}
       />
 
-      <NewCreditDialog open={open} onOpenChange={(v)=> { setOpen(v); if (!v) setList(CreditNotesStore.list()); }} onSaved={()=> setList(CreditNotesStore.list())} />
-      <ApplyDialog open={applyOpen} onOpenChange={(v)=> { setApplyOpen(v); if (!v) { setActive(undefined); setList(CreditNotesStore.list()); } }} credit={active} onSaved={()=> setList(CreditNotesStore.list())} />
+      <NewCreditDialog open={open} onOpenChange={(v)=> { setOpen(v); if (!v) void creditNotesCache.refresh(); }} onSaved={()=> void creditNotesCache.refresh()} />
+      <ApplyDialog open={applyOpen} onOpenChange={(v)=> { setApplyOpen(v); if (!v) { setActive(undefined); void creditNotesCache.refresh(); } }} credit={active} onSaved={()=> void creditNotesCache.refresh()} />
     </div>
   );
 };

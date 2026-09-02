@@ -9,11 +9,27 @@ import { SalesStore, type Sale } from "@/lib/salesStore";
 import { CreditNotesStore, type CreditNote } from "@/lib/creditNotesStore";
 import { ExpenseStore, type Expense } from "@/lib/expenseStore";
 import { CompanySettingsStore } from "@/lib/companySettings";
+import { useCache } from "@/lib/collectionCache";
+import { invoicesCache, quotationsCache } from "@/lib/accountingStore";
+import { paymentsCache } from "@/lib/paymentStore";
+import { expensesCache } from "@/lib/expenseStore";
+import { salesCache } from "@/lib/salesStore";
+import { creditNotesCache } from "@/lib/creditNotesStore";
 
 type ModuleKey = "quotations" | "invoices" | "payments" | "income" | "expenses" | "income_vs_expense";
 
 const Reports: React.FC = () => {
   const cs = CompanySettingsStore.get();
+  // Every figure on this page is derived from these, and they load
+  // asynchronously now. Without subscribing, the report would render its totals
+  // as zero before the data arrived and never correct itself — a report that is
+  // confidently wrong is worse than one that is visibly still loading.
+  const { rows: invoiceRows } = useCache(invoicesCache);
+  const { rows: quotationRows } = useCache(quotationsCache);
+  const { rows: paymentRows } = useCache(paymentsCache);
+  const { rows: expenseRows } = useCache(expensesCache);
+  const { rows: saleRows } = useCache(salesCache);
+  const { rows: creditNoteRows } = useCache(creditNotesCache);
   const [module, setModule] = useState<ModuleKey>("income");
   const [from, setFrom] = useState<string>(new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0,10));
   const [to, setTo] = useState<string>(new Date().toISOString().slice(0,10));
@@ -94,14 +110,17 @@ const Reports: React.FC = () => {
       const cashReceived = PaymentStore.list().filter(p=> { const d = new Date(p.date); return d>=range.from && d<=range.to; }).reduce((s,p)=> s+(p.amount||0), 0);
       return { totals: { income, expenses, net, cashReceived } } as any;
     }
-  }, [module, from, to, tick]);
+  }, [module, from, to, tick,
+      // Recompute when the data itself arrives or changes. Without these the
+      // memo would keep the totals it computed while the caches were empty.
+      invoiceRows, quotationRows, paymentRows, expenseRows, saleRows, creditNoteRows]);
 
   const allCustomers = useMemo(() => {
     const invCusts = AccountingStore.listInvoices().map(i=> i.customer);
     const qCusts = AccountingStore.listQuotes().map(q=> q.customer);
     const merged = [...invCusts, ...qCusts];
     return merged.reduce((acc, cur) => acc.find(c=> c.id===cur.id) ? acc : acc.concat(cur), [] as AcctCustomer[]);
-  }, [tick]);
+  }, [tick, invoiceRows, quotationRows]);
 
   return (
     <div className="p-6 space-y-4">

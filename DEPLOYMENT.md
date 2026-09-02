@@ -10,30 +10,14 @@ Nothing here is automated on purpose — each step has a decision in it.
 
 ## Blockers
 
-### 1. Finish the accounting migration
+### 1. Accounting migration — done
 
-Migrated to Postgres: **invoices, quotations, payments, customers**
-(as document references), **document numbering**.
+All of accounting is on Postgres: customers, products, quotations, invoices,
+line items, payments, expenses, sales, credit notes (with their applications),
+recurring templates, and document numbering. Reports derives from those.
 
-Still in localStorage, so still per-browser and still lost on a cache clear:
-
-| Page | Store |
-|---|---|
-| Customers | `customersStore` |
-| Products | `productsStore` |
-| Expenses | `expenseStore` |
-| Sales | `salesStore` |
-| Credit notes | `creditNotesStore` |
-| Recurring | `recurringStore` |
-| Reports | reads all of the above |
-
-The tables already exist in `business_schema`. The pattern is established —
-`accountingRepo.ts` + `collectionCache.ts` + a page that calls `useCache` — so
-each of these is the same shape of change as `paymentStore`.
-
-**Do not deploy with these half-migrated if staff will use them.** A Sales
-figure that is real on one machine and absent on another is worse than one that
-is obviously missing everywhere.
+Nothing to do here. Kept as step 1 because the next two are the same class of
+problem and are not done.
 
 ### 2. Migrate HR and payroll, or turn those modules off
 
