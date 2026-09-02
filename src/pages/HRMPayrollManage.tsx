@@ -1,4 +1,7 @@
 import { useState, useEffect } from "react";
+import { toast } from "@/components/ui/use-toast";
+import { useCache } from "@/lib/collectionCache";
+import { payrollCache } from "@/lib/payrollStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,7 +19,8 @@ import { generatePayslipPdf } from "@/lib/payslipPdf";
 import { Plus, Edit, Trash2, Eye, Calculator, DollarSign, Play, CheckCircle } from "lucide-react";
 
 const HRMPayrollManage = () => {
-  const [payrollList, setPayrollList] = useState(PayrollStore.list());
+  // Entries come from Postgres via a cache, so this re-renders when they arrive.
+  const { rows: payrollList } = useCache(payrollCache);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<PayrollEntry | null>(null);
   const [search, setSearch] = useState("");
@@ -56,7 +60,7 @@ const HRMPayrollManage = () => {
   });
 
   useEffect(() => {
-    setPayrollList(PayrollStore.list());
+    void payrollCache.refresh();
   }, []);
 
   const filtered = payrollList.filter(p => 
@@ -134,7 +138,7 @@ const HRMPayrollManage = () => {
     return employees.find(e => e.id === form.employeeId);
   };
 
-  const save = () => {
+  const save = async () => {
     if (!form.employeeId || !form.employee || form.basicSalary <= 0) {
       alert("Please fill in required fields");
       return;
@@ -161,24 +165,42 @@ const HRMPayrollManage = () => {
       notes: form.notes
     };
 
-    PayrollStore.upsert(entry);
-    setPayrollList(PayrollStore.list());
+    try {
+      await PayrollStore.upsert(entry);
+    } catch (err) {
+      toast({
+        title: "Could not save the payroll entry",
+        description: err instanceof Error ? err.message : "Nothing was saved.",
+        variant: "destructive",
+      });
+      return;
+    }
     setOpen(false);
     resetForm();
   };
 
   const deleteEntry = (id: string) => {
     if (confirm("Are you sure you want to delete this payroll entry?")) {
-      PayrollStore.remove(id);
-      setPayrollList(PayrollStore.list());
+      void PayrollStore.remove(id).catch((err: unknown) =>
+      toast({
+        title: "Could not delete the entry",
+        description: err instanceof Error ? err.message : "The entry is unchanged.",
+        variant: "destructive",
+      }),
+    );
     }
   };
 
   const updateStatus = (id: string, status: PayrollEntry['status']) => {
     const entry = PayrollStore.get(id);
     if (entry) {
-      PayrollStore.upsert({ ...entry, status });
-      setPayrollList(PayrollStore.list());
+      void PayrollStore.upsert({ ...entry, status }).catch((err: unknown) =>
+      toast({
+        title: "Could not change the status",
+        description: err instanceof Error ? err.message : "The entry is unchanged.",
+        variant: "destructive",
+      }),
+    );
     }
   };
 
@@ -630,7 +652,7 @@ const HRMPayrollManage = () => {
           
           <DialogFooter>
             <Button variant="secondary" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={save}>
+            <Button onClick={() => void save()}>
               {editing ? "Update" : "Save"} Payroll Entry
             </Button>
           </DialogFooter>

@@ -29,6 +29,18 @@ import type { Expense } from "./expenseStore";
 import type { Sale } from "./salesStore";
 import type { CreditNote } from "./creditNotesStore";
 import type { RecurringTemplate } from "./recurringStore";
+import {
+  DepartmentRepo,
+  EmployeeRepo,
+  LeaveBalanceRepo,
+  LeaveRepo,
+  PayrollRepo,
+} from "./hrmRepo";
+import type { Employee } from "./hrmStore";
+import type { Department } from "./hrmDepartmentsStore";
+import type { Leave } from "./hrmLeaveStore";
+import type { PayrollEntry } from "./payrollStore";
+import type { LeaveBalances } from "./leaveBalanceStore";
 
 const LEGACY_KEYS = {
   // Customers were kept under a crm.* key even though the accounting screens
@@ -42,7 +54,17 @@ const LEGACY_KEYS = {
   sales: "acct.sales",
   creditNotes: "acct.credits",
   recurring: "acct.recurring",
+  departments: "hrm.departments",
+  // The Employees page wrote to its own key, separate from the one the rest of
+  // the app read. Both are imported so neither set is stranded.
+  employees: "hrm.employees",
+  employeesLegacy: "hrm_employees",
+  leaves: "hrm.leaves",
+  payroll: "hrm.payroll",
 } as const;
+
+/** Balances are a single object, not an array, so they are read separately. */
+const BALANCES_KEY = "hrm.leaveBalances";
 
 function readLegacy<T>(key: string): T[] {
   try {
@@ -65,6 +87,11 @@ export type ImportCounts = {
   sales: number;
   creditNotes: number;
   recurring: number;
+  departments: number;
+  employees: number;
+  leaves: number;
+  payroll: number;
+  leaveBalances: number;
 };
 
 export type ImportReport = {
@@ -85,7 +112,31 @@ export function findLocalData(): ImportCounts {
     sales: readLegacy<Sale>(LEGACY_KEYS.sales).length,
     creditNotes: readLegacy<CreditNote>(LEGACY_KEYS.creditNotes).length,
     recurring: readLegacy<RecurringTemplate>(LEGACY_KEYS.recurring).length,
+    departments: readLegacy<Department>(LEGACY_KEYS.departments).length,
+    employees: mergedEmployees().length,
+    leaves: readLegacy<Leave>(LEGACY_KEYS.leaves).length,
+    payroll: readLegacy<PayrollEntry>(LEGACY_KEYS.payroll).length,
+    leaveBalances: Object.keys(readBalances()).length,
   };
+}
+
+function readBalances(): LeaveBalances {
+  try {
+    const raw = localStorage.getItem(BALANCES_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? (parsed as LeaveBalances) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Employees from both keys, the page's own and the shared one, by id. */
+function mergedEmployees(): Employee[] {
+  const byId = new Map<string, Employee>();
+  for (const key of [LEGACY_KEYS.employees, LEGACY_KEYS.employeesLegacy]) {
+    for (const e of readLegacy<Employee>(key)) if (e?.id) byId.set(e.id, e);
+  }
+  return [...byId.values()];
 }
 
 export function totalLocalRecords(counts: ImportCounts = findLocalData()): number {
@@ -119,6 +170,11 @@ export async function importLocalData(): Promise<ImportReport> {
       sales: 0,
       creditNotes: 0,
       recurring: 0,
+      departments: 0,
+      employees: 0,
+      leaves: 0,
+      payroll: 0,
+      leaveBalances: 0,
     },
     failures: [],
   };
@@ -217,6 +273,53 @@ export async function importLocalData(): Promise<ImportReport> {
     }
   }
 
+  // HR, in dependency order: departments, then employees, then everything that
+  // references an employee.
+  for (const department of readLegacy<Department>(LEGACY_KEYS.departments)) {
+    try {
+      await DepartmentRepo.upsert(department);
+      report.imported.departments += 1;
+    } catch (err) {
+      fail("departments", department.id, department.name || department.id, err);
+    }
+  }
+
+  for (const employee of mergedEmployees()) {
+    try {
+      await EmployeeRepo.upsert(employee);
+      report.imported.employees += 1;
+    } catch (err) {
+      fail("employees", employee.id, employee.name || employee.id, err);
+    }
+  }
+
+  for (const leaveRequest of readLegacy<Leave>(LEGACY_KEYS.leaves)) {
+    try {
+      await LeaveRepo.upsert(leaveRequest);
+      report.imported.leaves += 1;
+    } catch (err) {
+      fail("leaves", leaveRequest.id, leaveRequest.employee || leaveRequest.id, err);
+    }
+  }
+
+  for (const entry of readLegacy<PayrollEntry>(LEGACY_KEYS.payroll)) {
+    try {
+      await PayrollRepo.upsert(entry);
+      report.imported.payroll += 1;
+    } catch (err) {
+      fail("payroll", entry.id, entry.employee || entry.id, err);
+    }
+  }
+
+  for (const [employeeId, balances] of Object.entries(readBalances())) {
+    try {
+      await LeaveBalanceRepo.setForEmployee(employeeId, balances);
+      report.imported.leaveBalances += 1;
+    } catch (err) {
+      fail("leaveBalances", employeeId, employeeId, err);
+    }
+  }
+
   return report;
 }
 
@@ -228,7 +331,7 @@ export async function importLocalData(): Promise<ImportReport> {
  */
 export function archiveLocalData(): void {
   const stamp = new Date().toISOString().slice(0, 10);
-  for (const key of Object.values(LEGACY_KEYS)) {
+  for (const key of [...Object.values(LEGACY_KEYS), BALANCES_KEY]) {
     const value = localStorage.getItem(key);
     if (value === null) continue;
     localStorage.setItem(`${key}.imported-${stamp}`, value);

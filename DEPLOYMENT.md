@@ -19,15 +19,32 @@ recurring templates, and document numbering. Reports derives from those.
 Nothing to do here. Kept as step 1 because the next two are the same class of
 problem and are not done.
 
-### 2. Migrate HR and payroll, or turn those modules off
+### 2. HR and payroll migration — done
 
-`hrmStore`, `payrollStore`, `leaveBalanceStore`, `hrmLeaveStore` and
-`employeeDocumentsStore` are all still local. Payroll in particular holds salary
-figures and bank details; per-browser is not an acceptable place for those.
+Employees, departments, leave requests, leave balances and payroll entries are
+all on Postgres, behind the same row level security as everything else. Verified
+that an employee without `hrm.payroll` sees no payroll rows and no salary
+figures, and cannot write one.
 
-If they are not migrated before launch, remove the modules from the roles that
-would reach them rather than shipping screens that silently disagree between
-users.
+Two things this surfaced that are **not** fixed and need a decision:
+
+- **Employee documents** (CV, ID copy, qualifications) are not migrated. They
+  were base64 blobs on the employee record; they belong in the
+  `employee-documents` bucket that `file_storage` created. Until that is wired
+  up, uploading a document on the Employees page does not persist it.
+- **Leave is visible company-wide to anyone with leave access.** Row level
+  security grants the module, not the row, so an ordinary employee can read
+  every leave request and balance through the API even though the page only
+  shows them their own. Leave reasons can be medical, so this matters.
+  Restricting it to "your own rows" needs employees linked to logins —
+  `employees.profile_id` exists but nothing populates it, and no employee
+  currently has one, so tightening the policy today would show staff nothing.
+  Either build that link or accept the exposure knowingly.
+
+Also note **employee bank details are not stored anywhere**, so the payroll bank
+export cannot produce a usable file. It refuses rather than emitting a file full
+of zeros, which is the right failure, but paying anyone from this system needs
+those fields captured first.
 
 ### 3. Turn on email confirmation
 

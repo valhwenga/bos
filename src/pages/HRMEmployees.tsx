@@ -1,4 +1,8 @@
 import { useState, useMemo, useEffect } from "react";
+import { HRMStore } from "@/lib/hrmStore";
+import { useCache } from "@/lib/collectionCache";
+import { employeesCache } from "@/lib/hrmStore";
+import { departmentsCache } from "@/lib/hrmDepartmentsStore";
 import { Button } from "@/components/ui/button";
 import { Plus, Search, Filter, Download, Upload, Eye, Edit, Trash2, Trash } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -17,57 +21,30 @@ import { acceptFile, FileTooLargeError, safeSetItem } from "@/lib/fileStorage";
 import { toast } from "@/components/ui/use-toast";
 
 // Simple local HRM store to replace CompanyAwareHRMStore
-const LocalHRMStore = {
-  list: () => {
-    const data = localStorage.getItem('hrm_employees');
-    return data ? JSON.parse(data) : [];
-  },
-  upsert: (employee: any) => {
-    const employees = LocalHRMStore.list();
-    const index = employees.findIndex((e: any) => e.id === employee.id);
-    if (index >= 0) {
-      employees[index] = employee;
-    } else {
-      employees.push(employee);
-    }
-    // safeSetItem turns a quota failure into a typed error instead of an
-    // unhandled throw that loses the record without explanation.
-    safeSetItem('hrm_employees', JSON.stringify(employees));
-    window.dispatchEvent(new Event('hrm_employees-changed'));
-  },
-  remove: (id: string) => {
-    const employees = LocalHRMStore.list();
-    const filtered = employees.filter((e: any) => e.id !== id);
-    localStorage.setItem('hrm_employees', JSON.stringify(filtered));
-    window.dispatchEvent(new Event('hrm_employees-changed'));
-  },
-  migrateDepartmentIds: (map: Record<string,string>) => {
-    const employees = LocalHRMStore.list();
-    let changed = false;
-    employees.forEach((emp: any) => {
-      if (emp.department && !emp.departmentId && map[emp.department]) {
-        emp.departmentId = map[emp.department];
-        changed = true;
-      }
-    });
-    if (changed) {
-      localStorage.setItem('hrm_employees', JSON.stringify(employees));
-    }
-  }
-};
+/**
+ * This page kept its own employee store on the key `hrm_employees`, while the
+ * rest of the app read `hrm.employees` through HRMStore — so employees added
+ * here were invisible to payroll, leave and the dashboard, and vice versa. Both
+ * are now the same Postgres table.
+ */
+const LocalHRMStore = HRMStore;
+
 import { EmployeeDocumentVault } from "@/components/EmployeeDocumentVault";
 import { Textarea } from "@/components/ui/textarea";
 import { HRMDepartmentsStore, type Department } from "@/lib/hrmDepartmentsStore";
 import { Separator } from "@/components/ui/separator";
 
 const HRMEmployees = () => {
-  const [employees, setEmployees] = useState<Employee[]>(LocalHRMStore.list());
+  // Rows come from Postgres via a cache, so this re-renders when they arrive.
+  const { rows: employees } = useCache(employeesCache);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Employee | null>(null);
   const [viewing, setViewing] = useState<Employee | null>(null);
   const [viewOpen, setViewOpen] = useState(false);
   const [form, setForm] = useState<Employee>({ id: "", name: "", status: "Active", cv: null, qualifications: null, idCopy: null, otherDocuments: [] });
-  const [departments, setDepartments] = useState<Department[]>(HRMDepartmentsStore.list());
+  // Departments come from the same cache, so the picker and the table's
+  // department column populate as soon as they load.
+  const { rows: departments } = useCache(departmentsCache);
   const [attempted, setAttempted] = useState(false);
   const cs = CompanySettingsStore.get();
 
@@ -75,22 +52,25 @@ const HRMEmployees = () => {
   const showingFrom = totalEntries === 0 ? 0 : 1;
   const showingTo = totalEntries;
 
-  const refresh = () => setEmployees(LocalHRMStore.list());
-  useEffect(()=>{
-    // migrate departmentId for existing employees
-    const deps = HRMDepartmentsStore.list();
-    const map: Record<string,string> = Object.fromEntries(deps.map(d=> [d.name, d.id]));
-    LocalHRMStore.migrateDepartmentIds(map);
-    refresh();
+  const refresh = () => { void employeesCache.refresh(); };
+  useEffect(() => {
+    // Departments are needed for the form's picker and for showing an
+    // employee's department name.
+    void HRMDepartmentsStore.load();
   }, []);
 
-  const startAdd = () => { setEditing(null); setForm({ id: `EMP${Math.floor(Math.random()*900+100)}`, name: "", status: "Active", cv: null, qualifications: null, idCopy: null, otherDocuments: [] }); setDepartments(HRMDepartmentsStore.list()); setAttempted(false); setOpen(true); };
+  const startAdd = () => { setEditing(null); setForm({ id: `EMP${Math.floor(Math.random()*900+100)}`, name: "", status: "Active", cv: null, qualifications: null, idCopy: null, otherDocuments: [] }); setAttempted(false); setOpen(true); };
   const startEdit = (e: Employee) => { setEditing(e); setForm(e); setOpen(true); };
   const remove = (id: string) => {
     const ok = window.confirm("Delete this employee? This action cannot be undone.");
     if (!ok) return;
-    LocalHRMStore.remove(id);
-    refresh();
+    void LocalHRMStore.remove(id).catch((err: unknown) =>
+      toast({
+        title: "Could not delete the employee",
+        description: err instanceof Error ? err.message : "The record is unchanged.",
+        variant: "destructive",
+      }),
+    );
   };
   const allRequiredPresent = () => {
     const f = form;
@@ -100,11 +80,11 @@ const HRMEmployees = () => {
       (editing ? true : (f.cv && f.qualifications && f.idCopy))
     );
   };
-  const save = () => {
+  const save = async () => {
     setAttempted(true);
     if (!allRequiredPresent()) return;
     try {
-      LocalHRMStore.upsert({ ...form });
+      await LocalHRMStore.upsert({ ...form });
     } catch (err) {
       toast({
         title: "Could not save",
@@ -166,7 +146,15 @@ const HRMEmployees = () => {
         </div>
       ),
     },
-    { id: "department", header: "Department", sortValue: (e) => e.department ?? "", cell: (e) => e.department || <span className="text-subtle">—</span> },
+    {
+      id: "department",
+      header: "Department",
+      // Resolved from departmentId rather than the name copied onto the record,
+      // which only ever got set when the form wrote it — so an employee created
+      // any other way showed a dash.
+      sortValue: (e) => departmentName(e) ?? "",
+      cell: (e) => departmentName(e) || <span className="text-subtle">—</span>,
+    },
     { id: "designation", header: "Designation", hideOnMobile: true, sortValue: (e) => e.designation ?? "", cell: (e) => e.designation || <span className="text-subtle">—</span> },
     { id: "joined", header: "Joined", hideOnMobile: true, sortValue: (e) => e.joiningDate ?? "", cell: (e) => e.joiningDate || <span className="text-subtle">—</span> },
     {
@@ -209,6 +197,9 @@ const HRMEmployees = () => {
   ];
 
   const activeCount = employees.filter((e) => e.status === "Active").length;
+  const departmentName = (e: Employee) =>
+    departments.find((d) => d.id === e.departmentId)?.name ?? e.department;
+
   const departmentCount = new Set(employees.map((e) => e.departmentId || e.department).filter(Boolean)).size;
 
   return (
@@ -235,7 +226,7 @@ const HRMEmployees = () => {
         rows={employees}
         columns={columns}
         rowKey={(e) => e.id}
-        searchAccessor={(e) => `${e.name} ${e.id} ${e.email ?? ""} ${e.department ?? ""} ${e.designation ?? ""}`}
+        searchAccessor={(e) => `${e.name} ${e.id} ${e.email ?? ""} ${departmentName(e) ?? ""} ${e.designation ?? ""}`}
         searchPlaceholder="Search by name, department or role…"
         onRowClick={(e) => { setViewing(e); setViewOpen(true); }}
         empty={{
@@ -487,7 +478,7 @@ const HRMEmployees = () => {
             <Button variant="secondary" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={save} disabled={!allRequiredPresent()}>
+            <Button onClick={() => void save()} disabled={!allRequiredPresent()}>
               Save
             </Button>
           </DialogFooter>

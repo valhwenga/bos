@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/use-toast";
 import { auditLeaveDays, applyCorrections, type CorrectionReport } from "@/lib/leaveRecalculation";
+import { useCache } from "@/lib/collectionCache";
+import { leavesCache } from "@/lib/hrmLeaveStore";
+import { leaveBalancesCache } from "@/lib/leaveBalanceStore";
 
 /**
  * Surfaces leave requests costed against the old holiday list, which counted
@@ -17,13 +20,19 @@ export function LeaveRecalculationNotice({ canApply }: { canApply: boolean }) {
   const [open, setOpen] = useState(false);
   const [applying, setApplying] = useState(false);
 
-  const refresh = () => setReport(auditLeaveDays());
+  // The audit reads the leave and balance caches, which load asynchronously.
+  // Auditing only on mount would have run against empty caches, found nothing
+  // to correct, and never looked again — so the banner would never appear.
+  const { rows: leaveRows } = useCache(leavesCache);
+  const { rows: balanceRows } = useCache(leaveBalancesCache);
+
+  const refresh = useCallback(() => setReport(auditLeaveDays()), []);
 
   useEffect(() => {
     refresh();
     window.addEventListener("hrm.leave-changed", refresh);
     return () => window.removeEventListener("hrm.leave-changed", refresh);
-  }, []);
+  }, [refresh, leaveRows, balanceRows]);
 
   const overcharged = useMemo(
     () => report?.corrections.filter((c) => c.difference > 0) ?? [],
@@ -32,10 +41,10 @@ export function LeaveRecalculationNotice({ canApply }: { canApply: boolean }) {
 
   if (!report || report.corrections.length === 0) return null;
 
-  const apply = () => {
+  const apply = async () => {
     setApplying(true);
     try {
-      const result = applyCorrections(report);
+      const result = await applyCorrections(report);
       toast({
         title: "Leave recalculated",
         description:
@@ -152,7 +161,7 @@ export function LeaveRecalculationNotice({ canApply }: { canApply: boolean }) {
             <Button variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={apply} disabled={!canApply || applying}>
+            <Button onClick={() => void apply()} disabled={!canApply || applying}>
               <Check className="mr-2 h-4 w-4" aria-hidden="true" />
               {applying ? "Applying…" : `Correct ${report.corrections.length} request${report.corrections.length === 1 ? "" : "s"}`}
             </Button>

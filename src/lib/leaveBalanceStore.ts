@@ -1,17 +1,23 @@
 /**
+ * Leave balances, per employee and leave type.
+ *
+ * Rows in Postgres now. Held as one row per employee and type rather than the
+ * nested object the app uses, so crediting one balance does not rewrite
+ * everyone else's — which is what made the localStorage version unsafe the
+ * moment two people were approving leave at once.
+ *
+ * Reads stay synchronous from a cache; writes are async and go to the server.
+ */
+
+import { createCache } from "./collectionCache";
+import { LeaveBalanceRepo } from "./hrmRepo";
+
+/**
  * Per-employee leave balances per leave type.
  * Store format: { employeeId: { leaveType: daysRemaining } }
  */
 export type LeaveBalances = Record<string, Record<string, number>>;
 
-const K = { balances: "hrm.leaveBalances" };
-const r = <T,>(k: string, f: T): T => { try { const v = localStorage.getItem(k); return v ? (JSON.parse(v) as T) : f; } catch { return f; } };
-const w = (k: string, v: unknown) => localStorage.setItem(k, JSON.stringify(v));
-const emit = (name: string) => {
-  try { window.dispatchEvent(new Event(name)); } catch { void 0; }
-};
-
-// Default annual balances per type (configurable per company later)
 const DEFAULT_BALANCES: Record<string, number> = {
   "Annual Leave": 21,
   "Sick Leave": 10,
@@ -21,69 +27,56 @@ const DEFAULT_BALANCES: Record<string, number> = {
   "Study Leave": 5,
 };
 
+/**
+ * The whole map, cached as a single entry. Balances are small and always read
+ * together, so one row of state is simpler than a collection.
+ */
+const balancesCache = createCache<LeaveBalances>(async () => [await LeaveBalanceRepo.all()]);
+
+export { balancesCache as leaveBalancesCache };
+
+const announce = () => {
+  try {
+    window.dispatchEvent(new Event("hrm.leaveBalances-changed"));
+  } catch {
+    void 0;
+  }
+};
+
 export const LeaveBalanceStore = {
-  /**
-   * Get all balances.
-   */
   all(): LeaveBalances {
-    return r<LeaveBalances>(K.balances, {});
+    return balancesCache.list()[0] ?? {};
+  },
+  load(): Promise<LeaveBalances[]> {
+    return balancesCache.ensureLoaded();
   },
 
-  /**
-   * Get balances for a single employee.
-   */
   get(employeeId: string): Record<string, number> {
-    const all = this.all();
-    return all[employeeId] ?? { ...DEFAULT_BALANCES };
+    return this.all()[employeeId] ?? { ...DEFAULT_BALANCES };
   },
 
-  /**
-   * Set balances for an employee (full replace).
-   */
-  set(employeeId: string, balances: Record<string, number>) {
-    const all = this.all();
-    all[employeeId] = balances;
-    w(K.balances, all);
-    emit("hrm.leaveBalances-changed");
+  async set(employeeId: string, balances: Record<string, number>): Promise<void> {
+    await balancesCache.mutate(() => LeaveBalanceRepo.setForEmployee(employeeId, balances));
+    announce();
   },
 
-  /**
-   * Deduct days for a specific leave type on approval.
-   */
-  deduct(employeeId: string, leaveType: string, days: number) {
-    const all = this.all();
-    if (!all[employeeId]) {
-      all[employeeId] = { ...DEFAULT_BALANCES };
-    }
-    const current = all[employeeId][leaveType] ?? DEFAULT_BALANCES[leaveType] ?? 0;
-    all[employeeId][leaveType] = Math.max(0, current - days);
-    w(K.balances, all);
-    emit("hrm.leaveBalances-changed");
+  /** Deducts days on approval, clamped at zero. */
+  async deduct(employeeId: string, leaveType: string, days: number): Promise<void> {
+    const current = this.get(employeeId);
+    const balance = current[leaveType] ?? DEFAULT_BALANCES[leaveType] ?? 0;
+    await this.set(employeeId, { ...current, [leaveType]: Math.max(0, balance - days) });
   },
 
-  /**
-   * Add back days (e.g., when a leave is cancelled/rejected after approval).
-   */
-  add(employeeId: string, leaveType: string, days: number) {
-    const all = this.all();
-    if (!all[employeeId]) {
-      all[employeeId] = { ...DEFAULT_BALANCES };
-    }
-    const current = all[employeeId][leaveType] ?? DEFAULT_BALANCES[leaveType] ?? 0;
-    all[employeeId][leaveType] = current + days;
-    w(K.balances, all);
-    emit("hrm.leaveBalances-changed");
+  /** Adds days back, when approved leave is cancelled or corrected. */
+  async add(employeeId: string, leaveType: string, days: number): Promise<void> {
+    const current = this.get(employeeId);
+    const balance = current[leaveType] ?? DEFAULT_BALANCES[leaveType] ?? 0;
+    await this.set(employeeId, { ...current, [leaveType]: balance + days });
   },
 
-  /**
-   * Initialize default balances for an employee if not present.
-   */
-  initEmployee(employeeId: string) {
-    const all = this.all();
-    if (!all[employeeId]) {
-      all[employeeId] = { ...DEFAULT_BALANCES };
-      w(K.balances, all);
-      emit("hrm.leaveBalances-changed");
-    }
+  /** Gives a new employee the default allocation, if they have none. */
+  async initEmployee(employeeId: string): Promise<void> {
+    if (this.all()[employeeId]) return;
+    await this.set(employeeId, { ...DEFAULT_BALANCES });
   },
 };

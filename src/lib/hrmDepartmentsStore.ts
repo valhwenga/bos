@@ -1,3 +1,10 @@
+/**
+ * Departments. Rows in Postgres now.
+ */
+
+import { createCache } from "./collectionCache";
+import { DepartmentRepo } from "./hrmRepo";
+
 export type Department = {
   id: string;
   name: string;
@@ -7,17 +14,20 @@ export type Department = {
   color?: string;
 };
 
-const K = { departments: "hrm.departments" };
-const r = <T,>(k: string, f: T): T => { try { const v = localStorage.getItem(k); return v ? (JSON.parse(v) as T) : f; } catch { return f; } };
-const w = (k: string, v: unknown) => localStorage.setItem(k, JSON.stringify(v));
-
-const SEED: Department[] = [
-  { id: "D001", name: "Engineering", head: "John Anderson", employees: 24, description: "Software development and technical infrastructure", color: "bg-info" },
-  { id: "D002", name: "Marketing", head: "Sarah Williams", employees: 12, description: "Brand management and digital marketing", color: "bg-primary" },
-];
+export const departmentsCache = createCache<Department>(() => DepartmentRepo.list());
 
 export const HRMDepartmentsStore = {
-  list(): Department[] { return r<Department[]>(K.departments, SEED); },
-  upsert(d: Department) { const all = this.list(); const i = all.findIndex(x=>x.id===d.id); if(i>=0) all[i]=d; else all.push(d); w(K.departments, all); return d; },
-  remove(id: string) { const all = this.list().filter(x=> x.id !== id); w(K.departments, all); },
+  list(): Department[] {
+    return departmentsCache.list();
+  },
+  load(): Promise<Department[]> {
+    return departmentsCache.ensureLoaded();
+  },
+  async upsert(d: Department): Promise<Department> {
+    await departmentsCache.mutate(() => DepartmentRepo.upsert(d));
+    return d;
+  },
+  async remove(id: string): Promise<void> {
+    await departmentsCache.mutate(() => DepartmentRepo.remove(id));
+  },
 };

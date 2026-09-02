@@ -1,4 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
+import { useCache } from "@/lib/collectionCache";
+import { leavesCache } from "@/lib/hrmLeaveStore";
+import { toast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import { Plus, Calendar, CheckCircle, XCircle, Clock, AlertCircle, Eye, Check, X } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -36,7 +39,8 @@ const statusColors = {
 };
 
 export default function HRMLeave() {
-  const [leaves, setLeaves] = useState<Leave[]>(HRMLeaveStore.list());
+  // Rows come from Postgres via a cache, so this re-renders when they arrive.
+  const { rows: leaves } = useCache(leavesCache);
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Leave | null>(null);
   const [action, setAction] = useState<LeaveStatus | null>(null);
@@ -96,7 +100,7 @@ export default function HRMLeave() {
   }, [visibleLeaves]);
 
   useEffect(() => {
-    const refresh = () => setLeaves(HRMLeaveStore.list());
+    const refresh = () => { void leavesCache.refresh(); };
     const onStorage = (e: StorageEvent) => { if (e.key === "hrm.leaves") refresh(); };
     window.addEventListener("hrm.leave-changed", refresh);
     window.addEventListener("storage", onStorage);
@@ -113,24 +117,45 @@ export default function HRMLeave() {
   const view = (l: Leave) => { setSelected(l); setAction(null); setManagerNote(""); setOpen(true); };
   const approve = (l: Leave) => { if(!canActOnLeave(l)) return; setSelected(l); setAction("Approved"); setManagerNote(""); setOpen(true); };
   const reject = (l: Leave) => { if(!canActOnLeave(l)) return; setSelected(l); setAction("Rejected"); setManagerNote(""); setOpen(true); };
-  const submit = () => {
+  const submit = async () => {
     if (!selected || !action) { setOpen(false); return; }
     if (!canActOnLeave(selected)) { setOpen(false); return; }
-    const updated = HRMLeaveStore.setStatus(selected.id, action, managerNote);
-    // Auto-deduct or restore balance on approval/rejection
-    if (updated && action === "Approved") {
-      LeaveBalanceStore.deduct(updated.employeeId, updated.type, updated.days);
-    } else if (updated && action === "Rejected") {
-      // If it was previously approved, restore days (edge case)
-      LeaveBalanceStore.add(updated.employeeId, updated.type, updated.days);
+
+    // The decision and the balance change are two writes. If the second fails,
+    // say so precisely: the decision stands and the balance is the thing that
+    // needs correcting, which is not the same as "nothing happened".
+    let updated;
+    try {
+      updated = await HRMLeaveStore.setStatus(selected.id, action, managerNote);
+    } catch (err) {
+      toast({
+        title: "Could not record the decision",
+        description: err instanceof Error ? err.message : "The request is unchanged.",
+        variant: "destructive",
+      });
+      return;
     }
-    // Notify employee of decision
-    if (updated) {
-      notifyEmployeeOfLeaveDecision(updated);
+    if (!updated) { setOpen(false); return; }
+
+    try {
+      if (action === "Approved") {
+        await LeaveBalanceStore.deduct(updated.employeeId, updated.type, updated.days);
+      } else if (action === "Rejected") {
+        // If it was previously approved, restore days (edge case)
+        await LeaveBalanceStore.add(updated.employeeId, updated.type, updated.days);
+      }
+    } catch (err) {
+      toast({
+        title: `Leave ${action.toLowerCase()}, but the balance was not updated`,
+        description: err instanceof Error ? err.message : `Adjust ${updated.employee}'s ${updated.type} balance by hand.`,
+        variant: "destructive",
+      });
     }
+
+    notifyEmployeeOfLeaveDecision(updated);
     setOpen(false);
   };
-  const apply = () => {
+  const apply = async () => {
     if (!form.employee.trim() || !form.employeeId.trim() || !form.type.trim() || !form.startDate || !form.endDate) return;
     const start = new Date(form.startDate);
     const end = new Date(form.endDate);
@@ -150,7 +175,16 @@ export default function HRMLeave() {
       status: "Pending",
       appliedOn: new Date().toISOString(),
     };
-    HRMLeaveStore.upsert(l);
+    try {
+      await HRMLeaveStore.upsert(l);
+    } catch (err) {
+      toast({
+        title: "Could not submit the request",
+        description: err instanceof Error ? err.message : "Nothing was saved.",
+        variant: "destructive",
+      });
+      return;
+    }
     // Notify manager (placeholder email)
     notifyManagerOfLeaveRequest(l);
     setApplyOpen(false);
@@ -308,7 +342,7 @@ export default function HRMLeave() {
           )}
           <DialogFooter>
             <Button variant="secondary" onClick={()=> setOpen(false)}>Close</Button>
-            {canActOnLeave(selected || undefined) && action && <Button onClick={submit} disabled={action==='Rejected' && !managerNote.trim()}>Confirm {action}</Button>}
+            {canActOnLeave(selected || undefined) && action && <Button onClick={() => void submit()} disabled={action==='Rejected' && !managerNote.trim()}>Confirm {action}</Button>}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -350,7 +384,7 @@ export default function HRMLeave() {
         </div>
         <DialogFooter>
           <Button variant="secondary" onClick={()=> setApplyOpen(false)}>Cancel</Button>
-          <Button onClick={apply}>Submit</Button>
+          <Button onClick={() => void apply()}>Submit</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

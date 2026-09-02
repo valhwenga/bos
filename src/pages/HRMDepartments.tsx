@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { toast } from "@/components/ui/use-toast";
+import { useCache } from "@/lib/collectionCache";
+import { departmentsCache } from "@/lib/hrmDepartmentsStore";
 import { Button } from "@/components/ui/button";
 import { Plus, Edit, Trash, Users } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -10,21 +13,41 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input";
 
 const HRMDepartments = () => {
-  const [list, setList] = useState<Department[]>(HRMDepartmentsStore.list());
+  // Rows come from Postgres via a cache, so this re-renders when they arrive.
+  const { rows: list } = useCache(departmentsCache);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Department | null>(null);
   const [form, setForm] = useState<Department>({ id: "", name: "", head: "", employees: 0, description: "", color: "bg-info" });
 
-  const refresh = () => setList(HRMDepartmentsStore.list());
+  const refresh = () => { void departmentsCache.refresh(); };
   const startAdd = () => { setEditing(null); setForm({ id: `D${Math.floor(Math.random()*900+100)}`, name: "", head: "", employees: 0, description: "", color: "bg-info" }); setOpen(true); };
   const startEdit = (d: Department) => { setEditing(d); setForm(d); setOpen(true); };
   const remove = (id: string) => {
     const ok = window.confirm("Delete this department? This action cannot be undone.");
     if (!ok) return;
-    HRMDepartmentsStore.remove(id);
+    void HRMDepartmentsStore.remove(id).catch((err: unknown) =>
+      toast({
+        title: "Could not delete the department",
+        description: err instanceof Error ? err.message : "The department is unchanged.",
+        variant: "destructive",
+      }),
+    );
     refresh();
   };
-  const save = () => { if(!form.name.trim()) return; HRMDepartmentsStore.upsert(form); setOpen(false); refresh(); };
+  const save = async () => {
+    if (!form.name.trim()) return;
+    try {
+      await HRMDepartmentsStore.upsert(form);
+    } catch (err) {
+      toast({
+        title: "Could not save the department",
+        description: err instanceof Error ? err.message : "Nothing was saved.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setOpen(false);
+  };
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
@@ -112,7 +135,7 @@ const HRMDepartments = () => {
           </div>
           <DialogFooter>
             <Button variant="secondary" onClick={()=> setOpen(false)}>Cancel</Button>
-            <Button onClick={save}>Save</Button>
+            <Button onClick={() => void save()}>Save</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -123,24 +123,24 @@ export type ApplyResult = {
  * Safe to run twice: a second pass finds nothing to correct, because the audit
  * compares stored against recomputed rather than tracking that it has run.
  */
-export function applyCorrections(report: CorrectionReport): ApplyResult {
+export async function applyCorrections(report: CorrectionReport): Promise<ApplyResult> {
   let leavesUpdated = 0;
   let daysCredited = 0;
   const credited = new Set<string>();
 
   for (const c of report.corrections) {
-    HRMLeaveStore.upsert({ ...c.leave, days: c.correctDays });
+    await HRMLeaveStore.upsert({ ...c.leave, days: c.correctDays });
     leavesUpdated += 1;
 
     if (!c.affectsBalance || c.difference === 0) continue;
 
     if (c.difference > 0) {
       // Over-charged: give the days back.
-      LeaveBalanceStore.add(c.leave.employeeId, c.leave.type, c.difference);
+      await LeaveBalanceStore.add(c.leave.employeeId, c.leave.type, c.difference);
       daysCredited += c.difference;
     } else {
       // Under-charged, which can happen if a request was edited by hand.
-      LeaveBalanceStore.deduct(c.leave.employeeId, c.leave.type, -c.difference);
+      await LeaveBalanceStore.deduct(c.leave.employeeId, c.leave.type, -c.difference);
     }
     credited.add(c.leave.employeeId);
   }

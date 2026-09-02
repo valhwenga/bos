@@ -53,6 +53,11 @@ export function LocalDataImportNotice({ canImport }: { canImport: boolean }) {
     sales: "sale",
     creditNotes: "credit note",
     recurring: "recurring template",
+    departments: "department",
+    employees: "employee",
+    leaves: "leave request",
+    payroll: "payroll entry",
+    leaveBalances: "leave balance",
   };
   const describe = (c: ImportCounts) =>
     (Object.keys(LABELS) as (keyof ImportCounts)[])
@@ -110,7 +115,7 @@ export function LocalDataImportNotice({ canImport }: { canImport: boolean }) {
         <Database className="h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <p className="text-sm font-medium text-foreground">
-            {total} accounting record{total === 1 ? "" : "s"} in this browser are not in the database
+            {total} record{total === 1 ? "" : "s"} in this browser are not in the database
           </p>
           <p className="text-xs text-muted-foreground">
             {describe(counts)}. Until they are imported only this browser can see them, and

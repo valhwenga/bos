@@ -1,3 +1,18 @@
+/**
+ * Payroll entries.
+ *
+ * Rows in Postgres now. Salary figures, PAYE and every other deduction were
+ * held in localStorage, which meant a payroll run existed only on the machine
+ * that produced it and was readable by anything running in that browser. Access
+ * is decided by hrm.payroll in row level security.
+ *
+ * The calculation helpers below are unchanged and stay synchronous; only where
+ * the entries live has moved.
+ */
+
+import { createCache } from "./collectionCache";
+import { PayrollRepo } from "./hrmRepo";
+
 import { CompanySettingsStore } from "./companySettings";
 
 export type PayrollEntry = {
@@ -32,86 +47,24 @@ export type PayrollEntry = {
   notes?: string;
 };
 
-const K = { payroll: "hrm.payroll" };
-
-const r = <T,>(k: string, f: T): T => { 
-  try { 
-    const v = localStorage.getItem(k); 
-    return v ? (JSON.parse(v) as T) : f; 
-  } catch { 
-    return f; 
-  } 
-};
-
-const w = (k: string, v: unknown) => localStorage.setItem(k, JSON.stringify(v));
-
-const DEFAULTS: PayrollEntry[] = [
-  {
-    id: "PAY_001",
-    employeeId: "EMP001",
-    employee: "John Anderson",
-    department: "Engineering",
-    basicSalary: 85000,
-    allowances: {
-      housing: 2000,
-      transport: 1500,
-      medical: 500,
-      bonus: 1000,
-      other: 0
-    },
-    deductions: {
-      paye: 8500,
-      ui: 300,
-      pension: 1200,
-      medical: 800,
-      other: 0
-    },
-    overtime: {
-      hours: 0,
-      rate: 1.5,
-      amount: 0
-    },
-    netSalary: 81500,
-    paymentDate: "01 Oct 2025",
-    status: "paid",
-    createdAt: new Date().toISOString(),
-    notes: "Monthly salary with standard deductions"
-  }
-];
+export const payrollCache = createCache<PayrollEntry>(() => PayrollRepo.list());
 
 export const PayrollStore = {
   list(): PayrollEntry[] {
-    try {
-      const data = localStorage.getItem(K.payroll);
-      return data ? JSON.parse(data) : DEFAULTS;
-    } catch {
-      return DEFAULTS;
-    }
+    return payrollCache.list();
   },
-
-  upsert(entry: PayrollEntry): PayrollEntry {
-    const all = this.list();
-    const idx = all.findIndex(e => e.id === entry.id);
-    const updated = { ...entry, createdAt: entry.createdAt || new Date().toISOString() };
-    
-    if (idx >= 0) {
-      all[idx] = updated;
-    } else {
-      all.push(updated);
-    }
-    
-    w(K.payroll, all);
-    return updated;
+  load(): Promise<PayrollEntry[]> {
+    return payrollCache.ensureLoaded();
   },
-
-  remove(id: string): void {
-    const all = this.list();
-    const filtered = all.filter(e => e.id !== id);
-    w(K.payroll, filtered);
-  },
-
   get(id: string): PayrollEntry | undefined {
-    return this.list().find(e => e.id === id);
+    return this.list().find((e) => e.id === id);
+  },
+  async upsert(entry: PayrollEntry): Promise<PayrollEntry> {
+    await payrollCache.mutate(() => PayrollRepo.upsert(entry));
+    return entry;
+  },
+  async remove(id: string): Promise<void> {
+    await payrollCache.mutate(() => PayrollRepo.remove(id));
   },
 
   calculateNet(entry: Omit<PayrollEntry, 'netSalary'>): number {
