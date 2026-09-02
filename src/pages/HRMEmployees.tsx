@@ -1,5 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { HRMStore } from "@/lib/hrmStore";
+import { BankDetailsRepo, type BankDetails } from "@/lib/hrmRepo";
+import { canAccess } from "@/lib/accessControl";
 import { useCache } from "@/lib/collectionCache";
 import { employeesCache } from "@/lib/hrmStore";
 import { departmentsCache } from "@/lib/hrmDepartmentsStore";
@@ -45,6 +47,7 @@ const HRMEmployees = () => {
   // Departments come from the same cache, so the picker and the table's
   // department column populate as soon as they load.
   const { rows: departments } = useCache(departmentsCache);
+  const [bank, setBank] = useState<BankDetails>({ employeeId: "" });
   const [attempted, setAttempted] = useState(false);
   const cs = CompanySettingsStore.get();
 
@@ -59,8 +62,18 @@ const HRMEmployees = () => {
     void HRMDepartmentsStore.load();
   }, []);
 
-  const startAdd = () => { setEditing(null); setForm({ id: `EMP${Math.floor(Math.random()*900+100)}`, name: "", status: "Active", cv: null, qualifications: null, idCopy: null, otherDocuments: [] }); setAttempted(false); setOpen(true); };
-  const startEdit = (e: Employee) => { setEditing(e); setForm(e); setOpen(true); };
+  const startAdd = () => { setBank({ employeeId: "" }); setEditing(null); setForm({ id: `EMP${Math.floor(Math.random()*900+100)}`, name: "", status: "Active", cv: null, qualifications: null, idCopy: null, otherDocuments: [] }); setAttempted(false); setOpen(true); };
+  const startEdit = (e: Employee) => {
+    setEditing(e);
+    setForm(e);
+    // Bank details live in their own table and are only readable with payroll
+    // access, so they are fetched when the form opens rather than listed.
+    setBank({ employeeId: e.id });
+    void BankDetailsRepo.byEmployee()
+      .then((all) => setBank(all[e.id] ?? { employeeId: e.id }))
+      .catch(() => undefined);
+    setOpen(true);
+  };
   const remove = (id: string) => {
     const ok = window.confirm("Delete this employee? This action cannot be undone.");
     if (!ok) return;
@@ -85,6 +98,20 @@ const HRMEmployees = () => {
     if (!allRequiredPresent()) return;
     try {
       await LocalHRMStore.upsert({ ...form });
+      // Saved after the employee, which must exist before details can point at
+      // it. A failure here is reported separately: the employee is saved and
+      // only the banking needs redoing.
+      if (canAccess("hrm.payroll", "edit") && (bank.bankName || bank.branchCode || bank.accountNumber)) {
+        try {
+          await BankDetailsRepo.upsert({ ...bank, employeeId: form.id as string });
+        } catch (err) {
+          toast({
+            title: "Employee saved, bank details were not",
+            description: err instanceof Error ? err.message : "Re-enter the banking information.",
+            variant: "destructive",
+          });
+        }
+      }
     } catch (err) {
       toast({
         title: "Could not save",
@@ -326,6 +353,57 @@ const HRMEmployees = () => {
                     </div>
                   </div>
                 </div>
+
+                {/* Only shown to payroll: the row lives in a separate,
+                    payroll-only table, so a user without that access could not
+                    save these anyway and should not be shown empty fields that
+                    silently fail. */}
+                {canAccess("hrm.payroll", "edit") && (
+                  <div>
+                    <h4 className="font-semibold mb-2">Bank Details</h4>
+                    <Separator className="mb-3" />
+                    <p className="mb-3 text-xs text-muted-foreground">
+                      Where this employee's salary is paid. The payroll bank export cannot
+                      produce a file for anyone without these.
+                    </p>
+                    <div className="grid md:grid-cols-2 gap-3">
+                      <div className="grid gap-1">
+                        <label className="text-xs text-muted-foreground">Bank</label>
+                        <Input
+                          value={bank.bankName || ""}
+                          onChange={(e) => setBank({ ...bank, bankName: e.target.value })}
+                          placeholder="FNB"
+                        />
+                      </div>
+                      <div className="grid gap-1">
+                        <label className="text-xs text-muted-foreground">Branch code</label>
+                        <Input
+                          value={bank.branchCode || ""}
+                          onChange={(e) => setBank({ ...bank, branchCode: e.target.value.replace(/\D/g, "").slice(0, 6) })}
+                          placeholder="250655"
+                          inputMode="numeric"
+                        />
+                      </div>
+                      <div className="grid gap-1">
+                        <label className="text-xs text-muted-foreground">Account number</label>
+                        <Input
+                          value={bank.accountNumber || ""}
+                          onChange={(e) => setBank({ ...bank, accountNumber: e.target.value.replace(/\s/g, "") })}
+                          placeholder="62012345678"
+                          inputMode="numeric"
+                        />
+                      </div>
+                      <div className="grid gap-1">
+                        <label className="text-xs text-muted-foreground">Account type</label>
+                        <Input
+                          value={bank.accountType || ""}
+                          onChange={(e) => setBank({ ...bank, accountType: e.target.value })}
+                          placeholder="Cheque"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div>
                   <h4 className="font-semibold mb-2">Employment Details</h4>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { BankDetailsRepo, type BankDetails } from "@/lib/hrmRepo";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -37,23 +38,34 @@ export function PayrollAdvancedPanel({ data }: Props) {
     0,
   );
 
-  const handleExportBank = () => {
+  const handleExportBank = async () => {
+    // Real details, read from the payroll-only table. This used to pass zeros
+    // for every field, which produced a file the bank would reject.
+    let bank: Record<string, BankDetails>;
+    try {
+      bank = await BankDetailsRepo.byEmployee();
+    } catch (err) {
+      toast({
+        title: "Could not read bank details",
+        description: err instanceof Error ? err.message : "No file was produced.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const enriched = data.map(r => ({
       employeeId: r.id,
       employeeName: r.employee,
       netSalary: r.netSalary,
-      bankAccount: "000000000", // placeholder
-      routingNumber: "000000000", // placeholder
-      sortCode: "000000", // placeholder
-      accountNumber: "00000000", // placeholder
+      branchCode: bank[r.id]?.branchCode,
+      accountNumber: bank[r.id]?.accountNumber,
     }));
     let content: string;
     try {
       content = generateBACS(enriched);
     } catch (err) {
-      // Bank details are not captured against employees yet, so the export
-      // cannot produce a usable file. Say so rather than downloading one full
-      // of zeros that looks valid.
+      // Names the employees whose details are missing, so it is actionable
+      // rather than just a refusal.
       toast({
         title: "Bank export unavailable",
         description: err instanceof Error ? err.message : "Could not build the bank file.",
@@ -86,7 +98,7 @@ export function PayrollAdvancedPanel({ data }: Props) {
             </Badge>
           </div>
         </div>
-        <Button size="sm" onClick={handleExportBank}>
+        <Button size="sm" onClick={() => void handleExportBank()}>
           <Download className="w-4 h-4 mr-2" />
           Export Bank File
         </Button>

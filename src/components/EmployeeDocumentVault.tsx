@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -9,13 +9,15 @@ import { Badge } from "@/components/ui/badge";
 import { Upload, File, Trash2, Eye } from "lucide-react";
 import { EmployeeDocumentsStore, type EmployeeDocument } from "@/lib/employeeDocumentsStore";
 import { UserStore } from "@/lib/userStore";
+import { toast } from "@/components/ui/use-toast";
 
 type Props = {
   employeeId: string;
 };
 
 export function EmployeeDocumentVault({ employeeId }: Props) {
-  const [docs, setDocs] = useState(EmployeeDocumentsStore.forEmployee(employeeId));
+  const [docs, setDocs] = useState<EmployeeDocument[]>([]);
+  const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<EmployeeDocument | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -28,47 +30,72 @@ export function EmployeeDocumentVault({ employeeId }: Props) {
     description: "",
   });
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const refresh = useCallback(() => {
+    void EmployeeDocumentsStore.forEmployee(employeeId)
+      .then(setDocs)
+      .catch((err: unknown) =>
+        toast({
+          title: "Could not load documents",
+          description: err instanceof Error ? err.message : "Try again.",
+          variant: "destructive",
+        }),
+      );
+  }, [employeeId]);
+
+  useEffect(refresh, [refresh]);
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const base64 = reader.result as string;
-      const doc: EmployeeDocument = {
-        id: `DOC${Date.now()}`,
-        employeeId,
-        fileName: file.name,
-        fileType: file.type,
-        uploadedAt: new Date().toISOString(),
-        uploadedBy: user.id || "",
-        category: form.category,
-        description: form.description,
-        size: file.size,
-        base64,
-      };
-      EmployeeDocumentsStore.upsert(doc);
-      setDocs(EmployeeDocumentsStore.forEmployee(employeeId));
+    setBusy(true);
+    try {
+      // The file goes to private object storage. Storage enforces the bucket's
+      // size and type limits, so an oversized or disallowed file is refused
+      // here with a reason, rather than silently failing as it did when these
+      // were base64 strings competing for the localStorage quota.
+      await EmployeeDocumentsStore.upload({ employeeId, file, category: form.category });
+      refresh();
       setOpen(false);
       setForm({ fileName: "", fileType: "", category: "other", description: "" });
       if (fileInputRef.current) fileInputRef.current.value = "";
-    };
-    reader.readAsDataURL(file);
+      toast({ title: "Document uploaded", description: file.name });
+    } catch (err) {
+      toast({
+        title: "Upload failed",
+        description: err instanceof Error ? err.message : "The document was not saved.",
+        variant: "destructive",
+      });
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const remove = (id: string) => {
-    EmployeeDocumentsStore.remove(id);
-    setDocs(EmployeeDocumentsStore.forEmployee(employeeId));
+  const remove = async (doc: EmployeeDocument) => {
+    if (!window.confirm(`Delete ${doc.fileName}? This cannot be undone.`)) return;
+    try {
+      await EmployeeDocumentsStore.remove(doc, employeeId);
+      refresh();
+    } catch (err) {
+      toast({
+        title: "Could not delete the document",
+        description: err instanceof Error ? err.message : "It is unchanged.",
+        variant: "destructive",
+      });
+    }
   };
 
-  const view = (doc: EmployeeDocument) => {
-    if (doc.base64) {
-      const win = window.open("", "_blank");
-      if (win) {
-        win.document.write(`<iframe src="${doc.base64}" style="width:100%;height:100vh;border:none"></iframe>`);
-        win.document.close();
-      }
-    } else if (doc.url) {
-      window.open(doc.url, "_blank");
+  const view = async (doc: EmployeeDocument) => {
+    try {
+      // The bucket is private, so this is a short-lived signed link rather than
+      // a stored URL that would keep working if it leaked.
+      const url = await EmployeeDocumentsStore.openUrl(doc, employeeId);
+      window.open(url, "_blank", "noopener");
+    } catch (err) {
+      toast({
+        title: "Could not open the document",
+        description: err instanceof Error ? err.message : "Try again.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -101,10 +128,10 @@ export function EmployeeDocumentVault({ employeeId }: Props) {
               <Badge className={categoryColors[doc.category]}>{doc.category}</Badge>
             </div>
             <div className="flex items-center gap-2">
-              <Button size="icon" variant="outline" onClick={() => view(doc)}>
+              <Button size="icon" variant="outline" onClick={() => void view(doc)}>
                 <Eye className="w-4 h-4" />
               </Button>
-              <Button size="icon" variant="outline" onClick={() => remove(doc.id)}>
+              <Button size="icon" variant="outline" onClick={() => void remove(doc)}>
                 <Trash2 className="w-4 h-4" />
               </Button>
             </div>
@@ -142,7 +169,7 @@ export function EmployeeDocumentVault({ employeeId }: Props) {
             </div>
             <div>
               <label className="text-xs text-muted-foreground">File</label>
-              <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="block w-full text-sm" />
+              <input type="file" disabled={busy} ref={fileInputRef} onChange={(e) => void handleFileSelect(e)} className="block w-full text-sm" />
             </div>
           </div>
           <DialogFooter>

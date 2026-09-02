@@ -190,7 +190,10 @@ export const BackupStore = {
       performance: HRMPerformanceStore.list(),
       payroll: PayrollStore.list(),
       leaveBalances: [], // No list method, handled by fullLocalStorage
-      employeeDocuments: EmployeeDocumentsStore.list(),
+      // Documents are files in private object storage now, not rows this can
+      // serialise. They are covered by the database and storage backups, not by
+      // this export.
+      employeeDocuments: [],
       // Communication
       communication: {
         messages: CommunicationStore.getMessages(),

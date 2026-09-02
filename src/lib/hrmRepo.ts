@@ -436,3 +436,92 @@ export const PayrollRepo = {
     if (error) throw new Error(error.message);
   },
 };
+
+// ---------------------------------------------------------------------------
+// Employee bank details
+//
+// A separate table so the staff directory can be readable without exposing
+// where people are paid. Reading these needs hrm.payroll, not hrm.employees.
+// ---------------------------------------------------------------------------
+
+export type BankDetails = {
+  employeeId: string;
+  bankName?: string;
+  branchCode?: string;
+  accountNumber?: string;
+  accountType?: string;
+};
+
+type BankRow = {
+  employee_id: string;
+  bank_name: string | null;
+  branch_code: string | null;
+  account_number: string | null;
+  account_type: string | null;
+};
+
+/** The database uuid for an employee's app id, for tables keyed by uuid. */
+export async function employeeUuid(employeeId: string): Promise<string | null> {
+  return uuidFor("employees", employeeId);
+}
+
+export const BankDetailsRepo = {
+  /**
+   * Every employee's bank details, keyed by the app's employee id.
+   *
+   * Returns an empty map rather than throwing when the caller lacks payroll
+   * access: the screens that use this show "missing" for an employee without
+   * details, and someone who cannot see them should get exactly that.
+   */
+  async byEmployee(): Promise<Record<string, BankDetails>> {
+    const [{ data, error }, employeeIds] = await Promise.all([
+      supabase
+        .from("employee_bank_details")
+        .select("employee_id, bank_name, branch_code, account_number, account_type"),
+      appIdMap("employees"),
+    ]);
+    if (error) return {};
+
+    const out: Record<string, BankDetails> = {};
+    for (const row of (data ?? []) as BankRow[]) {
+      const employeeId = employeeIds.get(row.employee_id) ?? row.employee_id;
+      out[employeeId] = {
+        employeeId,
+        bankName: row.bank_name ?? undefined,
+        branchCode: row.branch_code ?? undefined,
+        accountNumber: row.account_number ?? undefined,
+        accountType: row.account_type ?? undefined,
+      };
+    }
+    return out;
+  },
+
+  async upsert(details: BankDetails): Promise<void> {
+    const employeeUuid = await uuidFor("employees", details.employeeId);
+    if (!employeeUuid) {
+      throw new Error(`Employee ${details.employeeId} was not found, so the details were not saved.`);
+    }
+
+    const { error } = await supabase.from("employee_bank_details").upsert(
+      {
+        employee_id: employeeUuid,
+        bank_name: details.bankName ?? null,
+        branch_code: details.branchCode ?? null,
+        account_number: details.accountNumber ?? null,
+        account_type: details.accountType ?? null,
+      },
+      { onConflict: "employee_id" },
+    );
+    if (error) throw new Error(error.message);
+  },
+
+  async remove(employeeId: string): Promise<void> {
+    const employeeUuid = await uuidFor("employees", employeeId);
+    if (!employeeUuid) return;
+    const { error } = await supabase
+      .from("employee_bank_details")
+      .delete()
+      .eq("employee_id", employeeUuid);
+    if (error) throw new Error(error.message);
+  },
+};

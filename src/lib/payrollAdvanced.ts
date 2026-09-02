@@ -61,20 +61,24 @@ export function generateBACS(payrolls: Array<{
   employeeId: string;
   employeeName: string;
   netSalary: number;
-  sortCode?: string;
+  /** Six-digit South African branch code. */
+  branchCode?: string;
   accountNumber?: string;
+  /** Accepted for the older call shape; branchCode is preferred. */
+  sortCode?: string;
 }>) {
-  assertBankDetails(payrolls);
+  const rows = payrolls.map((p) => ({ ...p, sortCode: p.branchCode ?? p.sortCode }));
+  assertBankDetails(rows);
   const lines = [
     `HDR1,COMPANY,${new Date().toISOString().slice(0, 10).replace(/-/g, "")},ZAR`,
-    ...payrolls.map(p => [
+    ...rows.map(p => [
       "DET1",
       p.sortCode || "000000",
       p.accountNumber || "00000000",
       p.employeeName,
       (p.netSalary * 100).toFixed(0),
     ].join(",")),
-    "TLR1," + payrolls.length.toString().padStart(6, "0"),
+    "TLR1," + rows.length.toString().padStart(6, "0"),
   ];
   return lines.join("\n");
 }

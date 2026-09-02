@@ -26,12 +26,13 @@ all on Postgres, behind the same row level security as everything else. Verified
 that an employee without `hrm.payroll` sees no payroll rows and no salary
 figures, and cannot write one.
 
-Two things this surfaced that are **not** fixed and need a decision:
+Employee documents are in the private `employee-documents` bucket, with the
+`attachments` table as the index and short-lived signed links to open them —
+there is no permanent URL to leak. Bank details are captured on the employee
+form and the payroll bank export builds a real file from them.
 
-- **Employee documents** (CV, ID copy, qualifications) are not migrated. They
-  were base64 blobs on the employee record; they belong in the
-  `employee-documents` bucket that `file_storage` created. Until that is wired
-  up, uploading a document on the Employees page does not persist it.
+One thing this surfaced that is **not** fixed and needs a decision:
+
 - **Leave is visible company-wide to anyone with leave access.** Row level
   security grants the module, not the row, so an ordinary employee can read
   every leave request and balance through the API even though the page only
@@ -41,10 +42,11 @@ Two things this surfaced that are **not** fixed and need a decision:
   currently has one, so tightening the policy today would show staff nothing.
   Either build that link or accept the exposure knowingly.
 
-Also note **employee bank details are not stored anywhere**, so the payroll bank
-export cannot produce a usable file. It refuses rather than emitting a file full
-of zeros, which is the right failure, but paying anyone from this system needs
-those fields captured first.
+Bank details sit in their own table, not on `employees`, because row level
+security in Postgres is per row and not per column: the staff directory has to
+stay readable without exposing where colleagues are paid. Verified that a user
+with employee access but no payroll access sees the directory and no account
+numbers.
 
 ### 3. Turn on email confirmation
 
@@ -206,6 +208,9 @@ them:
 - **Workflow, Documents, Analytics and the Support dashboard were restyled but
   never audited.** Expect controls that look functional and are not; that
   pattern was found repeatedly everywhere else in the codebase.
+- **The backup export no longer covers everything.** It serialises what the app
+  holds in the browser, and most data is in Postgres now. Rely on the database
+  and storage backups (step 11), not on this button.
 - **"System lockdown" ends only the current session.** Revoking everyone else's
   needs an admin API call the browser cannot make.
 - **132 lint errors**, mostly `no-explicit-any`. Not user-visible, but they are
