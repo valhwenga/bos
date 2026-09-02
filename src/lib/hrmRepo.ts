@@ -111,6 +111,7 @@ export const DepartmentRepo = {
 type EmployeeRow = {
   id: string;
   legacy_id: string | null;
+  profile_id: string | null;
   employee_no: string | null;
   name: string;
   email: string | null;
@@ -129,7 +130,7 @@ type EmployeeRow = {
 };
 
 const EMPLOYEE_COLUMNS =
-  "id, legacy_id, employee_no, name, email, phone, department_id, designation, joining_date, salary, status, date_of_birth, address, marital_status, emergency_contact_name, emergency_contact_phone, national_id";
+  "id, legacy_id, profile_id, employee_no, name, email, phone, department_id, designation, joining_date, salary, status, date_of_birth, address, marital_status, emergency_contact_name, emergency_contact_phone, national_id";
 
 export const EmployeeRepo = {
   async list(): Promise<Employee[]> {
@@ -141,6 +142,7 @@ export const EmployeeRepo = {
 
     return (data as EmployeeRow[]).map((row) => ({
       id: appId(row),
+      profileId: row.profile_id ?? undefined,
       name: row.name,
       email: row.email ?? undefined,
       phone: row.phone ?? undefined,
@@ -172,6 +174,9 @@ export const EmployeeRepo = {
 
     const payload = {
       name: e.name,
+      // The login this employee signs in with. It decides which leave rows they
+      // can see, so it is a permission-bearing field, not a convenience.
+      profile_id: e.profileId ?? null,
       email: e.email ?? null,
       phone: e.phone ?? null,
       department_id: departmentUuid,
@@ -271,12 +276,20 @@ export const LeaveRepo = {
 
     const existing = await uuidFor("leave_requests", l.id);
     if (existing) {
+      // requested_by is deliberately not in the update. It records who
+      // submitted the request, and it is one of the things that lets that
+      // person still see it; an approver saving a decision must not overwrite
+      // it with their own id and take the employee's access away.
       const { error } = await supabase.from("leave_requests").update(payload).eq("id", existing);
       if (error) throw new Error(error.message);
     } else {
-      const { error } = await supabase
-        .from("leave_requests")
-        .insert({ ...payload, legacy_id: isUuid(l.id) ? null : l.id });
+      const { data: auth } = await supabase.auth.getUser();
+      const { error } = await supabase.from("leave_requests").insert({
+        ...payload,
+        legacy_id: isUuid(l.id) ? null : l.id,
+        // Set once, on submission.
+        requested_by: auth.user?.id ?? null,
+      });
       if (error) throw new Error(error.message);
     }
     return l;

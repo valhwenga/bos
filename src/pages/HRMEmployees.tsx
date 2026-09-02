@@ -2,6 +2,8 @@ import { useState, useMemo, useEffect } from "react";
 import { HRMStore } from "@/lib/hrmStore";
 import { BankDetailsRepo, type BankDetails } from "@/lib/hrmRepo";
 import { canAccess } from "@/lib/accessControl";
+import { useAccounts } from "@/lib/useAccounts";
+import { UnlinkedEmployeesNotice } from "@/components/UnlinkedEmployeesNotice";
 import { useCache } from "@/lib/collectionCache";
 import { employeesCache } from "@/lib/hrmStore";
 import { departmentsCache } from "@/lib/hrmDepartmentsStore";
@@ -48,6 +50,7 @@ const HRMEmployees = () => {
   // department column populate as soon as they load.
   const { rows: departments } = useCache(departmentsCache);
   const [bank, setBank] = useState<BankDetails>({ employeeId: "" });
+  const accounts = useAccounts();
   const [attempted, setAttempted] = useState(false);
   const cs = CompanySettingsStore.get();
 
@@ -249,6 +252,8 @@ const HRMEmployees = () => {
         </div>
       </PageHeader>
 
+      {canAccess("hrm.employees", "edit") && <UnlinkedEmployeesNotice />}
+
       <DataTable
         rows={employees}
         columns={columns}
@@ -404,6 +409,43 @@ const HRMEmployees = () => {
                     </div>
                   </div>
                 )}
+
+                <div>
+                  <h4 className="font-semibold mb-2">System Access</h4>
+                  <Separator className="mb-3" />
+                  <div className="grid gap-1">
+                    <label className="text-xs text-muted-foreground">Linked login</label>
+                    <Select
+                      value={form.profileId ?? "none"}
+                      onValueChange={(v) => setForm({ ...form, profileId: v === "none" ? undefined : v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Not linked" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Not linked</SelectItem>
+                        {accounts
+                          .filter(
+                            (a) =>
+                              a.status === "active" &&
+                              // A login already used by a different employee is
+                              // not offered: two records pointing at the same
+                              // person would show each other's leave.
+                              !employees.some((e) => e.profileId === a.id && e.id !== form.id),
+                          )
+                          .map((a) => (
+                            <SelectItem key={a.id} value={a.id}>
+                              {a.name || a.email} — {a.email}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Which account this person signs in with. Without it they cannot see their
+                      own leave or balance, because those are filtered by this link.
+                    </p>
+                  </div>
+                </div>
 
                 <div>
                   <h4 className="font-semibold mb-2">Employment Details</h4>

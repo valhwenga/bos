@@ -22,6 +22,8 @@ export type EmployeeDocument = {
 
 export type Employee = {
   id: string;
+  /** The login this employee signs in with, once an administrator links them. */
+  profileId?: string;
   name: string;
   email?: string;
   phone?: string;

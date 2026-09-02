@@ -31,16 +31,16 @@ Employee documents are in the private `employee-documents` bucket, with the
 there is no permanent URL to leak. Bank details are captured on the employee
 form and the payroll bank export builds a real file from them.
 
-One thing this surfaced that is **not** fixed and needs a decision:
+Leave is no longer visible company-wide: an employee sees only their own
+requests and balances, HR and managers (hrm.leave `full`) see everyone's. That
+depends on each employee record being linked to a login, which is done on the
+employee form under **System Access**.
 
-- **Leave is visible company-wide to anyone with leave access.** Row level
-  security grants the module, not the row, so an ordinary employee can read
-  every leave request and balance through the API even though the page only
-  shows them their own. Leave reasons can be medical, so this matters.
-  Restricting it to "your own rows" needs employees linked to logins —
-  `employees.profile_id` exists but nothing populates it, and no employee
-  currently has one, so tightening the policy today would show staff nothing.
-  Either build that link or accept the exposure knowingly.
+**Link everyone before go-live.** An unlinked employee cannot see their own
+leave or balance — the page just looks empty to them. A banner on the Employees
+page names anyone still unlinked. As a safety net during the rollout, a person
+can always see a request they submitted themselves, even before they are
+linked; balances have no such fallback.
 
 Bank details sit in their own table, not on `employees`, because row level
 security in Postgres is per row and not per column: the staff directory has to
