@@ -15,7 +15,7 @@ import { CompanySettingsStore } from "@/lib/companySettings";
 
 const SalesDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void; onSaved: ()=>void }> = ({ open, onOpenChange, onSaved }) => {
   const products = ProductsStore.list();
-  const [number, setNumber] = useState(() => previewNextNumber("sale"));
+  const [number, setNumber] = useState("");
   const [date, setDate] = useState<string>(new Date().toISOString().slice(0,10));
   const [customerName, setCustomerName] = useState<string>("");
   const [method, setMethod] = useState<string>("Cash");
@@ -29,10 +29,10 @@ const SalesDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void; on
 
   const total = useMemo(() => items.reduce((s,i)=> s + i.qty*i.price, 0), [items]);
 
-  const save = () => {
+  const save = async () => {
     if (items.length===0 || items.some(i=> !i.name.trim())) return;
     // Allocated on save, not on open.
-    const allocated = resolveNumberOnSave("sale", number, previewNextNumber("sale"));
+    const allocated = await resolveNumberOnSave("sale", number, await previewNextNumber("sale"));
     const sale: Sale = { id: `s_${Date.now()}`, number: allocated, date, customerName: customerName || undefined, items, method, reference, notes, createdAt: new Date().toISOString() };
     SalesStore.upsert(sale);
     onSaved();
@@ -85,7 +85,7 @@ const SalesDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void; on
         </div>
         <DialogFooter>
           <Button variant="secondary" onClick={()=> onOpenChange(false)}>Cancel</Button>
-          <Button onClick={save} disabled={items.length===0}>Save Sale</Button>
+          <Button onClick={() => void save()} disabled={items.length===0}>Save Sale</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

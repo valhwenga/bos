@@ -7,12 +7,18 @@
  * number, and tax authorities generally require issued invoices to run in an
  * unbroken sequence.
  *
- * The counters live in localStorage for now. The shape of this module
- * intentionally mirrors the SQL functions added in the document_numbering
- * migration (next_document_number / reserve_document_number), so when the
- * stores move onto Postgres only the bodies here change — the call sites do
- * not.
+ * The counters live in Postgres, not the browser. That matters now that the
+ * documents themselves are shared: with a counter per browser, two people
+ * raising an invoice at the same time would both be handed INV-2026-0007, and
+ * duplicate invoice numbers are not something SARS accepts.
+ *
+ * next_document_number() takes a row lock on the counter, so concurrent callers
+ * queue rather than collide. A deliberate consequence is that allocation is a
+ * round trip — these functions are async, and callers allocate on save, never
+ * on opening a dialog.
  */
+
+import { supabase } from "./supabase";
 
 export type DocumentType = "invoice" | "quotation" | "credit_note" | "sale";
 
@@ -26,42 +32,12 @@ const CONFIG: Record<DocumentType, SequenceConfig> = {
   sale: { prefix: "S-", includeYear: true, padding: 4 },
 };
 
-type Counter = { year: number; next: number };
-
-const KEY = "acct.sequences";
-
-const readAll = (): Partial<Record<DocumentType, Counter>> => {
-  try {
-    return JSON.parse(localStorage.getItem(KEY) || "{}");
-  } catch {
-    return {};
-  }
-};
-
-const writeAll = (all: Partial<Record<DocumentType, Counter>>) => {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(all));
-  } catch {
-    /* storage full or unavailable; the caller still gets a number */
-  }
-};
-
 const currentYear = () => new Date().getFullYear();
 
 const format = (type: DocumentType, value: number) => {
   const { prefix, includeYear, padding } = CONFIG[type];
   const year = includeYear ? `${currentYear()}-` : "";
   return `${prefix}${year}${String(value).padStart(padding, "0")}`;
-};
-
-/** Counter for a type, restarted when the year rolls over. */
-const counterFor = (type: DocumentType): Counter => {
-  const stored = readAll()[type];
-  const year = currentYear();
-  if (!stored || (CONFIG[type].includeYear && stored.year !== year)) {
-    return { year, next: 1 };
-  }
-  return stored;
 };
 
 /**
@@ -71,20 +47,39 @@ const counterFor = (type: DocumentType): Counter => {
  * number every time someone opened the form and cancelled, putting a gap in the
  * sequence.
  */
-export function previewNextNumber(type: DocumentType): string {
-  return format(type, counterFor(type).next);
+export async function previewNextNumber(type: DocumentType): Promise<string> {
+  // Deliberately not next_document_number(): that one consumes a number, so
+  // using it to fill a form would burn one every time somebody opened a dialog
+  // and cancelled, leaving gaps in a series that is supposed to be unbroken.
+  // The counter row is readable, so the preview is formatted from it instead.
+  const { data, error } = await supabase
+    .from("document_sequences")
+    .select("prefix, include_year, padding, next_number, current_year")
+    .eq("doc_type", type)
+    .maybeSingle();
+
+  if (error || !data) return format(type, 1);
+
+  const year = currentYear();
+  // A new year restarts the series, which the counter only records once the
+  // first number of that year is actually allocated.
+  const next = data.include_year && data.current_year !== year ? 1 : data.next_number;
+  const yearPart = data.include_year ? `${year}-` : "";
+  return `${data.prefix}${yearPart}${String(next).padStart(data.padding, "0")}`;
 }
 
 /**
  * Consumes and returns the next number. Call this at the point the document is
  * actually saved.
  */
-export function allocateNumber(type: DocumentType): string {
-  const counter = counterFor(type);
-  const all = readAll();
-  all[type] = { year: counter.year, next: counter.next + 1 };
-  writeAll(all);
-  return format(type, counter.next);
+export async function allocateNumber(type: DocumentType): Promise<string> {
+  const { data, error } = await supabase.rpc("next_document_number", { p_doc_type: type });
+  if (error || !data) {
+    throw new Error(
+      `Could not allocate a ${type} number: ${error?.message ?? "no number returned"}`,
+    );
+  }
+  return data as string;
 }
 
 /**
@@ -92,27 +87,30 @@ export function allocateNumber(type: DocumentType): string {
  * hand-entered number, or one carried in from an import — so the next
  * allocation cannot collide with it.
  */
-export function reserveNumber(type: DocumentType, used: string): void {
+export async function reserveNumber(type: DocumentType, used: string): Promise<void> {
   const trailing = used.match(/(\d+)\s*$/);
   if (!trailing) return;
   const value = parseInt(trailing[1], 10);
   if (!Number.isFinite(value)) return;
 
-  const counter = counterFor(type);
-  if (value < counter.next) return;
-
-  const all = readAll();
-  all[type] = { year: counter.year, next: value + 1 };
-  writeAll(all);
+  const { error } = await supabase.rpc("reserve_document_number", {
+    p_doc_type: type,
+    p_used: value,
+  });
+  if (error) throw new Error(error.message);
 }
 
 /**
  * Resolves the number to save: the allocated one when the field is untouched,
  * otherwise the user's own value, with the counter advanced past it.
  */
-export function resolveNumberOnSave(type: DocumentType, entered: string, preview: string): string {
+export async function resolveNumberOnSave(
+  type: DocumentType,
+  entered: string,
+  preview: string,
+): Promise<string> {
   const trimmed = entered.trim();
   if (!trimmed || trimmed === preview) return allocateNumber(type);
-  reserveNumber(type, trimmed);
+  await reserveNumber(type, trimmed);
   return trimmed;
 }

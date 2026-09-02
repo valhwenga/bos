@@ -60,7 +60,7 @@ const NewInvoiceDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>voi
       setCustomerId(preselectedCustomerId || customers[0]?.id || "");
       // Preview only; the number is allocated on save so cancelling this dialog
       // does not consume one and leave a gap in the sequence.
-      setInvoiceNo(previewNextNumber("invoice"));
+      void previewNextNumber("invoice").then(setInvoiceNo);
       setInvoiceDate(new Date().toISOString().slice(0,10));
       setDueDate(() => {
         const date = new Date();
@@ -112,14 +112,15 @@ const NewInvoiceDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>voi
     return { sub, discount, shipping: shippingAmount, tax, grand };
   };
 
-  const save = () => {
+  const save = async () => {
     if (!customerId) { toast({ title: "Customer required", variant: "destructive" }); return; }
     if (items.length===0 || items.some(i=> !i.name.trim())) { toast({ title: "Add at least one item", variant: "destructive" }); return; }
     
-    // Editing keeps the existing number; a new invoice consumes one now.
+    // Editing keeps the existing number; a new invoice consumes one now. The
+    // number comes from a Postgres counter, so this is a round trip.
     const number = editingInvoice
       ? invoiceNo
-      : resolveNumberOnSave("invoice", invoiceNo, previewNextNumber("invoice"));
+      : await resolveNumberOnSave("invoice", invoiceNo, await previewNextNumber("invoice"));
 
     const invoice: Invoice = {
       id: editingInvoice?.id || `inv_${Date.now()}`,
@@ -285,7 +286,7 @@ const NewInvoiceDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>voi
         </div>
         <DialogFooter>
           <Button variant="secondary" onClick={()=> onOpenChange(false)}>Cancel</Button>
-          <Button onClick={save}>Create Invoice</Button>
+          <Button onClick={() => void save()}>Create Invoice</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

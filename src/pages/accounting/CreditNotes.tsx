@@ -17,18 +17,18 @@ const NewCreditDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void
   const customers = useMemo(() => AccountingStore.listInvoices().map(i=> i.customer)
     .concat(AccountingStore.listQuotes().map(q=> q.customer))
     .reduce((acc, cur)=> acc.find(x=> x.id===cur.id) ? acc : acc.concat(cur), [] as {id:string; name:string}[]), []);
-  const [number, setNumber] = useState(() => previewNextNumber("credit_note"));
+  const [number, setNumber] = useState("");
   const [date, setDate] = useState<string>(new Date().toISOString().slice(0,10));
   const [customerId, setCustomerId] = useState<string>(customers[0]?.id || "");
   const [amount, setAmount] = useState<number>(0);
   const [notes, setNotes] = useState<string>("");
 
-  const save = () => {
+  const save = async () => {
     if (!customerId || amount<=0) return;
     const custName = customers.find(c=> c.id===customerId)?.name;
     // Allocated here rather than on open, so cancelling the dialog does not
     // consume a number and leave a gap.
-    const allocated = resolveNumberOnSave("credit_note", number, previewNextNumber("credit_note"));
+    const allocated = await resolveNumberOnSave("credit_note", number, await previewNextNumber("credit_note"));
     const cn: CreditNote = { id: `cn_${Date.now()}`, number: allocated, date, customerId, customerName: custName, amount, applied: [], notes, createdAt: new Date().toISOString() };
     CreditNotesStore.upsert(cn);
     onSaved();
@@ -57,7 +57,7 @@ const NewCreditDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void
         </div>
         <DialogFooter>
           <Button variant="secondary" onClick={()=> onOpenChange(false)}>Cancel</Button>
-          <Button onClick={save} disabled={!customerId || amount<=0}>Save</Button>
+          <Button onClick={() => void save()} disabled={!customerId || amount<=0}>Save</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -120,7 +120,7 @@ const ApplyDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void; cr
         <div className="text-sm">Remaining to allocate: <span className="font-semibold">{c.currencySymbol}{remaining.toFixed(2)}</span></div>
         <DialogFooter>
           <Button variant="secondary" onClick={()=> onOpenChange(false)}>Cancel</Button>
-          <Button onClick={save}>Apply</Button>
+          <Button onClick={() => void save()}>Apply</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -186,7 +186,7 @@ const App = () => {
           // Each template used to keep its own counter starting at 1 with a
           // default 'INV-' prefix, so two templates both produced INV-0001,
           // and neither series knew about manually created invoices.
-          const num = allocateNumber('invoice');
+          const num = await allocateNumber('invoice');
           const inv = {
             id: `inv_${Date.now()}_${generated}`,
             number: num,

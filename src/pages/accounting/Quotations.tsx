@@ -38,7 +38,7 @@ const computeTotals = (q: Quotation) => {
 const NewQuoteDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void; onAdd: (q: Quotation) => void; editing?: Quotation }>= ({ open, onOpenChange, onAdd, editing }) => {
   const customers = CustomersStore.list();
   const [customerId, setCustomerId] = useState<string>(customers[0]?.id || "");
-  const [estimateNo, setEstimateNo] = useState(() => previewNextNumber("quotation"));
+  const [estimateNo, setEstimateNo] = useState("");
   const [estimateDate, setEstimateDate] = useState(new Date().toISOString().slice(0,10));
   const [expiryDate, setExpiryDate] = useState("");
   const [reference, setReference] = useState("");
@@ -72,7 +72,7 @@ const NewQuoteDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void;
       setItems(editing.items?.length ? editing.items.map((i) => ({ ...i })) : []);
     } else {
       setCustomerId(customers[0]?.id || "");
-      setEstimateNo(previewNextNumber("quotation"));
+      void previewNextNumber("quotation").then(setEstimateNo);
       setEstimateDate(new Date().toISOString().slice(0, 10));
       setExpiryDate("");
       setReference("");
@@ -121,13 +121,13 @@ const NewQuoteDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void;
   };
   const t = computeTotals(quote);
 
-  const save = () => {
+  const save = async () => {
     if (!customerId) { toast({ title: "Customer required", variant: "destructive" }); return; }
     if (items.length===0 || items.some(i=> !i.name.trim())) { toast({ title: "Add at least one item", variant: "destructive" }); return; }
     // Editing keeps the existing number; a new quotation consumes one now.
     const number = editing
       ? quote.number
-      : resolveNumberOnSave("quotation", estimateNo, previewNextNumber("quotation"));
+      : await resolveNumberOnSave("quotation", estimateNo, await previewNextNumber("quotation"));
     onAdd({ ...quote, number });
     onOpenChange(false);
   };
@@ -279,7 +279,7 @@ const NewQuoteDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void;
         </div>
         <DialogFooter>
           <Button variant="secondary" onClick={()=> onOpenChange(false)}>Cancel</Button>
-          <Button onClick={save}>{editing ? "Save changes" : "Save as draft"}</Button>
+          <Button onClick={() => void save()}>{editing ? "Save changes" : "Save as draft"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
