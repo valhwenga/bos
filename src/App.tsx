@@ -197,7 +197,7 @@ const App = () => {
             createdAt: t.nextRunAt as string,
             useShippingAddress: false,
           };
-          AccountingStore.upsertInvoice(inv as Invoice);
+          await AccountingStore.upsertInvoice(inv as Invoice);
           // Advance the cursor so the loop terminates and the next iteration
           // bills the following period.
           cursor = { ...t, lastRunAt: new Date().toISOString(), nextRunAt: RecurringStore.computeNextRun(t) };

@@ -198,7 +198,9 @@ const Recurring: React.FC = () => {
       createdAt: new Date().toISOString(),
       useShippingAddress: false,
     };
-    AccountingStore.upsertInvoice(inv as any);
+    // Awaited: if the invoice does not save, the template must not advance its
+    // schedule, or the period is billed nowhere and never retried.
+    await AccountingStore.upsertInvoice(inv as any);
     RecurringStore.upsert({ ...t, lastRunAt: new Date().toISOString(), nextRunAt: RecurringStore.computeNextRun(t), nextNumber: (t.nextNumber || 1) + 1 });
     try {
       if (t.autoSend && t.customer.email) {

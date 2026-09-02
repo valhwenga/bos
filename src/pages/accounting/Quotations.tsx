@@ -3,7 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
-import { AccountingStore, Quotation, LineItem } from "@/lib/accountingStore";
+import { useCache } from "@/lib/collectionCache";
+import { paymentsCache } from "@/lib/paymentStore";
+import { quotationsCache, AccountingStore, Quotation, LineItem } from "@/lib/accountingStore";
 import { previewNextNumber, resolveNumberOnSave } from "@/lib/documentNumbers";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { PageHeader } from "@/components/ui/page-header";
@@ -285,7 +287,9 @@ const NewQuoteDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void;
 };
 
 const Quotations: React.FC = () => {
-  const [quotes, setQuotes] = useState(AccountingStore.listQuotes());
+  // Rows come from Postgres via a cache, so this re-renders when they arrive.
+  const { rows: quotes, loading: quotesLoading, error: quotesError } = useCache(quotationsCache);
+  useCache(paymentsCache);
   const navigate = useNavigate();
   const total = useMemo(() => (q: Quotation) => computeTotals(q).grand, []);
   const c = CompanySettingsStore.get();
@@ -302,7 +306,7 @@ const Quotations: React.FC = () => {
   const [previewQuote, setPreviewQuote] = useState<Quotation | undefined>(undefined);
 
   useEffect(() => {
-    const refresh = () => setQuotes(AccountingStore.listQuotes());
+    const refresh = () => { void quotationsCache.refresh(); };
     const onPayments = () => refresh();
     const onStorage = (e: StorageEvent) => {
       if (!e.key) return;
@@ -322,17 +326,33 @@ const Quotations: React.FC = () => {
     setOpen(true);
   };
 
-  const saveQuote = (q: Quotation) => {
+  const saveQuote = async (q: Quotation) => {
     const isEdit = !!editing;
-    AccountingStore.upsertQuote(q);
-    setQuotes(AccountingStore.listQuotes());
+    try {
+      await AccountingStore.upsertQuote(q);
+    } catch (err) {
+      toast({
+        title: isEdit ? "Could not update quotation" : "Could not save quotation",
+        description: err instanceof Error ? err.message : "Nothing was saved.",
+        variant: "destructive",
+      });
+      return;
+    }
     setEditing(undefined);
     toast({ title: isEdit ? "Quotation updated" : "Quotation added", description: q.number });
   };
 
-  const convert = (id: string) => {
-    const inv = AccountingStore.convertQuoteToInvoice(id);
-    if (inv) toast({ title: "Converted to invoice", description: inv.number });
+  const convert = async (id: string) => {
+    try {
+      const inv = await AccountingStore.convertQuoteToInvoice(id);
+      if (inv) toast({ title: "Converted to invoice", description: inv.number });
+    } catch (err) {
+      toast({
+        title: "Could not convert quotation",
+        description: err instanceof Error ? err.message : "The quotation is unchanged.",
+        variant: "destructive",
+      });
+    }
   };
 
   const emailQuote = (q: Quotation) => {
@@ -415,9 +435,13 @@ const Quotations: React.FC = () => {
             aria-label={`Delete ${q.number}`}
             onClick={() => {
               if (confirm(`Delete quotation ${q.number}? This cannot be undone.`)) {
-                AccountingStore.removeQuote(q.id);
-                setQuotes(AccountingStore.listQuotes());
-                toast({ title: "Quotation deleted", description: q.number });
+                void AccountingStore.removeQuote(q.id)
+                  .then(() => toast({ title: "Quotation deleted", description: q.number }))
+                  .catch((err: unknown) => toast({
+                    title: "Could not delete quotation",
+                    description: err instanceof Error ? err.message : "The quotation is unchanged.",
+                    variant: "destructive",
+                  }));
               }
             }}
           >
@@ -479,7 +503,7 @@ const Quotations: React.FC = () => {
         onAdd={saveQuote}
         editing={editing}
       />
-      <CapturePaymentDialog open={capOpen} onOpenChange={(v)=> { setCapOpen(v); if (!v) { setActiveQuote(undefined); setQuotes(AccountingStore.listQuotes()); } }} context={{ quote: activeQuote }} onSaved={()=> { setQuotes(AccountingStore.listQuotes()); }} />
+      <CapturePaymentDialog open={capOpen} onOpenChange={(v)=> { setCapOpen(v); if (!v) { setActiveQuote(undefined); void quotationsCache.refresh(); } }} context={{ quote: activeQuote }} onSaved={()=> { void quotationsCache.refresh(); }} />
 
       <Dialog open={previewOpen} onOpenChange={(v) => { setPreviewOpen(v); if (!v) setPreviewQuote(undefined); }}>
         <DialogContent className="max-w-5xl max-h-[85vh] overflow-hidden">

@@ -69,7 +69,7 @@ const CapturePaymentDialog: React.FC<{
     return 0; // unapplied doesn't target a document
   }, [targetType, targetId, invoices, quotes, c.taxRatePct, c.currencySymbol]);
 
-  const save = () => {
+  const save = async () => {
     if (!customerId || amount <= 0) return;
     
     let paymentType: "full" | "partial" | "overpayment";
@@ -127,14 +127,37 @@ const CapturePaymentDialog: React.FC<{
       paymentType, // Add payment type to payment record
     };
     
-    // Add payment
-    PaymentStore.add(p);
+    // Add payment. This is a server write now, so a failure must stop the flow
+    // rather than fall through to a "Payment Captured" toast.
+    try {
+      await PaymentStore.add(p);
+    } catch (err) {
+      toast({
+        title: "Could not record payment",
+        description: err instanceof Error ? err.message : "Nothing was saved.",
+        variant: "destructive",
+      });
+      return;
+    }
     
     // Update invoice status if it's a full payment
     if (updatedInvoiceStatus && targetType === "invoice") {
       const inv = invoices.find(i=> i.id===targetId);
       if (inv) {
-        AccountingStore.upsertInvoice({ ...inv, status: updatedInvoiceStatus });
+        try {
+          await AccountingStore.upsertInvoice({ ...inv, status: updatedInvoiceStatus });
+        } catch (err) {
+          // The payment saved; only the status change failed. Say so precisely
+          // rather than implying the payment was lost.
+          toast({
+            title: "Payment recorded, status not updated",
+            description: err instanceof Error ? err.message : `Invoice ${inv.number} is still ${inv.status}.`,
+            variant: "destructive",
+          });
+          onOpenChange(false);
+          onSaved?.();
+          return;
+        }
         
         // Show success notification with payment type
         const message = paymentType === "full" 
@@ -270,7 +293,7 @@ const CapturePaymentDialog: React.FC<{
         </div>
         <DialogFooter>
           <Button onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={save} disabled={!customerId || amount <= 0 || (targetType === 'unapplied' && !targetId)}>Save Payment</Button>
+          <Button onClick={() => void save()} disabled={!customerId || amount <= 0 || (targetType === 'unapplied' && !targetId)}>Save Payment</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

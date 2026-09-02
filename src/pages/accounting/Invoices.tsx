@@ -5,7 +5,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
-import { AccountingStore, Invoice } from "@/lib/accountingStore";
+import { canAccess } from "@/lib/accessControl";
+import { useCache } from "@/lib/collectionCache";
+import { LocalDataImportNotice } from "@/components/accounting/LocalDataImportNotice";
+import { paymentsCache } from "@/lib/paymentStore";
+import { invoicesCache, AccountingStore, Invoice } from "@/lib/accountingStore";
 import { previewNextNumber, resolveNumberOnSave } from "@/lib/documentNumbers";
 import { Button } from "@/components/ui/button";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -289,7 +293,9 @@ const NewInvoiceDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>voi
 };
 
 const Invoices: React.FC = () => {
-  const [invoices, setInvoices] = useState(AccountingStore.listInvoices());
+  // Rows come from Postgres via a cache, so this re-renders when they arrive.
+  const { rows: invoices, loading: invoicesLoading, error: invoicesError } = useCache(invoicesCache);
+  useCache(paymentsCache);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const c = CompanySettingsStore.get();
@@ -311,10 +317,21 @@ const Invoices: React.FC = () => {
       return dueDate < today;
     });
     
-    // Update overdue status
-    overdueInvoices.forEach(inv => {
-      AccountingStore.upsertInvoice({ ...inv, status: 'overdue' });
-    });
+    // Update overdue status. Awaited in sequence so a failure surfaces rather
+    // than leaving the row unmarked with nothing said.
+    void (async () => {
+      for (const inv of overdueInvoices) {
+        try {
+          await AccountingStore.upsertInvoice({ ...inv, status: 'overdue' });
+        } catch (err) {
+          toast({
+            title: "Could not mark invoice overdue",
+            description: err instanceof Error ? err.message : `Invoice ${inv.number}`,
+            variant: "destructive",
+          });
+        }
+      }
+    })();
     
     // Store overdue notifications for dashboard
     if (overdueInvoices.length > 0) {
@@ -358,7 +375,7 @@ const Invoices: React.FC = () => {
 
   useEffect(() => {
     const refresh = () => {
-      setInvoices(AccountingStore.listInvoices());
+      void invoicesCache.refresh();
       checkOverdueInvoices(); // Check for overdue invoices after refresh
     };
     const onPayments = () => {
@@ -398,10 +415,20 @@ const Invoices: React.FC = () => {
     };
   }, []);
 
-  const addInvoice = (inv: Invoice) => {
-    AccountingStore.upsertInvoice(inv);
-    setInvoices(AccountingStore.listInvoices());
+  const addInvoice = async (inv: Invoice) => {
     const isEdit = editingInvoice?.id === inv.id;
+    try {
+      await AccountingStore.upsertInvoice(inv);
+    } catch (err) {
+      // The save is a server call now, so it can fail. Saying "Invoice Added"
+      // regardless would be the worst possible outcome.
+      toast({
+        title: isEdit ? "Could not update invoice" : "Could not save invoice",
+        description: err instanceof Error ? err.message : "Nothing was saved.",
+        variant: "destructive",
+      });
+      return;
+    }
     toast({ 
       title: isEdit ? "Invoice Updated" : "Invoice Added", 
       description: inv.number 
@@ -497,9 +524,13 @@ const Invoices: React.FC = () => {
             aria-label={`Delete invoice ${i.number}`}
             onClick={() => {
               if (window.confirm(`Delete invoice ${i.number}? This cannot be undone.`)) {
-                AccountingStore.removeInvoice(i.id);
-                setInvoices(AccountingStore.listInvoices());
-                toast({ title: "Invoice deleted", description: `Invoice ${i.number} was deleted.` });
+                void AccountingStore.removeInvoice(i.id)
+                  .then(() => toast({ title: "Invoice deleted", description: `Invoice ${i.number} was deleted.` }))
+                  .catch((err: unknown) => toast({
+                    title: "Could not delete invoice",
+                    description: err instanceof Error ? err.message : "The invoice is unchanged.",
+                    variant: "destructive",
+                  }));
               }
             }}
           >
@@ -540,6 +571,8 @@ const Invoices: React.FC = () => {
         </div>
       </PageHeader>
 
+      <LocalDataImportNotice canImport={canAccess("accounting", "edit")} />
+
       <DataTable
         rows={invoices}
         columns={columns}
@@ -561,7 +594,7 @@ const Invoices: React.FC = () => {
         onOpenChange={setPaymentOpen} 
         context={{ invoice: activeInvoice }} 
         onSaved={() => {
-          setInvoices(AccountingStore.listInvoices());
+          void invoicesCache.refresh();
           setPaymentOpen(false);
           setActiveInvoice(undefined);
         }}

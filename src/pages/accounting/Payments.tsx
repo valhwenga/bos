@@ -9,6 +9,9 @@ import CapturePaymentDialog from "@/components/accounting/CapturePaymentDialog";
 import { Trash2, Receipt, Wallet, AlertCircle } from "lucide-react";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { PageHeader } from "@/components/ui/page-header";
+import { useCache } from "@/lib/collectionCache";
+import { invoicesCache, quotationsCache } from "@/lib/accountingStore";
+import { paymentsCache } from "@/lib/paymentStore";
 import { StatCard } from "@/components/ui/stat-card";
 import { Payment, PaymentMethod, PaymentStore } from "@/lib/paymentStore";
 import { allocateNumber } from "@/lib/documentNumbers";
@@ -18,7 +21,10 @@ import { toast } from "@/components/ui/use-toast";
 
 const Payments: React.FC = () => {
   const cs = CompanySettingsStore.get();
-  const [payments, setPayments] = useState(PaymentStore.list());
+  // Rows come from Postgres via a cache, so this re-renders when they arrive.
+  const { rows: payments, loading: paymentsLoading, error: paymentsError } = useCache(paymentsCache);
+  useCache(invoicesCache);
+  useCache(quotationsCache);
   const [open, setOpen] = useState(false);
   const [applyOpen, setApplyOpen] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
@@ -42,11 +48,16 @@ const Payments: React.FC = () => {
   const del = (id: string) => {
     const ok = window.confirm("Delete this payment? This action cannot be undone.");
     if (!ok) return;
-    PaymentStore.remove(id);
-    setPayments(PaymentStore.list());
+    void PaymentStore.remove(id).catch((err: unknown) =>
+      toast({
+        title: "Could not delete payment",
+        description: err instanceof Error ? err.message : "The payment is unchanged.",
+        variant: "destructive",
+      }),
+    );
   };
 
-  const applyPayment = () => {
+  const applyPayment = async () => {
     if (!selectedPayment) return;
     
     let updatedPayment = { ...selectedPayment };
@@ -54,22 +65,36 @@ const Payments: React.FC = () => {
     if (targetInvoiceId) {
       updatedPayment.invoiceId = targetInvoiceId;
       updatedPayment.quoteId = undefined;
-      toast({ title: "Payment Applied", description: `Payment applied to invoice ${targetInvoiceId}` });
     } else if (targetQuoteId) {
       updatedPayment.quoteId = targetQuoteId;
       updatedPayment.invoiceId = undefined;
-      toast({ title: "Payment Applied", description: `Payment applied to quote ${targetQuoteId}` });
     }
-    
-    PaymentStore.update(updatedPayment);
-    setPayments(PaymentStore.list());
+
+    // The toast used to fire before the write, so it announced an application
+    // that had not happened yet and would still claim success if it failed.
+    try {
+      await PaymentStore.update(updatedPayment);
+    } catch (err) {
+      toast({
+        title: "Could not apply payment",
+        description: err instanceof Error ? err.message : "The payment is unchanged.",
+        variant: "destructive",
+      });
+      return;
+    }
+    toast({
+      title: "Payment applied",
+      description: targetInvoiceId
+        ? `Payment applied to invoice ${targetInvoiceId}`
+        : `Payment applied to quote ${targetQuoteId}`,
+    });
     setApplyOpen(false);
     setSelectedPayment(null);
     setTargetInvoiceId("");
     setTargetQuoteId("");
   };
 
-  const convertAcceptedQuotes = () => {
+  const convertAcceptedQuotes = async () => {
     const quotes = AccountingStore.listQuotes();
     const acceptedQuotes = quotes.filter(q => q.status === "accepted");
     
@@ -79,11 +104,11 @@ const Payments: React.FC = () => {
     }
     
     let convertedCount = 0;
-    acceptedQuotes.forEach(quote => {
+    for (const quote of acceptedQuotes) {
       // Convert quote to invoice
       const invoice: Invoice = {
         id: `inv_${Date.now()}_${convertedCount}`,
-        number: allocateNumber("invoice"),
+        number: await allocateNumber("invoice"),
         customer: quote.customer,
         items: quote.items,
         status: "sent",
@@ -96,33 +121,35 @@ const Payments: React.FC = () => {
         useShippingAddress: quote.useShippingAddress,
       };
       
-      AccountingStore.upsertInvoice(invoice);
-      
-      // Update quote status to converted
-      AccountingStore.upsertQuote({ ...quote, status: "converted" });
-      
-      // Apply any existing payments for this quote to the new invoice
-      const quotePayments = PaymentStore.byQuote(quote.id);
-      quotePayments.forEach(payment => {
-        PaymentStore.update({
-          ...payment,
-          invoiceId: invoice.id,
-          quoteId: undefined
+      try {
+        await AccountingStore.upsertInvoice(invoice);
+        // Update quote status to converted
+        await AccountingStore.upsertQuote({ ...quote, status: "converted" });
+
+        // Apply any existing payments for this quote to the new invoice
+        for (const payment of PaymentStore.byQuote(quote.id)) {
+          await PaymentStore.update({ ...payment, invoiceId: invoice.id, quoteId: undefined });
+        }
+        convertedCount++;
+      } catch (err) {
+        toast({
+          title: `Could not convert ${quote.number}`,
+          description: err instanceof Error ? err.message : "Skipped.",
+          variant: "destructive",
         });
-      });
-      
-      convertedCount++;
-    });
+      }
+    }
     
-    toast({ 
-      title: "Quotes Converted", 
-      description: `Successfully converted ${convertedCount} accepted quote(s) to invoices.` 
-    });
-    setPayments(PaymentStore.list());
+    if (convertedCount > 0) {
+      toast({
+        title: "Quotes converted",
+        description: `Converted ${convertedCount} accepted quote(s) to invoices.`,
+      });
+    }
   };
 
   useEffect(() => {
-    const refresh = () => setPayments(PaymentStore.list());
+    const refresh = () => { void paymentsCache.refresh(); };
     const onStorage = (e: StorageEvent) => { if (e.key && e.key.startsWith('acct.payments')) refresh(); };
     window.addEventListener('payments-changed', refresh as EventListener);
     window.addEventListener('storage', onStorage);
@@ -199,7 +226,7 @@ const Payments: React.FC = () => {
         breadcrumbs={[{ label: "Accounting", to: "/accounting/quotations" }, { label: "Payments" }]}
         actions={
           <>
-            <Button variant="outline" onClick={convertAcceptedQuotes}>Convert accepted quotes</Button>
+            <Button variant="outline" onClick={() => void convertAcceptedQuotes()}>Convert accepted quotes</Button>
             <Button onClick={() => setOpen(true)}>Add payment</Button>
           </>
         }
@@ -260,7 +287,7 @@ const Payments: React.FC = () => {
         }}
       />
 
-      <CapturePaymentDialog open={open} onOpenChange={(v)=> { setOpen(v); if (!v) setPayments(PaymentStore.list()); }} onSaved={()=> setPayments(PaymentStore.list())} />
+      <CapturePaymentDialog open={open} onOpenChange={(v)=> { setOpen(v); if (!v) void paymentsCache.refresh(); }} onSaved={()=> void paymentsCache.refresh()} />
       
       <Dialog open={applyOpen} onOpenChange={(v) => { setApplyOpen(v); if (!v) { setSelectedPayment(null); setTargetInvoiceId(""); setTargetQuoteId(""); } }}>
         <DialogContent className="max-w-md">
@@ -320,7 +347,7 @@ const Payments: React.FC = () => {
           </div>
           <DialogFooter>
             <Button variant="secondary" onClick={() => setApplyOpen(false)}>Cancel</Button>
-            <Button onClick={applyPayment} disabled={!targetInvoiceId && !targetQuoteId}>
+            <Button onClick={() => void applyPayment()} disabled={!targetInvoiceId && !targetQuoteId}>
               Apply Payment
             </Button>
           </DialogFooter>
