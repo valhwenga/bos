@@ -1,9 +1,12 @@
-import { AuthStore } from "@/lib/authStore";
 import { AuditReport } from "@/components/AuditReport";
+import { canAccess } from "@/lib/accessControl";
 
 export default function AuditLogs() {
-  const roleId = AuthStore.currentSession()?.userId ? localStorage.getItem('auth.roleId') ?? "" : "";
-  const canView = ["role_super_admin", "role_company_admin"].includes(roleId);
+  // This read the role straight out of localStorage, which the user could edit,
+  // and hardcoded two role ids — so a custom administrative role was refused
+  // while anyone willing to type one line was let in. Audit logs are a settings
+  // concern, so ask the same question the rest of the app asks.
+  const canView = canAccess("settings", "full");
 
   if (!canView) {
     return (

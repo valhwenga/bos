@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { UserCheck } from "lucide-react";
-import { AuthStore } from "@/lib/authStore";
+import { AuthStore, type PendingSignup } from "@/lib/authStore";
 import { RolesStore } from "@/lib/rolesStore";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -8,25 +8,51 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { PageHeader } from "@/components/ui/page-header";
 import { toast } from "@/components/ui/use-toast";
 
-type PendingRequest = ReturnType<typeof AuthStore.listPending>[number];
+type PendingRequest = PendingSignup;
 
 const PendingApprovals: React.FC = () => {
-  const [pending, setPending] = useState<PendingRequest[]>(() => AuthStore.listPending());
+  const [pending, setPending] = useState<PendingRequest[]>([]);
   const roles = RolesStore.list();
+
+  // The list is a server read now, so it loads after mount rather than being
+  // available synchronously.
+  const refresh = useCallback(async () => {
+    try {
+      setPending(await AuthStore.listPending());
+    } catch (err) {
+      toast({
+        title: "Could not load requests",
+        description: err instanceof Error ? err.message : "Try again.",
+        variant: "destructive",
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
   const defaultRoleId = roles.find((r) => r.id === "role_employee")?.id || roles[0]?.id || "";
 
   // The chosen role per request. This previously assigned onto the request
   // object itself, which mutated store data and never triggered a re-render.
   const [selectedRoles, setSelectedRoles] = useState<Record<string, string>>({});
 
-  const approve = (request: PendingRequest) => {
+  const approve = async (request: PendingRequest) => {
     const roleId = selectedRoles[request.id] || defaultRoleId;
-    AuthStore.adminApprove(request.id, roleId);
-    setPending(AuthStore.listPending());
-    toast({
-      title: "Access approved",
-      description: `${request.name} can now sign in as ${roles.find((r) => r.id === roleId)?.name ?? "a user"}.`,
-    });
+    try {
+      await AuthStore.adminApprove(request.id, roleId);
+      await refresh();
+      toast({
+        title: "Access approved",
+        description: `${request.name} can now sign in as ${roles.find((r) => r.id === roleId)?.name ?? "a user"}.`,
+      });
+    } catch (err) {
+      toast({
+        title: "Could not approve",
+        description: err instanceof Error ? err.message : "Try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const columns: Column<PendingRequest>[] = [
@@ -65,7 +91,7 @@ const PendingApprovals: React.FC = () => {
       align: "right",
       width: "1%",
       cell: (p) => (
-        <Button size="sm" className="h-9" onClick={() => approve(p)}>
+        <Button size="sm" className="h-9" onClick={() => void approve(p)}>
           Approve
         </Button>
       ),

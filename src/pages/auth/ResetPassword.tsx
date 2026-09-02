@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { CheckCircle2 } from "lucide-react";
 import { AuthStore } from "@/lib/authStore";
 import { Button } from "@/components/ui/button";
@@ -9,16 +9,33 @@ import { AuthShell, AuthError } from "@/components/auth/AuthShell";
 
 const MIN_LENGTH = 8;
 
+/**
+ * Sets a new password.
+ *
+ * The user arrives from the emailed link, which Supabase exchanges for a
+ * short-lived recovery session before this renders — so there is no token to
+ * carry in the URL, and the password is changed server-side against that
+ * session rather than by writing to a local account record.
+ */
 const ResetPassword: React.FC = () => {
-  const [params] = useSearchParams();
-  const token = params.get("token") || "";
+  const [ready, setReady] = useState(false);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
 
-  const onSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    // detectSessionInUrl consumes the link's fragment on load; without a
+    // recovery session there is nothing to update.
+    void AuthStore.hasRecoverySession().then((ok) => {
+      setReady(ok);
+      if (!ok) setError("That reset link is invalid or has expired. Request a new one.");
+    });
+  }, []);
+
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (password.length < MIN_LENGTH) {
       setError(`Use at least ${MIN_LENGTH} characters.`);
@@ -29,12 +46,18 @@ const ResetPassword: React.FC = () => {
       return;
     }
     setError("");
+    setSubmitting(true);
     try {
-      AuthStore.resetPassword(token, password);
+      await AuthStore.resetPassword(password);
+      // Sign out so the recovery session cannot be reused, and the new password
+      // is actually exercised.
+      await AuthStore.signOut();
       setDone(true);
       setTimeout(() => navigate("/auth/login"), 1200);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "That reset link is no longer valid.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -70,7 +93,9 @@ const ResetPassword: React.FC = () => {
           <Label htmlFor="confirm">Confirm password</Label>
           <Input id="confirm" type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="••••••••" autoComplete="new-password" required />
         </div>
-        <Button type="submit" className="mt-1 w-full">Update password</Button>
+        <Button type="submit" className="mt-1 w-full" disabled={!ready || submitting}>
+          {submitting ? "Updating…" : "Update password"}
+        </Button>
       </form>
     </AuthShell>
   );

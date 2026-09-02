@@ -22,12 +22,12 @@ const Login: React.FC = () => {
   // the app simply threw the user back to the login page.
   const timedOut = new URLSearchParams(location.search).get("reason") === "timeout";
 
-  const onSubmit = (e: React.FormEvent) => {
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setSubmitting(true);
     try {
-      AuthStore.signIn(email, password);
+      await AuthStore.signIn(email, password);
       navigate(location.state?.from || "/", { replace: true });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "We couldn't sign you in. Check your details and try again.");

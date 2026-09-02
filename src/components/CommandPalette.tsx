@@ -80,7 +80,7 @@ export const CommandPalette = () => {
           <CommandItem
             onSelect={() =>
               run(() => {
-                try { AuthStore.signOut(); } catch { void 0; }
+                void AuthStore.signOut().catch(() => undefined);
                 try { UserStore.clockOut(); } catch { void 0; }
                 navigate("/auth/login");
               })

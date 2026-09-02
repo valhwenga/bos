@@ -66,9 +66,10 @@ export const Header = () => {
 
   const unread = notifications.filter((n) => !n.read).length;
 
-  const signOut = () => {
-    try { AuthStore.signOut(); } catch { void 0; }
+  const signOut = async () => {
     try { UserStore.clockOut(); } catch { void 0; }
+    // Await it: navigating first cancels the request that revokes the token.
+    try { await AuthStore.signOut(); } catch { void 0; }
     navigate("/auth/login");
   };
 

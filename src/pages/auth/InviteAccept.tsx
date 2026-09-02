@@ -1,27 +1,51 @@
-import React, { useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { AuthStore } from "@/lib/authStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AuthShell, AuthError } from "@/components/auth/AuthShell";
 
+/**
+ * Finishes setting up an invited account.
+ *
+ * The invitation email carries the credential; opening it signs the person in
+ * with a short-lived session, so this page only has to collect a name and a
+ * password. The account and its role were created by an administrator through
+ * the admin-create-user function, not here — the browser cannot create users.
+ */
 const InviteAccept: React.FC = () => {
-  const [params] = useSearchParams();
-  const token = params.get("token") || "";
+  const [ready, setReady] = useState(false);
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
 
-  const onSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    void AuthStore.hasRecoverySession().then((ok) => {
+      setReady(ok);
+      if (!ok) setError("That invitation link is invalid or has expired. Ask for a new one.");
+    });
+  }, []);
+
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (password.length < 8) {
+      setError("Use at least 8 characters.");
+      return;
+    }
     setError("");
+    setSubmitting(true);
     try {
-      AuthStore.acceptInvite(token, name, password);
+      await AuthStore.changePassword(password);
+      await AuthStore.setOwnName(name);
+      await AuthStore.signOut();
       navigate("/auth/login");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "That invitation is no longer valid.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -40,9 +64,6 @@ const InviteAccept: React.FC = () => {
     >
       <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
         <AuthError message={error} />
-        {!token && (
-          <AuthError message="This link is missing its invitation code. Ask for a new invite." />
-        )}
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="name">Full name</Label>
           <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Jane Doe" autoComplete="name" autoFocus required />
@@ -51,7 +72,9 @@ const InviteAccept: React.FC = () => {
           <Label htmlFor="password">Password</Label>
           <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" autoComplete="new-password" required />
         </div>
-        <Button type="submit" className="mt-1 w-full" disabled={!token}>Create account</Button>
+        <Button type="submit" className="mt-1 w-full" disabled={!ready || submitting}>
+          {submitting ? "Setting up…" : "Create account"}
+        </Button>
       </form>
     </AuthShell>
   );

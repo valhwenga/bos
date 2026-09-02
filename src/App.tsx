@@ -42,7 +42,7 @@ import Recurring from "./pages/accounting/Recurring";
 import { UserStore } from "./lib/userStore";
 import { AuthStore } from "./lib/authStore";
 import AccessGuard from "@/components/auth/AccessGuard";
-import { getCurrentRole } from "@/lib/accessControl";
+import { getSession } from "@/lib/session";
 import SupportTickets from "./pages/support/Tickets";
 import SupportTicketDetail from "./pages/support/TicketDetail";
 import SupportSettings from "./pages/support/Settings";
@@ -79,6 +79,8 @@ import Login from "./pages/auth/Login";
 import Signup from "./pages/auth/Signup";
 import InviteAccept from "./pages/auth/InviteAccept";
 import Protected from "@/components/auth/Protected";
+import AuthProvider from "@/components/auth/AuthProvider";
+import AwaitingApproval from "./pages/auth/AwaitingApproval";
 import PendingApprovals from "./pages/auth/PendingApprovals";
 import ForgotPassword from "./pages/auth/ForgotPassword";
 import ResetPassword from "./pages/auth/ResetPassword";
@@ -117,17 +119,20 @@ const App = () => {
     let idleTimer: number | undefined;
     const resetTimer = () => {
       if (idleTimer) window.clearTimeout(idleTimer);
-      const role = getCurrentRole();
-      const mins = role.security?.sessionTimeoutMinutes ?? 0;
+      // The timeout is a property of the role, and now comes from the server
+      // with the rest of the session rather than from local role data.
+      const mins = getSession().sessionTimeoutMinutes ?? 0;
       if (mins > 0) {
         idleTimer = window.setTimeout(() => {
           // This used to clock the user out of attendance and stop there, so
           // the session stayed valid and an unattended machine kept payroll and
           // banking open. A session timeout has to end the session.
           try { UserStore.clockOut(); } catch { void 0; }
-          try { AuthStore.signOut(); } catch { void 0; }
-          // Full reload so no signed-in state survives in memory.
-          window.location.replace("/auth/login?reason=timeout");
+          // Await the sign-out before navigating, or the request to revoke the
+          // token is cancelled by the reload and the session stays alive.
+          void AuthStore.signOut()
+            .catch(() => undefined)
+            .finally(() => window.location.replace("/auth/login?reason=timeout"));
         }, mins * 60 * 1000);
       }
     };
@@ -369,6 +374,7 @@ const App = () => {
 
   return (
   <QueryClientProvider client={queryClient}>
+    <AuthProvider>
     <TooltipProvider>
       <Toaster />
       <Sonner />
@@ -380,6 +386,7 @@ const App = () => {
           <Route path="/auth/invite" element={<InviteAccept />} />
           <Route path="/auth/forgot" element={<ForgotPassword />} />
           <Route path="/auth/reset" element={<ResetPassword />} />
+          <Route path="/auth/pending" element={<AwaitingApproval />} />
 
           {/* App routes (protected) with layout */}
           <Route path="/" element={<Protected><Layout /></Protected>}>
@@ -469,6 +476,7 @@ const App = () => {
         </Routes>
       </BrowserRouter>
     </TooltipProvider>
+    </AuthProvider>
   </QueryClientProvider>
   );
 };

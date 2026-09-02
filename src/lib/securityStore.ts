@@ -1,3 +1,4 @@
+import { getSession } from "./session";
 export type UserRole = 'admin' | 'manager' | 'employee' | 'viewer';
 
 export type User = {
@@ -130,75 +131,43 @@ export const SecurityStore = {
     return true;
   },
 
-  // Authentication
-  authenticate(email: string, password: string): { success: boolean; user?: User; error?: string } {
-    const users = this.list();
-    console.log('SecurityStore.authenticate - Available users:', users);
-    console.log('SecurityStore.authenticate - Looking for email:', email);
-    
-    const user = users.find(u => u.email === email && u.isActive);
-    console.log('SecurityStore.authenticate - Found user:', user);
+  // Authentication lives in authStore/Supabase now.
+  //
+  // This module used to carry a second, parallel sign-in with the password
+  // check written into the source: the admin address matched one literal, and
+  // *every other address* was accepted with the password "password". It also
+  // logged the full user list to the console on each attempt. It was only
+  // reachable from a login component that was never routed, but an exported
+  // backdoor is one route away from being live, so it is gone rather than
+  // merely disconnected.
 
-    if (!user) {
-      this.logAudit('anonymous', 'LOGIN_FAILED', 'auth', false, { email, reason: 'USER_NOT_FOUND' });
-      return { success: false, error: 'User not found' };
-    }
-
-    // In a real system, you'd hash passwords. For demo, using simple check
-    const isCorrectPassword = 
-      (email === 'admin@spiketech.co.za' && password === 'Password@00') ||
-      (email !== 'admin@spiketech.co.za' && password === 'password');
-      
-    if (!isCorrectPassword) {
-      this.logAudit(user.id, 'LOGIN_FAILED', 'auth', false, { reason: 'INVALID_PASSWORD' });
-      return { success: false, error: 'Invalid password' };
-    }
-
-    // Update last login
-    this.update(user.id, { lastLogin: new Date().toISOString() });
-
-    // Create session
-    const session: Session = {
-      user,
-      token: this.generateToken(),
-      expiresAt: new Date(Date.now() + this.getSettings().sessionTimeout * 60 * 1000).toISOString(),
-      loginTime: new Date().toISOString()
-    };
-
-    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-
-    // Log successful login
-    this.logAudit(user.id, 'LOGIN_SUCCESS', 'auth', true);
-
-    return { success: true, user };
-  },
-
-  logout(): void {
-    const session = this.getCurrentSession();
-    if (session) {
-      this.logAudit(session.user.id, 'LOGOUT', 'auth', true);
-    }
-    localStorage.removeItem(SESSION_KEY);
-    window.dispatchEvent(new CustomEvent('auth-logout'));
-  },
-
+  /**
+   * The signed-in user, shaped like the old session object so the dashboards
+   * that read `session.user.id` and `.name` keep working. It reflects the real
+   * Supabase session rather than a separate one kept in localStorage, which
+   * could disagree with who was actually signed in.
+   */
   getCurrentSession(): Session | null {
-    try {
-      const session = localStorage.getItem(SESSION_KEY);
-      if (!session) return null;
-
-      const sessionData = JSON.parse(session);
-      
-      // Check if session expired
-      if (new Date() > new Date(sessionData.expiresAt)) {
-        localStorage.removeItem(SESSION_KEY);
-        return null;
-      }
-
-      return sessionData;
-    } catch {
-      return null;
-    }
+    const snap = getSession();
+    if (snap.status !== "signed-in" || !snap.profile) return null;
+    return {
+      user: {
+        id: snap.profile.id,
+        email: snap.profile.email,
+        name: snap.profile.name,
+        role: "employee",
+        permissions: [],
+        isActive: snap.profile.status === "active",
+        twoFactorEnabled: false,
+        createdAt: "",
+        updatedAt: "",
+      },
+      token: snap.session?.access_token ?? "",
+      expiresAt: snap.session?.expires_at
+        ? new Date(snap.session.expires_at * 1000).toISOString()
+        : "",
+      loginTime: "",
+    };
   },
 
   // Authorization

@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { PriorityStore } from '@/lib/priorityStore';
 import { SecurityStore } from '@/lib/securityStore';
+import { AuthStore } from "@/lib/authStore";
 import { BackupStore } from '@/lib/backupStore';
 import {
   AlertTriangle,
@@ -123,9 +124,12 @@ const EmergencyResponse: React.FC = () => {
     setLastBackup(backup.timestamp);
   };
 
-  const lockdownSystem = () => {
-    // Lock all user sessions
-    SecurityStore.logout();
+  const lockdownSystem = async () => {
+    // Ends this session for real, server-side. Note this signs out the current
+    // browser only — revoking everyone else's sessions needs an administrative
+    // call the browser cannot make, so the alert below is what actually tells
+    // other users.
+    await AuthStore.signOut();
     
     PriorityStore.triggerEmergencyAlert(
       'System Lockdown',
@@ -230,7 +234,7 @@ const EmergencyResponse: React.FC = () => {
             </Button>
 
             <Button
-              onClick={lockdownSystem}
+              onClick={() => void lockdownSystem()}
               variant="outline"
               className="flex items-center gap-2"
             >

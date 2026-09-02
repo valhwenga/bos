@@ -11,6 +11,7 @@ import { ClientsStore, type Client } from "@/lib/clientsStore";
 import { AuditLogStore } from "@/lib/auditLogStore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AuthStore, type Account } from "@/lib/authStore";
+import { useAccounts, invalidateAccounts } from "@/lib/useAccounts";
 import { RolesStore } from "@/lib/rolesStore";
 
 const Clients = () => {
@@ -34,7 +35,7 @@ const Clients = () => {
   const roles = RolesStore.list();
   const externalRoles = roles.filter(r => r.level === "External");
 
-  const accounts = AuthStore.listAccounts();
+  const accounts = useAccounts();
   const accountByClientId = useMemo(() => {
     const map: Record<string, Account> = {};
     accounts.forEach(a => { if (a.clientId) map[a.clientId] = a; });
@@ -67,22 +68,24 @@ const Clients = () => {
     return p;
   };
 
-  const createLogin = () => {
+  const createLogin = async () => {
     if (!loginClient) return;
     setLoginError("");
     if (!loginName.trim() || !loginEmail.trim()) { setLoginError("Name and email are required."); return; }
     if (!externalRoles.find(r => r.id === loginRoleId)) { setLoginError("Please select an external/client role."); return; }
     const pass = loginTempPass || generateTempPassword();
     try {
-      const acc = AuthStore.createClientAccount({
+      // Creating another user needs the service key, so this goes through the
+      // admin-create-user function rather than happening in the browser.
+      const acc = await AuthStore.createClientAccount({
         name: loginName.trim(),
         email: loginEmail.trim(),
         password: pass,
         roleId: loginRoleId,
         clientId: loginClient.id,
-        active: true,
       });
       AuditLogStore.append({ id: crypto.randomUUID?.() || String(Date.now()), ts: new Date().toISOString(), actor: "admin", entity: "auth.account", entityId: acc.id, action: "create", details: `clientId=${loginClient.id}` });
+      invalidateAccounts();
       setLoginTempPass(pass);
     } catch (e: unknown) {
       setLoginError(e instanceof Error ? e.message : "Failed to create login");
@@ -274,7 +277,7 @@ const Clients = () => {
           </div>
           <DialogFooter>
             <Button variant="secondary" onClick={()=> setLoginOpen(false)}>Close</Button>
-            <Button onClick={createLogin} disabled={!loginClient}>Create Login</Button>
+            <Button onClick={() => void createLogin()} disabled={!loginClient}>Create Login</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

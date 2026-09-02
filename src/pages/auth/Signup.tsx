@@ -14,11 +14,11 @@ const Signup: React.FC = () => {
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
 
-  const onSubmit = (e: React.FormEvent) => {
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     try {
-      AuthStore.signUpRequest(name, email, password);
+      await AuthStore.signUpRequest(name, email, password);
       setSubmitted(true);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "We couldn't submit your request. Try again.");

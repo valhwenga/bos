@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { ProjectStore, Task, TaskStatus, TaskUpdate } from "@/lib/projectStore";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AuthStore } from "@/lib/authStore";
+import { useAccounts } from "@/lib/useAccounts";
 
 const Column: React.FC<{ title: string; status: TaskStatus; tasks: Task[]; onMove: (id: string, s: TaskStatus) => void; onComment: (t: Task) => void; onAssignMe: (t: Task) => void }>= ({ title, status, tasks, onMove, onComment, onAssignMe }) => (
   <div className="flex-1 min-w-[240px] bg-card rounded-lg border p-3 shadow-[0_6px_0_rgba(0,0,0,0.05)]">
@@ -49,7 +50,7 @@ const Tasks: React.FC = () => {
   const refresh = () => setTasks(ProjectStore.listTasks());
 
   const me = AuthStore.currentUser()?.id;
-  const accounts = AuthStore.listAccounts();
+  const accounts = useAccounts();
 
   useEffect(() => {
     const onChange = () => refresh();

@@ -7,6 +7,7 @@ import { ProjectStore, type Project, type Milestone, type ProjectFile } from "@/
 import { CustomersStore } from "@/lib/customersStore";
 import { Permissions } from "@/lib/permissions";
 import { AuthStore } from "@/lib/authStore";
+import { useAccounts } from "@/lib/useAccounts";
 import { getCurrentRole } from "@/lib/accessControl";
 import { notify } from "@/lib/notificationsStore";
 import { UserStore } from "@/lib/userStore";
@@ -87,7 +88,7 @@ const Details: React.FC = () => {
 
   const types = ProjectStore.listTypes();
   const type = types.find(t => t.key === project.typeKey);
-  const accounts = AuthStore.listAccounts();
+  const accounts = useAccounts();
   const allowedAccounts = accounts.filter(a => {
     if (!type) return true;
     if (type.allowedUserIds && type.allowedUserIds.length > 0) return type.allowedUserIds.includes(a.id);

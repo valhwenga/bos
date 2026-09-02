@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { ProjectStore, type Project, type Task, type TimeEntry } from "@/lib/projectStore";
 import { CustomersStore } from "@/lib/customersStore";
 import { AuthStore } from "@/lib/authStore";
+import { useAccounts } from "@/lib/useAccounts";
 
 const Report: React.FC = () => {
   const projects = ProjectStore.listProjects();
@@ -13,7 +14,7 @@ const Report: React.FC = () => {
   const tasks: Task[] = ProjectStore.listTasks().filter(t=> !project || t.projectId === project.id);
   const time: TimeEntry[] = ProjectStore.listTime().filter(t=> !project || t.projectId === project.id);
   const customer = project?.customerId ? CustomersStore.list().find(c=> c.id === project.customerId) : undefined;
-  const accounts = AuthStore.listAccounts();
+  const accounts = useAccounts();
 
   const durationLabel = (start?: string, end?: string) => {
     if (!start || !end) return "—";
