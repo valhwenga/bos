@@ -152,10 +152,7 @@ const Reports: React.FC = () => {
             <Button onClick={async ()=> {
               // Export PDF with company styling similar to invoice/quote
               const cs2 = CompanySettingsStore.get();
-              const ensureScript = (src: string) => new Promise<void>((resolve, reject) => { const s = document.createElement('script'); s.src = src; s.async = true; s.onload = () => resolve(); s.onerror = () => reject(new Error('Failed to load '+src)); document.head.appendChild(s); });
-              const w = window as typeof window & { jspdf?: any; jspdf_esm?: any; jspdfjs?: any };
-              if (!(w.jspdf || w.jspdf_esm || w.jspdfjs)) { try { await ensureScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js'); } catch { /* ignore */ } }
-              const { jsPDF } = (w.jspdf || w.jspdf_esm || w.jspdfjs) as { jsPDF: new (...args: any[]) => any };
+              const { jsPDF } = await import('jspdf');
               const pdf = new jsPDF('p','mm','a4');
               // Smooth gradient-like header (multi-band interpolation to simulate)
               const topColor = { r:95, g:51, b:255 };
@@ -241,7 +238,9 @@ const Reports: React.FC = () => {
               }
               // Footer with timestamp and page numbers
               try {
-                const pageCount = (pdf as { getNumberOfPages?: () => number; internal?: { getNumberOfPages?: () => number } }).getNumberOfPages ? (pdf as { getNumberOfPages: () => number }).getNumberOfPages() : (pdf as { internal: { getNumberOfPages: () => number } }).internal.getNumberOfPages();
+                // jsPDF 4.x exposes this directly; the old fallback existed only because
+                // the CDN global was untyped and 2.5.1 hid it on `internal`.
+                const pageCount = pdf.getNumberOfPages();
                 for (let p = 1; p <= pageCount; p++) {
                   (pdf as { setPage: (page: number) => void }).setPage(p);
                   pdf.setFontSize(9); pdf.setTextColor(120,120,128);

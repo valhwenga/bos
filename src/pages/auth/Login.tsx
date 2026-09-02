@@ -18,6 +18,9 @@ const Login: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
   const location = useLocation() as Location<LoginLocationState>;
+  // Explains an automatic sign-out, so a timed-out session does not look like
+  // the app simply threw the user back to the login page.
+  const timedOut = new URLSearchParams(location.search).get("reason") === "timeout";
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,6 +50,12 @@ const Login: React.FC = () => {
     >
       <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
         <AuthError message={error} />
+
+        {timedOut && !error && (
+          <p className="rounded-md border border-warning/30 bg-warning-soft px-3 py-2 text-sm text-foreground">
+            You were signed out because the session was idle. Sign in to continue.
+          </p>
+        )}
 
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="email">Email</Label>

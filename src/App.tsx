@@ -40,6 +40,7 @@ import Sales from "./pages/accounting/Sales";
 import CreditNotes from "./pages/accounting/CreditNotes";
 import Recurring from "./pages/accounting/Recurring";
 import { UserStore } from "./lib/userStore";
+import { AuthStore } from "./lib/authStore";
 import AccessGuard from "@/components/auth/AccessGuard";
 import { getCurrentRole } from "@/lib/accessControl";
 import SupportTickets from "./pages/support/Tickets";
@@ -120,7 +121,13 @@ const App = () => {
       const mins = role.security?.sessionTimeoutMinutes ?? 0;
       if (mins > 0) {
         idleTimer = window.setTimeout(() => {
+          // This used to clock the user out of attendance and stop there, so
+          // the session stayed valid and an unattended machine kept payroll and
+          // banking open. A session timeout has to end the session.
           try { UserStore.clockOut(); } catch { void 0; }
+          try { AuthStore.signOut(); } catch { void 0; }
+          // Full reload so no signed-in state survives in memory.
+          window.location.replace("/auth/login?reason=timeout");
         }, mins * 60 * 1000);
       }
     };
@@ -194,19 +201,11 @@ const App = () => {
             const cs = CompanySettingsStore.get();
             const subject = `Invoice ${inv.number} from ${cs.name || 'Our Company'}`;
             const body = `Dear ${t.customer.name},\n\nPlease find attached your invoice ${inv.number}.\n\nRegards,\n${cs.name || 'Our Company'}`;
-            // Build a simple PDF using jsPDF
-            const ensureScript = (src: string) => new Promise<void>((resolve, reject) => {
-              const s = document.createElement('script'); s.src = src; s.async = true; s.onload = () => resolve(); s.onerror = () => reject(new Error('Failed to load '+src)); document.head.appendChild(s);
-            });
-            const w = window as unknown as {
-              jspdf?: { jsPDF: new (...args: unknown[]) => SimplePdf };
-              jspdf_esm?: { jsPDF: new (...args: unknown[]) => SimplePdf };
-              jspdfjs?: { jsPDF: new (...args: unknown[]) => SimplePdf };
-            };
-            if (!(w.jspdf || w.jspdf_esm || w.jspdfjs)) {
-              try { await ensureScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js'); } catch { void 0; }
-            }
-            const { jsPDF } = (w.jspdf || w.jspdf_esm || w.jspdfjs) as { jsPDF: new (...args: unknown[]) => SimplePdf };
+            // jsPDF is a dependency, so it is bundled and works offline. This
+            // used to pull 2.5.1 from a CDN while the bundle carried 4.x, and
+            // swallowed a failed load before destructuring the global — so a
+            // blocked CDN raised a TypeError instead of reporting anything.
+            const { jsPDF } = await import('jspdf');
             const pdf = new jsPDF('p','mm','a4');
             let y = 15;
             pdf.setFontSize(16); pdf.text(`Invoice ${inv.number}`, 15, y); y += 8;

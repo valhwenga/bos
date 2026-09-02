@@ -204,10 +204,8 @@ const Recurring: React.FC = () => {
       if (t.autoSend && t.customer.email) {
         const subject = `Invoice ${inv.number} from ${cs.name || 'Our Company'}`;
         const body = `Dear ${t.customer.name},\n\nPlease find attached your invoice ${inv.number}.\n\nRegards,\n${cs.name || 'Our Company'}`;
-        const ensureScript = (src: string) => new Promise<void>((resolve, reject) => { const s = document.createElement('script'); s.src = src; s.async = true; s.onload = () => resolve(); s.onerror = () => reject(new Error('Failed to load '+src)); document.head.appendChild(s); });
-        const w: any = window as any;
-        if (!(w.jspdf || w.jspdf_esm || w.jspdfjs)) { try { await ensureScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js'); } catch { /* ignore */ } }
-        const { jsPDF } = (w.jspdf || w.jspdf_esm || w.jspdfjs) as any;
+        // Bundled, so a recurring invoice still sends when the CDN is blocked.
+        const { jsPDF } = await import('jspdf');
         const pdf = new jsPDF('p','mm','a4');
         let y = 15; pdf.setFontSize(16); pdf.text(`Invoice ${inv.number}`, 15, y); y+=8;
         pdf.setFontSize(11); pdf.text(`Date: ${new Date(inv.createdAt).toLocaleDateString()}`, 15, y); y+=6;
