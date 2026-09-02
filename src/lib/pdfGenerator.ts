@@ -111,16 +111,29 @@ export const generatePDFHTML = (
             width: ${PDF_DIMENSIONS.width};
             min-height: ${PDF_DIMENSIONS.height};
             background: white;
-            overflow: hidden;
+            /* No overflow:hidden — it silently clipped everything past the
+               first page on a long document. */
             position: relative;
+            display: flex;
+            flex-direction: column;
           }
-          .top-edge {
+          .top-edge, .bottom-edge {
             height: ${PDF_DIMENSIONS.topEdgeHeight};
             background: ${PDF_COLORS.primary};
+            flex: 0 0 auto;
           }
           .border-container {
             border-left: 4px solid ${PDF_COLORS.primary};
             border-right: 4px solid ${PDF_COLORS.primary};
+            display: flex;
+            flex-direction: column;
+            flex: 1 1 auto;
+          }
+          /* Absorbs the sheet's spare height below the document, so a short
+             document fills the page without a gap opening inside it. */
+          .doc-spacer {
+            flex: 1 1 auto;
+            min-height: 0;
           }
           .header {
             background: white;
@@ -432,7 +445,10 @@ export const generatePDFHTML = (
               ` : ''}
               <div style="margin-top: 12px;">Payment via bank transfer. Please include ${type} number as reference.</div>
             </div>
+
+            <div class="doc-spacer"></div>
           </div>
+          <div class="bottom-edge"></div>
         </div>
       </body>
     </html>

@@ -29,10 +29,12 @@ const DEFAULTS: CompanySettings = {
   name: "Your Company",
   address: "123 Business Rd, City, Country",
   email: "info@company.com",
-  phone: "+1 555-123-4567",
+  phone: "+27 11 123 4567",
   taxRatePct: 0,
-  currencyCode: "USD",
-  currencySymbol: "$",
+  // The system is South Africa only, so a document should not default to
+  // dollars and print "$" totals until someone changes the setting.
+  currencyCode: "ZAR",
+  currencySymbol: "R",
   primaryColor: "#128768",
   secondaryColor: "#1BA37E",
   bankName: "Bank Name",

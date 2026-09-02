@@ -105,9 +105,10 @@ const InvoicePrint = () => {
             /* The container is the A4 sheet; .doc supplies its sizing and the
                flex column that keeps the footer on the bottom edge. */
             .invoice-container { position: relative; }
-            .top-edge {
+            .top-edge, .bottom-edge {
               height: 6px;
               background: var(--brand);
+              flex: 0 0 auto;
             }
             .border-container {
               border-left: 4px solid var(--brand);
@@ -413,7 +414,7 @@ const InvoicePrint = () => {
                 </div>
               </div>
               
-              <div class="footer doc__footer avoid-break" style="margin-top:auto">
+              <div class="footer doc__footer avoid-break">
                 <div style="margin-bottom: 12px; font-weight: 500;">Thank You For Your Business!</div>
                 ${c.footerNote ? `
                   <div>
@@ -423,7 +424,10 @@ const InvoicePrint = () => {
                 ` : ''}
                 <div style="margin-top: 12px;">Payment via bank transfer. Please include the invoice number as reference.</div>
               </div>
+
+              <div class="doc__spacer"></div>
             </div>
+            <div class="bottom-edge"></div>
           </div>
         </body>
       </html>
@@ -489,8 +493,10 @@ const InvoicePrint = () => {
           {/* Top colored edge */}
           <div className="h-1.5 shrink-0 bg-gradient-to-r from-[color:var(--brand)] to-[color:var(--brand-2)]"></div>
           
-          {/* Main content with colored edges */}
-          <div className="flex flex-1 flex-col">
+          {/* Header and customer details, at their natural height. This used to
+              carry flex-1, which made it absorb all the sheet's spare height and
+              open a gap between the customer's details and the items table. */}
+          <div className="flex flex-col">
             {/* Clean Header with Logo */}
             <div className="bg-white border-b border-gray-200">
               <div className="px-7 py-3 flex items-start justify-between">
@@ -672,8 +678,9 @@ const InvoicePrint = () => {
               </div>
             </div>
 
-          {/* Footer — mt-auto pins this to the bottom of the sheet. */}
-          <div className="doc__footer avoid-break mt-auto flex items-center justify-between px-7 pb-2 pt-2 text-xs">
+          {/* Footer — follows the content directly; the spacer below takes up
+              the sheet's remaining height. */}
+          <div className="doc__footer avoid-break flex items-center justify-between px-7 pb-2 pt-2 text-xs">
             <div className="text-sm text-slate-500">Payment via bank transfer. Please include the invoice number as reference.</div>
             <div className="text-right">
               {c.signatureDataUrl ? (
@@ -690,7 +697,11 @@ const InvoicePrint = () => {
             </div>
           </div>
           </div>
-          
+
+          {/* Takes up whatever height is left, so a short invoice still fills an
+              A4 sheet and the blank space falls below the document. */}
+          <div className="doc__spacer" aria-hidden="true" />
+
           {/* Bottom colored edge */}
           <div className="h-1.5 shrink-0 bg-gradient-to-r from-[color:var(--brand)] to-[color:var(--brand-2)]"></div>
         </div>

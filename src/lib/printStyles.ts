@@ -48,6 +48,11 @@ export function a4PrintCss(brand: string, brand2: string): string {
       min-height: ${A4_HEIGHT_MM}mm;
       margin: 0 auto;
       background: #ffffff;
+      /* The sheet is always white paper, so it must carry its own dark text.
+         Without this it inherited the app's theme foreground, and under the
+         dark theme every element without an explicit text colour — the banking
+         heading, the totals, the TOTAL row — rendered white on white. */
+      color: #111827;
       display: flex;
       flex-direction: column;
       /* No overflow:hidden — that clips multi-page documents. */
@@ -60,6 +65,14 @@ export function a4PrintCss(brand: string, brand2: string): string {
 
     .doc__footer {
       flex: 0 0 auto;
+    }
+
+    /* Absorbs the sheet's spare height. It sits after the footer, so a short
+       document leaves its blank space at the bottom of the page instead of
+       opening a gap between the customer's details and the items. */
+    .doc__spacer {
+      flex: 1 1 auto;
+      min-height: 0;
     }
 
     /* Repeat table headings on every sheet and never split a row. */

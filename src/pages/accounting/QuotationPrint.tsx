@@ -192,8 +192,10 @@ const QuotationPrint = () => {
           {/* Top colored edge */}
           <div className="h-1.5 shrink-0 bg-gradient-to-r from-[color:var(--brand)] to-[color:var(--brand-2)]"></div>
           
-          {/* Main content with colored edges */}
-          <div className="flex flex-1 flex-col">
+          {/* Header and customer details, at their natural height. This used to
+              carry flex-1, which made it absorb all the sheet's spare height and
+              open a gap between the customer's details and the items table. */}
+          <div className="flex flex-col">
             {/* Clean Header with Logo */}
             <div className="bg-white border-b border-gray-200">
               <div className="px-7 py-3 flex items-start justify-between">
@@ -294,8 +296,11 @@ const QuotationPrint = () => {
                   ))}
                 </tbody>
                 <tfoot>
+                  {/* Five columns, matching the header. This row carried only
+                      four, so the band stopped short of the table edge and the
+                      amount landed under Quantity instead of Total. */}
                   <tr className="border-t-2 border-[color:var(--brand)] bg-gradient-to-r from-[color:var(--brand)] to-[color:var(--brand-2)]">
-                    <td className="px-3 py-1.5" colSpan={2}></td>
+                    <td className="px-3 py-1.5" colSpan={3}></td>
                     <td className="whitespace-nowrap px-3 py-1.5 text-right text-sm font-extrabold text-white">GRAND TOTAL</td>
                     <td className="px-3 py-1.5 text-right text-sm font-extrabold text-white">{currency(totals.grand, c.currencySymbol)}</td>
                   </tr>
@@ -304,8 +309,9 @@ const QuotationPrint = () => {
             </div>
           </div>
 
-          {/* Summary — mt-auto pins this to the bottom of the sheet. */}
-          <div className="doc__footer avoid-break mt-auto px-7 pb-2 pt-3">
+          {/* Summary — follows the items directly, so the totals stay next to
+              the lines they total. */}
+          <div className="doc__footer avoid-break px-7 pb-2 pt-3">
             <div className="text-xs text-gray-600">
               <div className="mb-1 font-medium">Thank You For Your Business!</div>
               {q.expiryDate && (
@@ -354,11 +360,17 @@ const QuotationPrint = () => {
               Payment via bank transfer. Please include the quotation number as reference.
             </div>
           </div>
+
+          {/* Takes up whatever height is left, so a short quotation still fills
+              an A4 sheet and the blank space falls below the document rather
+              than inside it. */}
+          <div className="doc__spacer" aria-hidden="true" />
+
+          {/* Bottom colored edge. This sat outside the sheet, so the border
+              never closed and it did not appear on the printed page. */}
+          <div className="h-1.5 shrink-0 bg-gradient-to-r from-[color:var(--brand)] to-[color:var(--brand-2)]"></div>
         </div>
       </div>
-
-      {/* Bottom colored edge */}
-      <div className="h-1.5 shrink-0 bg-gradient-to-r from-[color:var(--brand)] to-[color:var(--brand-2)]"></div>
     </div>
     <style>{a4PrintCss(c.primaryColor || '#128768', c.secondaryColor || '#1BA37E')}</style>
     </>
