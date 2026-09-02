@@ -34,3 +34,6 @@ temp_style.txt
 # Local env
 .env
 .env.local
+
+# Local function secrets; the deployed ones are set with `supabase secrets set`.
+supabase/functions/.env

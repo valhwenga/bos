@@ -1,4 +1,7 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { TwoFactorSetup } from "@/components/auth/TwoFactorSetup";
+import { TwoFactor } from "@/lib/twoFactor";
+import { useAuth } from "@/components/auth/AuthProvider";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -11,6 +14,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 
 const Profile: React.FC = () => {
+  const { requiresTwoFactor } = useAuth();
+  const [twoFactorEnrolled, setTwoFactorEnrolled] = useState(false);
+  useEffect(() => {
+    void TwoFactor.isEnrolled().then(setTwoFactorEnrolled);
+  }, []);
+
   const [u, setU] = useState<User>(UserStore.get());
 
   const onAvatar = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -62,6 +71,21 @@ const Profile: React.FC = () => {
 
   return (
     <div className="p-6 space-y-4">
+      <Card className="shadow-[0_10px_0_rgba(0,0,0,0.08)]">
+        <CardHeader>
+          <CardTitle>Security</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <TwoFactorSetup
+            enrolled={twoFactorEnrolled}
+            onChange={() => void TwoFactor.isEnrolled().then(setTwoFactorEnrolled)}
+            // Not removable when the role demands it, since turning it off
+            // would only bounce them straight back to the enrolment screen.
+            allowRemoval={!requiresTwoFactor}
+          />
+        </CardContent>
+      </Card>
+
       <Card className="shadow-[0_10px_0_rgba(0,0,0,0.08)]">
         <CardHeader>
           <CardTitle>User Profile</CardTitle>

@@ -113,16 +113,27 @@ where email = 'you@yourcompany.co.za';
 
 Every other account is then created through the app.
 
-### 7. Deploy the edge function
+### 7. Deploy the edge functions
 
-Creating another user's account needs the service key, which cannot ship to a
-browser, so it runs in a function:
+Two things cannot happen in a browser — creating another user's account needs
+the service key, and sending mail needs SMTP credentials:
 
 ```bash
-npx supabase functions deploy admin-create-user
+npx supabase functions deploy admin-create-user send-email
 ```
 
-Without this, "create client login" and any admin-created account will fail.
+Then set the mail credentials as **function secrets**, never in the repo:
+
+```bash
+npx supabase secrets set SMTP_HOST=smtp.yourprovider.com SMTP_PORT=465 SMTP_USER=... SMTP_PASSWORD=... SMTP_FROM=billing@yourcompany.co.za SMTP_FROM_NAME="Your Company"
+```
+
+Use port 465 if you set a username and password: the function refuses to send
+credentials over a non-TLS port rather than leaking them. A relay that needs no
+login can omit `SMTP_USER` and `SMTP_PASSWORD`.
+
+Without `send-email` deployed and configured, emailing an invoice fails with a
+message saying exactly which secrets are missing — it does not fail silently.
 
 ### 8. Build and host the front end
 
@@ -192,10 +203,12 @@ into a scratch project. A backup you have never restored is a hypothesis.
 State these to whoever is using the system, rather than letting them discover
 them:
 
-- **Two-factor authentication does not work.** `require_2fa` on a role and the
-  toggle in user management are both stored and then ignored. Either implement
-  it or remove the switches, because a security control that appears to be on
-  and is not is worse than one that is visibly off.
+- **Two-factor authentication is real now.** A role with "require 2FA" forces
+  enrolment before the app can be used, and a user with an authenticator is
+  asked for a code at every sign-in. Turning it on for a role locks anyone in
+  that role out of the app until they enrol, which is the intent — say so before
+  switching it on.
+
 - **Workflow, Documents, Analytics and the Support dashboard were restyled but
   never audited.** Expect controls that look functional and are not; that
   pattern was found repeatedly everywhere else in the codebase.

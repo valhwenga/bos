@@ -48,6 +48,10 @@ export type SessionSnapshot = {
   /** Role's idle timeout, used by the app's session timer. */
   sessionTimeoutMinutes: number | null;
   roleName: string | null;
+  /** The role demands a second factor. Enforced by the route guard. */
+  requiresTwoFactor: boolean;
+  /** This session has presented one (or does not need to). */
+  twoFactorSatisfied: boolean;
 };
 
 const EMPTY: SessionSnapshot = {
@@ -58,6 +62,8 @@ const EMPTY: SessionSnapshot = {
   access: {},
   sessionTimeoutMinutes: null,
   roleName: null,
+  requiresTwoFactor: false,
+  twoFactorSatisfied: true,
 };
 
 let snapshot: SessionSnapshot = EMPTY;
@@ -106,6 +112,8 @@ async function loadProfile(session: Session): Promise<SessionSnapshot> {
       access: {},
       sessionTimeoutMinutes: null,
       roleName: null,
+      requiresTwoFactor: false,
+      twoFactorSatisfied: true,
     };
   }
 
@@ -130,6 +138,8 @@ async function loadProfile(session: Session): Promise<SessionSnapshot> {
       access: {},
       sessionTimeoutMinutes: null,
       roleName: null,
+      requiresTwoFactor: false,
+      twoFactorSatisfied: true,
     };
   }
 
@@ -137,7 +147,7 @@ async function loadProfile(session: Session): Promise<SessionSnapshot> {
     supabase.from("role_access").select("module, level").eq("role_id", profile.roleId),
     supabase
       .from("roles")
-      .select("name, session_timeout_minutes")
+      .select("name, session_timeout_minutes, require_2fa")
       .eq("id", profile.roleId)
       .maybeSingle(),
   ]);
@@ -147,6 +157,12 @@ async function loadProfile(session: Session): Promise<SessionSnapshot> {
     access[row.module as ModuleKey] = row.level as AccessLevel;
   }
 
+  // Whether this session has actually presented a second factor. Read from
+  // Supabase rather than inferred from the profile flag, because the flag is a
+  // convenience for administrators and the assurance level is the truth.
+  const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  const satisfied = !aal || aal.currentLevel === aal.nextLevel;
+
   return {
     status: "signed-in",
     user: session.user,
@@ -155,6 +171,8 @@ async function loadProfile(session: Session): Promise<SessionSnapshot> {
     access,
     sessionTimeoutMinutes: roleRow?.session_timeout_minutes ?? null,
     roleName: roleRow?.name ?? null,
+    requiresTwoFactor: roleRow?.require_2fa ?? false,
+    twoFactorSatisfied: satisfied,
   };
 }
 

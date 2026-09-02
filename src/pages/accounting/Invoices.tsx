@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Printer, CreditCard, Edit, Trash2, FileText, Wallet, AlertCircle } from "lucide-react";
+import { Printer, CreditCard, Edit, Trash2, FileText, Wallet, AlertCircle, Send } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DataTable, type Column } from "@/components/ui/data-table";
@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { canAccess } from "@/lib/accessControl";
 import { useCache } from "@/lib/collectionCache";
+import { SendDocumentDialog } from "@/components/accounting/SendDocumentDialog";
 import { LocalDataImportNotice } from "@/components/accounting/LocalDataImportNotice";
 import { paymentsCache } from "@/lib/paymentStore";
 import { invoicesCache, AccountingStore, Invoice } from "@/lib/accountingStore";
@@ -306,6 +307,8 @@ const Invoices: React.FC = () => {
   const [editOpen, setEditOpen] = useState(false);
   const [activeInvoice, setActiveInvoice] = useState<Invoice | undefined>(undefined);
   const [paymentOpen, setPaymentOpen] = useState(false);
+  const [sendOpen, setSendOpen] = useState(false);
+  const [sendDoc, setSendDoc] = useState<Invoice | undefined>(undefined);
   const [editingInvoice, setEditingInvoice] = useState<Invoice | undefined>(undefined);
   
   // Check for overdue invoices and create notifications
@@ -515,6 +518,9 @@ const Invoices: React.FC = () => {
           <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => navigate(`/accounting/invoices/${i.id}/print`)} aria-label={`Print invoice ${i.number}`}>
             <Printer className="h-3.5 w-3.5" />
           </Button>
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => { setSendDoc(i); setSendOpen(true); }} aria-label={`Email invoice ${i.number}`}>
+            <Send className="h-3.5 w-3.5" />
+          </Button>
           <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => { setActiveInvoice(i); setPaymentOpen(true); }} aria-label={`Capture payment for ${i.number}`}>
             <CreditCard className="h-3.5 w-3.5" />
           </Button>
@@ -590,6 +596,19 @@ const Invoices: React.FC = () => {
 
       <NewInvoiceDialog open={open} onOpenChange={setOpen} onAdd={addInvoice} preselectedCustomerId={preselectedCustomerId || undefined} />
       <NewInvoiceDialog open={editOpen} onOpenChange={(v)=> { setEditOpen(v); if (!v) setEditingInvoice(undefined); }} onAdd={addInvoice} editingInvoice={editingInvoice} />
+      <SendDocumentDialog
+        doc={sendDoc}
+        kind="invoice"
+        open={sendOpen}
+        onOpenChange={setSendOpen}
+        // An emailed invoice is no longer a draft.
+        onSent={() => {
+          if (sendDoc && sendDoc.status === "draft") {
+            void AccountingStore.upsertInvoice({ ...sendDoc, status: "sent" });
+          }
+        }}
+      />
+
       <CapturePaymentDialog 
         open={paymentOpen} 
         onOpenChange={setPaymentOpen} 

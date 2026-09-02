@@ -36,8 +36,19 @@ export const EmailStore = {
   upsert(m: MailMessage) { const all = this.list(); const i = all.findIndex(x=> x.id===m.id); if(i>=0) all[i]=m; else all.unshift(m); w(K.messages, all); return m; },
   remove(id: string) { const all = this.list().filter(x=> x.id!==id); w(K.messages, all); },
   move(id: string, folder: MailMessage["folder"]) { const m = this.get(id); if(!m) return; this.upsert({ ...m, folder }); },
-  smtp(): SMTPSettings { return r<SMTPSettings>(K.smtp, { enabled: false, host: "", port: 587, secure: false, username: "", password: "", fromName: "", fromEmail: "" }); },
-  setSmtp(s: SMTPSettings) { w(K.smtp, s); return s; },
+  // SMTP settings are no longer kept here. They were held in localStorage,
+  // password included, in plain text — and nothing ever read them to send
+  // anything. Credentials belong to the send-email function's environment.
+  //
+  // Anything a previous version stored is cleared on load, so an old password
+  // does not sit in a browser indefinitely.
+  clearLegacySmtp() {
+    try {
+      localStorage.removeItem(K.smtp);
+    } catch {
+      void 0;
+    }
+  },
 
   // Simulate send: store to "sent" and optionally deliver to inbox (loopback)
   async send(m: Omit<MailMessage, "id" | "folder" | "date">) {

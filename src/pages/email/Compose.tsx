@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { sendEmail } from "@/lib/sendDocument";
+import { toast } from "@/components/ui/use-toast";
 import { EmailStore, type MailAddress, type MailAttachment } from "@/lib/emailStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,7 +20,7 @@ const Compose = () => {
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [attachments, setAttachments] = useState<MailAttachment[]>([]);
-  const smtp = EmailStore.smtp();
+  const [sending, setSending] = useState(false);
   const navigate = useNavigate();
 
   const onAttach = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -29,8 +31,40 @@ const Compose = () => {
 
   const send = async () => {
     if (!to.trim() || !subject.trim()) return;
+    setSending(true);
+
+    // Actually send it. This previously only wrote a record into the local
+    // "Sent" folder, so a message appeared to have gone and never left the
+    // browser.
+    try {
+      await sendEmail({
+        to: parseRecipients(to).map((r) => r.email),
+        subject,
+        body,
+        module: "email",
+        attachments: attachments
+          .filter((a) => a.dataUrl?.includes(","))
+          .map((a) => ({
+            filename: a.name,
+            contentBase64: a.dataUrl.split(",")[1],
+            contentType: a.type || undefined,
+          })),
+      });
+    } catch (err) {
+      toast({
+        title: "Could not send",
+        description: err instanceof Error ? err.message : "The message was not sent.",
+        variant: "destructive",
+      });
+      setSending(false);
+      return;
+    }
+
+    // Only recorded once it has actually gone.
     const msg = await EmailStore.send({
-      from: { name: smtp.fromName || undefined, email: smtp.fromEmail || smtp.username },
+      // The sending address belongs to the server's configuration; the browser
+      // no longer holds mail credentials to read it from.
+      from: { email: "" },
       to: parseRecipients(to),
       subject,
       body,
@@ -39,6 +73,7 @@ const Compose = () => {
       threadId: undefined,
       read: true,
     });
+    setSending(false);
     navigate(`/email/${msg.id}`);
   };
 
@@ -48,7 +83,7 @@ const Compose = () => {
         <h1 className="text-2xl font-semibold text-foreground">Compose</h1>
         <div className="flex gap-2">
           <Button variant="secondary" onClick={()=> navigate(-1)}>Cancel</Button>
-          <Button onClick={send} disabled={!to.trim() || !subject.trim()}>Send</Button>
+          <Button onClick={() => void send()} disabled={sending || !to.trim() || !subject.trim()}>{sending ? "Sending…" : "Send"}</Button>
         </div>
       </div>
 

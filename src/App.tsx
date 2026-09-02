@@ -81,6 +81,7 @@ import InviteAccept from "./pages/auth/InviteAccept";
 import Protected from "@/components/auth/Protected";
 import AuthProvider from "@/components/auth/AuthProvider";
 import AwaitingApproval from "./pages/auth/AwaitingApproval";
+import TwoFactorChallenge from "./pages/auth/TwoFactorChallenge";
 import PendingApprovals from "./pages/auth/PendingApprovals";
 import ForgotPassword from "./pages/auth/ForgotPassword";
 import ResetPassword from "./pages/auth/ResetPassword";
@@ -105,6 +106,8 @@ const App = () => {
   useEffect(() => {
     // Simple clock-in when the app mounts (user session starts)
     UserStore.clockIn();
+    // Clear any SMTP password a previous version left in this browser.
+    try { EmailStore.clearLegacySmtp(); } catch { void 0; }
     const onBeforeUnload = () => {
       try { UserStore.clockOut(); } catch { void 0; }
     };
@@ -387,6 +390,7 @@ const App = () => {
           <Route path="/auth/forgot" element={<ForgotPassword />} />
           <Route path="/auth/reset" element={<ResetPassword />} />
           <Route path="/auth/pending" element={<AwaitingApproval />} />
+          <Route path="/auth/two-factor" element={<TwoFactorChallenge />} />
 
           {/* App routes (protected) with layout */}
           <Route path="/" element={<Protected><Layout /></Protected>}>

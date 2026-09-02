@@ -2,6 +2,7 @@ import React from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "./AuthProvider";
+import RequireTwoFactorEnrolment from "./RequireTwoFactorEnrolment";
 
 /**
  * Gates the signed-in area.
@@ -11,7 +12,7 @@ import { useAuth } from "./AuthProvider";
  * login page on every page refresh.
  */
 const Protected: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { status, profile } = useAuth();
+  const { status, profile, requiresTwoFactor, twoFactorSatisfied } = useAuth();
   const loc = useLocation();
 
   if (status === "loading") {
@@ -31,6 +32,19 @@ const Protected: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // rather than as a pending account.
   if (!profile || profile.status !== "active") {
     return <Navigate to="/auth/pending" replace />;
+  }
+
+  // A verified factor exists but has not been used on this session, so the
+  // password alone got them this far. This is the check that was missing: the
+  // "require two-factor" switch was stored and never consulted.
+  if (!twoFactorSatisfied) {
+    return <Navigate to="/auth/two-factor" replace state={{ from: loc.pathname }} />;
+  }
+
+  // The role demands a second factor and this account has none, so enrolment
+  // is not optional. Letting them past would make the role setting cosmetic.
+  if (requiresTwoFactor) {
+    return <RequireTwoFactorEnrolment>{children}</RequireTwoFactorEnrolment>;
   }
 
   return <>{children}</>;

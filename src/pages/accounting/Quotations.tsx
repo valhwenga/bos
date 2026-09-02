@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { useCache } from "@/lib/collectionCache";
+import { SendDocumentDialog } from "@/components/accounting/SendDocumentDialog";
 import { paymentsCache } from "@/lib/paymentStore";
 import { quotationsCache, AccountingStore, Quotation, LineItem } from "@/lib/accountingStore";
 import { previewNextNumber, resolveNumberOnSave } from "@/lib/documentNumbers";
@@ -303,6 +304,8 @@ const Quotations: React.FC = () => {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Quotation | undefined>(undefined);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [sendOpen, setSendOpen] = useState(false);
+  const [sendDoc, setSendDoc] = useState<Quotation | undefined>(undefined);
   const [previewQuote, setPreviewQuote] = useState<Quotation | undefined>(undefined);
 
   useEffect(() => {
@@ -355,15 +358,14 @@ const Quotations: React.FC = () => {
     }
   };
 
+  // Opens the real send dialog. This used to build a mailto: link, which hands
+  // the job to whatever mail client the machine has, cannot attach the PDF, and
+  // does nothing at all where no client is configured.
   const emailQuote = (q: Quotation) => {
-    const total = computeTotals(q).grand.toFixed(2);
-    const subject = encodeURIComponent(`Quotation ${q.number}`);
-    const sym = c.currencySymbol || "$";
-    const body = encodeURIComponent(
-      `Hello ${q.customer.name},%0D%0A%0D%0APlease find quotation ${q.number}.%0D%0ATotal: ${sym}${total}.%0D%0A%0D%0AThank you.`,
-    );
-    window.location.href = `mailto:${q.customer.email || ""}?subject=${subject}&body=${body}`;
+    setSendDoc(q);
+    setSendOpen(true);
   };
+
 
   const printQuote = (q: Quotation) => navigate(`/accounting/quotations/${q.id}/print`);
 
@@ -503,6 +505,19 @@ const Quotations: React.FC = () => {
         onAdd={saveQuote}
         editing={editing}
       />
+      <SendDocumentDialog
+        doc={sendDoc}
+        kind="quotation"
+        open={sendOpen}
+        onOpenChange={setSendOpen}
+        // A quotation that has been sent is no longer a draft.
+        onSent={() => {
+          if (sendDoc && sendDoc.status === "draft") {
+            void AccountingStore.upsertQuote({ ...sendDoc, status: "sent" });
+          }
+        }}
+      />
+
       <CapturePaymentDialog open={capOpen} onOpenChange={(v)=> { setCapOpen(v); if (!v) { setActiveQuote(undefined); void quotationsCache.refresh(); } }} context={{ quote: activeQuote }} onSaved={()=> { void quotationsCache.refresh(); }} />
 
       <Dialog open={previewOpen} onOpenChange={(v) => { setPreviewOpen(v); if (!v) setPreviewQuote(undefined); }}>
