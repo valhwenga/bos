@@ -19,6 +19,7 @@ import { expensesCache } from "@/lib/expenseStore";
 import { salesCache } from "@/lib/salesStore";
 import { creditNotesCache } from "@/lib/creditNotesStore";
 import { recurringCache } from "@/lib/recurringStore";
+import { companySettingsCache } from "@/lib/companySettings";
 
 /**
  * Offers to copy accounting data left in this browser into the database.
@@ -58,6 +59,7 @@ export function LocalDataImportNotice({ canImport }: { canImport: boolean }) {
     leaves: "leave request",
     payroll: "payroll entry",
     leaveBalances: "leave balance",
+    companySettings: "company settings record",
   };
   const describe = (c: ImportCounts) =>
     (Object.keys(LABELS) as (keyof ImportCounts)[])
@@ -71,6 +73,7 @@ export function LocalDataImportNotice({ canImport }: { canImport: boolean }) {
       const result = await importLocalData();
       setReport(result);
       await Promise.all([
+        companySettingsCache.refresh(),
         quotationsCache.refresh(),
         invoicesCache.refresh(),
         paymentsCache.refresh(),

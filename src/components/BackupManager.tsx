@@ -49,10 +49,12 @@ const BackupManager: React.FC = () => {
     }
   };
 
-  const restoreBackup = (backupId: string) => {
-    if (window.confirm('Are you sure you want to restore this backup? This will replace all current data.')) {
+  const restoreBackup = async (backupId: string) => {
+    // The wording matters: this restores what the browser holds, not the
+    // database. Promising "all current data" would be untrue now.
+    if (window.confirm('Restore this backup? It replaces the data this browser holds. Accounting, HR and payroll live in the database and are not affected.')) {
       try {
-        BackupStore.restore(backupId);
+        await BackupStore.restore(backupId);
         toast({
           title: "Backup Restored",
           description: "System has been restored from backup successfully",
@@ -100,8 +102,8 @@ const BackupManager: React.FC = () => {
 
     try {
       const backup = await BackupStore.import(importFile);
-      if (window.confirm('Import this backup? This will replace all current data.')) {
-        BackupStore.restore(backup.timestamp);
+      if (window.confirm('Import this backup? It replaces the data this browser holds, not the database.')) {
+        await BackupStore.restore(backup.timestamp);
         toast({
           title: "Import Successful",
           description: "Backup has been imported successfully",
@@ -268,7 +270,7 @@ const BackupManager: React.FC = () => {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => restoreBackup(backup.timestamp)}
+                      onClick={() => void restoreBackup(backup.timestamp)}
                       title="Restore backup"
                     >
                       <Play className="w-4 h-4" />

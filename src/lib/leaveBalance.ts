@@ -1,6 +1,5 @@
 import { isPublicHoliday } from "./holidays";
 import { HRMLeaveStore, type Leave } from "./hrmLeaveStore";
-import { CompanySettingsStore } from "./companySettingsStore";
 
 /**
  * Calculate working days in a date range, excluding weekends and public holidays.

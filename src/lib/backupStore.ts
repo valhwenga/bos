@@ -256,7 +256,15 @@ export const BackupStore = {
   },
 
   // Restore from backup
-  restore(backupId: string): boolean {
+  /**
+   * Restores a backup.
+   *
+   * Note this only covers what the app still keeps in the browser. Accounting,
+   * HR, payroll and settings are rows in Postgres now and are covered by the
+   * database's own backups — restoring here does not bring them back. See
+   * DEPLOYMENT.md.
+   */
+  async restore(backupId: string): Promise<boolean> {
     try {
       const backups = this.list();
       const backup = backups.find(b => b.timestamp === backupId);
@@ -280,7 +288,7 @@ export const BackupStore = {
         }
       } else {
         // Fallback: restore individual stores (legacy format)
-        CompanySettingsStore.set(backup.company);
+        await CompanySettingsStore.set(backup.company);
         localStorage.setItem('acct.invoices', JSON.stringify(backup.invoices));
         localStorage.setItem('acct.quotes', JSON.stringify(backup.quotes));
         localStorage.setItem('payments', JSON.stringify(backup.payments));

@@ -41,6 +41,8 @@ import type { Department } from "./hrmDepartmentsStore";
 import type { Leave } from "./hrmLeaveStore";
 import type { PayrollEntry } from "./payrollStore";
 import type { LeaveBalances } from "./leaveBalanceStore";
+import { CompanySettingsRepo } from "./companySettingsRepo";
+import { CompanySettingsStore, type CompanySettings } from "./companySettings";
 
 const LEGACY_KEYS = {
   // Customers were kept under a crm.* key even though the accounting screens
@@ -65,6 +67,8 @@ const LEGACY_KEYS = {
 
 /** Balances are a single object, not an array, so they are read separately. */
 const BALANCES_KEY = "hrm.leaveBalances";
+/** Company settings are one object too. */
+const SETTINGS_KEY = "acct.company.settings";
 
 function readLegacy<T>(key: string): T[] {
   try {
@@ -92,6 +96,7 @@ export type ImportCounts = {
   leaves: number;
   payroll: number;
   leaveBalances: number;
+  companySettings: number;
 };
 
 export type ImportReport = {
@@ -117,7 +122,26 @@ export function findLocalData(): ImportCounts {
     leaves: readLegacy<Leave>(LEGACY_KEYS.leaves).length,
     payroll: readLegacy<PayrollEntry>(LEGACY_KEYS.payroll).length,
     leaveBalances: Object.keys(readBalances()).length,
+    companySettings: readSettings() ? 1 : 0,
   };
+}
+
+/**
+ * Company settings left in this browser.
+ *
+ * The logo and signature are not carried across: they were base64 data URLs and
+ * are files in the company-assets bucket now, so they are re-uploaded through
+ * Settings rather than imported.
+ */
+function readSettings(): Partial<CompanySettings> | null {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? (parsed as Partial<CompanySettings>) : null;
+  } catch {
+    return null;
+  }
 }
 
 function readBalances(): LeaveBalances {
@@ -175,6 +199,7 @@ export async function importLocalData(): Promise<ImportReport> {
       leaves: 0,
       payroll: 0,
       leaveBalances: 0,
+      companySettings: 0,
     },
     failures: [],
   };
@@ -320,6 +345,19 @@ export async function importLocalData(): Promise<ImportReport> {
     }
   }
 
+  const settings = readSettings();
+  if (settings) {
+    try {
+      const { logoDataUrl, signatureDataUrl, ...rest } = settings;
+      void logoDataUrl;
+      void signatureDataUrl;
+      await CompanySettingsRepo.update({ ...CompanySettingsStore.get(), ...rest } as CompanySettings);
+      report.imported.companySettings += 1;
+    } catch (err) {
+      fail("companySettings", "company", settings.name ?? "company settings", err);
+    }
+  }
+
   return report;
 }
 
@@ -331,7 +369,7 @@ export async function importLocalData(): Promise<ImportReport> {
  */
 export function archiveLocalData(): void {
   const stamp = new Date().toISOString().slice(0, 10);
-  for (const key of [...Object.values(LEGACY_KEYS), BALANCES_KEY]) {
+  for (const key of [...Object.values(LEGACY_KEYS), BALANCES_KEY, SETTINGS_KEY]) {
     const value = localStorage.getItem(key);
     if (value === null) continue;
     localStorage.setItem(`${key}.imported-${stamp}`, value);

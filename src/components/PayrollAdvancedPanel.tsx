@@ -6,7 +6,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Download, Calculator } from "lucide-react";
-import { CompanySettingsStore } from "@/lib/companySettingsStore";
 import { toast } from "@/components/ui/use-toast";
 import { CURRENCY_SYMBOLS, generateBACS } from "@/lib/payrollAdvanced";
 import { computeTax } from "@/lib/taxEngine";

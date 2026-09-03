@@ -1,85 +1,76 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { CompanySettingsStore } from "@/lib/companySettings";
+import { CompanySettingsStore, companySettingsCache } from "@/lib/companySettings";
+import { useCache } from "@/lib/collectionCache";
 import { toast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 
 const Settings: React.FC = () => {
+  // Settings are shared now, so this re-renders when they load or someone else
+  // changes them.
+  useCache(companySettingsCache);
   const [s, setS] = useState(CompanySettingsStore.get());
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState<"logo" | "signature" | null>(null);
 
-  const onLogo = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    const reader = new FileReader();
-    reader.onload = async () => {
-      try {
-        const img = new Image();
-        img.onload = () => {
-          const MAX = 512; // max dimension
-          const scale = Math.min(1, MAX / Math.max(img.width, img.height));
-          const w = Math.max(1, Math.round(img.width * scale));
-          const h = Math.max(1, Math.round(img.height * scale));
-          const canvas = document.createElement("canvas");
-          canvas.width = w; canvas.height = h;
-          const ctx = canvas.getContext("2d");
-          if (ctx) {
-            // Preserve transparency by not filling background
-            ctx.drawImage(img, 0, 0, w, h);
-            // Use PNG to preserve transparency
-            const dataUrl = canvas.toDataURL("image/png");
-            setS({ ...s, logoDataUrl: dataUrl });
-          } else {
-            setS({ ...s, logoDataUrl: String(reader.result) });
-          }
-        };
-        img.src = String(reader.result);
-      } catch (err) {
-        setS({ ...s, logoDataUrl: String(reader.result) });
-      }
-    };
-    reader.readAsDataURL(f);
-  };
+  useEffect(() => {
+    void CompanySettingsStore.load().then(() => setS(CompanySettingsStore.get()));
+  }, []);
 
-  const onSignature = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    const reader = new FileReader();
-    reader.onload = async () => {
-      try {
-        const img = new Image();
-        img.onload = () => {
-          const MAX_W = 320; const MAX_H = 160; // keep signature small
-          const scale = Math.min(1, MAX_W / img.width, MAX_H / img.height);
-          const w = Math.max(1, Math.round(img.width * scale));
-          const h = Math.max(1, Math.round(img.height * scale));
-          const canvas = document.createElement("canvas");
-          canvas.width = w; canvas.height = h;
-          const ctx = canvas.getContext("2d");
-          if (ctx) {
-            ctx.drawImage(img, 0, 0, w, h);
-            const dataUrl = canvas.toDataURL("image/png", 0.9);
-            setS({ ...s, signatureDataUrl: dataUrl });
-          } else {
-            setS({ ...s, signatureDataUrl: String(reader.result) });
-          }
-        };
-        img.src = String(reader.result);
-      } catch (err) {
-        setS({ ...s, signatureDataUrl: String(reader.result) });
-      }
-    };
-    reader.readAsDataURL(f);
-  };
-  const save = () => {
+  // Uploaded straight to the company-assets bucket. These used to be resized on
+  // a canvas and stored as base64 data URLs on the settings record, which meant
+  // a logo counted against the localStorage quota and was set per machine.
+  const uploadImage = async (kind: "logo" | "signature", file?: File) => {
+    if (!file) return;
+    setUploading(kind);
     try {
-      if (s) {
-        CompanySettingsStore.set(s);
-        window.dispatchEvent(new Event("company.settings-changed"));
-        toast({ title: "Settings saved" });
-      }
+      await CompanySettingsStore.setImage(kind, file);
+      setS(CompanySettingsStore.get());
+      toast({ title: `${kind === "logo" ? "Logo" : "Signature"} updated` });
     } catch (err) {
-      toast({ title: "Failed to save", description: "Try a smaller logo image or reduce size.", variant: "destructive" });
+      toast({
+        title: `Could not upload the ${kind}`,
+        description: err instanceof Error ? err.message : "It is unchanged.",
+        variant: "destructive",
+      });
+    } finally {
+      setUploading(null);
+    }
+  };
+
+  const onLogo = (e: React.ChangeEvent<HTMLInputElement>) => void uploadImage("logo", e.target.files?.[0]);
+  const onSignature = (e: React.ChangeEvent<HTMLInputElement>) => void uploadImage("signature", e.target.files?.[0]);
+
+  const clearImage = async (kind: "logo" | "signature") => {
+    try {
+      await CompanySettingsStore.clearImage(kind);
+      setS(CompanySettingsStore.get());
+    } catch (err) {
+      toast({
+        title: `Could not remove the ${kind}`,
+        description: err instanceof Error ? err.message : "It is unchanged.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const save = async () => {
+    if (!s) return;
+    setSaving(true);
+    try {
+      await CompanySettingsStore.set(s);
+      toast({ title: "Settings saved", description: "Everyone sees these on their documents." });
+    } catch (err) {
+      // These are shared now, so a failure means nobody's documents changed —
+      // which is worth saying rather than showing a success toast.
+      toast({
+        title: "Could not save settings",
+        description: err instanceof Error ? err.message : "Nothing was changed.",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -132,26 +123,26 @@ const Settings: React.FC = () => {
             </div>
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">Logo</label>
-              <Input type="file" accept="image/*" onChange={onLogo} />
+              <Input type="file" accept="image/*" onChange={onLogo} disabled={uploading === "logo"} />
             </div>
           </div>
           {s?.logoDataUrl && (
             <div className="flex items-center gap-4">
               <img src={s?.logoDataUrl} alt="Logo preview" className="h-12 w-auto border-0 bg-transparent" />
-              <Button variant="secondary" onClick={()=> setS({ ...s, logoDataUrl: undefined })}>Remove Logo</Button>
+              <Button variant="secondary" onClick={() => void clearImage("logo")}>Remove Logo</Button>
             </div>
           )}
 
           <div className="grid md:grid-cols-3 gap-4">
             <div className="grid gap-1 md:col-span-1">
               <label className="text-xs text-muted-foreground">Signature Image</label>
-              <Input type="file" accept="image/*" onChange={onSignature} />
+              <Input type="file" accept="image/*" onChange={onSignature} disabled={uploading === "signature"} />
             </div>
           </div>
           {s?.signatureDataUrl && (
             <div className="flex items-center gap-4">
               <img src={s.signatureDataUrl} alt="Signature preview" className="h-16 w-auto rounded border bg-white p-1" />
-              <Button variant="secondary" onClick={()=> setS({ ...s, signatureDataUrl: undefined })}>Remove Signature</Button>
+              <Button variant="secondary" onClick={() => void clearImage("signature")}>Remove Signature</Button>
             </div>
           )}
 
@@ -194,7 +185,7 @@ const Settings: React.FC = () => {
           </div>
 
           <div className="flex justify-end">
-            <Button onClick={save}>Save Settings</Button>
+            <Button onClick={() => void save()}>Save Settings</Button>
           </div>
         </CardContent>
       </Card>

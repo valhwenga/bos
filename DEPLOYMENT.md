@@ -1,7 +1,7 @@
 # Deploying BOS
 
-Work through these in order. Steps 1–4 are blockers: the system will lose or
-corrupt data without them. Steps 5–8 are the deployment itself. Steps 9–11 are
+Work through these in order. Steps 1–5 are blockers: the system will lose or
+corrupt data without them. Steps 6–10 are the deployment itself. Steps 11–12 are
 things to do before real staff use it in anger.
 
 Nothing here is automated on purpose — each step has a decision in it.
@@ -48,7 +48,20 @@ stay readable without exposing where colleagues are paid. Verified that a user
 with employee access but no payroll access sees the directory and no account
 numbers.
 
-### 3. Configure SMTP — the last blocker
+### 3. Company settings — done
+
+The company name, address, banking details, brand colours, logo and signature
+are one shared row in Postgres, readable by everyone signed in and writable only
+with `settings` edit. They were per-machine, so an invoice sent from a second
+computer went out with no banking block and the default company name.
+
+The logo and signature are files in the `company-assets` bucket, which is public
+to read — the logo appears on the login page, where there is no session yet to
+authorise a private link. Writing is still restricted to administrators.
+
+Set these once after deploying, before anyone sends a document.
+
+### 4. Configure SMTP — the last blocker
 
 Email confirmation is **on** in `supabase/config.toml`, along with
 `secure_password_change` and a 60-second limit between reset emails. Verified
@@ -67,7 +80,7 @@ Settings**, not in `config.toml` — that file is committed and the password mus
 not be. Then send yourself a test signup and confirm the mail arrives before
 letting anyone else register.
 
-### 4. Dependency vulnerabilities — done
+### 5. Dependency vulnerabilities — done
 
 `npm audit --omit=dev` reports **0 vulnerabilities**. The three high-severity
 ones were patched in place; the two moderate React Router advisories needed the
@@ -80,7 +93,7 @@ somebody keeps checking.
 
 ## Deployment
 
-### 5. Create the hosted Supabase project
+### 6. Create the hosted Supabase project
 
 `project_id = "bos"` in `supabase/config.toml` refers to the local Docker stack.
 Create a hosted project, then link and push:
@@ -97,7 +110,7 @@ npx supabase db push
 correct — that file contains development accounts with a known password and
 must never reach production.
 
-### 6. Create the first administrator by hand
+### 7. Create the first administrator by hand
 
 There is a bootstrap problem: a new signup is `pending` and needs an
 administrator to approve it, and a fresh database has none.
@@ -113,7 +126,7 @@ where email = 'you@yourcompany.co.za';
 
 Every other account is then created through the app.
 
-### 7. Deploy the edge functions
+### 8. Deploy the edge functions
 
 Two things cannot happen in a browser — creating another user's account needs
 the service key, and sending mail needs SMTP credentials:
@@ -135,7 +148,7 @@ login can omit `SMTP_USER` and `SMTP_PASSWORD`.
 Without `send-email` deployed and configured, emailing an invoice fails with a
 message saying exactly which secrets are missing — it does not fail silently.
 
-### 8. Build and host the front end
+### 9. Build and host the front end
 
 `Dockerfile`, `nginx.conf` and `fly.toml` are in the repo and the image has been
 built and served locally. `base` is `/`; it used to be `/bos/` for GitHub Pages,
@@ -167,7 +180,7 @@ nginx serves `index.html` for unknown paths, so a refresh on
 `/accounting/invoices` works. Verified: that path returns the app shell, while a
 missing asset still returns 404 rather than being masked by the fallback.
 
-### 9. Point Supabase at the deployed URL
+### 10. Point Supabase at the deployed URL
 
 In Authentication → URL Configuration, set the Site URL to the Fly hostname and
 add `https://<app>.fly.dev/auth/reset` to the redirect allow-list. Password
@@ -177,7 +190,7 @@ reset links will not work otherwise.
 
 ## Before real use
 
-### 10. Import the existing data, once
+### 11. Import the existing data, once
 
 Whoever has the real data in their browser signs in on **that machine** and uses
 the banner on the Invoices page. Order matters:
@@ -191,7 +204,7 @@ the banner on the Invoices page. Order matters:
 The import is keyed by original id, so running it twice updates rather than
 duplicates. The local copy is renamed, not deleted.
 
-### 11. Take a backup and prove you can restore it
+### 12. Take a backup and prove you can restore it
 
 Supabase takes daily backups on paid plans. Before trusting it, do one restore
 into a scratch project. A backup you have never restored is a hypothesis.
