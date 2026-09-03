@@ -1,4 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
+import { useCache } from "@/lib/collectionCache";
+import { leadsCache } from "@/lib/crmLeadsStore";
+import { dealsCache } from "@/lib/crmDealsStore";
+import { crmCustomersCache } from "@/lib/crmCustomersStore";
+import { crmTasksCache } from "@/lib/crmTasksStore";
 import { useNavigate, useParams } from "react-router-dom";
 import { CrmCustomersStore, type CrmCustomer, type ContactPerson } from "@/lib/crmCustomersStore";
 import { Button } from "@/components/ui/button";
@@ -7,6 +12,11 @@ import { Input } from "@/components/ui/input";
 import { canAccess } from "@/lib/accessControl";
 
 const CustomerDetail = () => {
+  // Rows come from Postgres via caches, so this re-renders when they arrive.
+  useCache(leadsCache);
+  useCache(dealsCache);
+  useCache(crmCustomersCache);
+  useCache(crmTasksCache);
   const { id } = useParams();
   const navigate = useNavigate();
   const [c, setC] = useState<CrmCustomer | undefined>(undefined);
@@ -24,7 +34,7 @@ const CustomerDetail = () => {
     </div>
   );
 
-  const update = (patch: Partial<CrmCustomer>) => { const next = { ...c, ...patch } as CrmCustomer; CrmCustomersStore.upsert(next); setC(next); };
+  const update = (patch: Partial<CrmCustomer>) => { const next = { ...c, ...patch } as CrmCustomer; void CrmCustomersStore.upsert(next); setC(next); };
 
   const addContact = () => {
     if (!newContact.name.trim()) return;
@@ -51,7 +61,7 @@ const CustomerDetail = () => {
                   const ok = window.confirm("Delete this customer? This action cannot be undone.");
                   if (!ok) return;
                   if (c?.id) {
-                    CrmCustomersStore.remove(c.id);
+                    void CrmCustomersStore.remove(c.id);
                     navigate(-1);
                   }
                 }}

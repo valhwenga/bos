@@ -1,4 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useCache } from "@/lib/collectionCache";
+import { leadsCache } from "@/lib/crmLeadsStore";
+import { dealsCache } from "@/lib/crmDealsStore";
+import { crmCustomersCache } from "@/lib/crmCustomersStore";
+import { crmTasksCache } from "@/lib/crmTasksStore";
 import { useNavigate } from "react-router-dom";
 import { CalendarClock, CircleDollarSign, Plus, Target, Trophy } from "lucide-react";
 import { CrmDealsStore, type Deal, type DealStage } from "@/lib/crmDealsStore";
@@ -22,6 +27,11 @@ const STAGES: { key: DealStage; title: string; tone: string }[] = [
 const CLOSED: DealStage[] = ["closed_won", "closed_lost"];
 
 const DealsBoard = () => {
+  // Rows come from Postgres via caches, so this re-renders when they arrive.
+  useCache(leadsCache);
+  useCache(dealsCache);
+  useCache(crmCustomersCache);
+  useCache(crmTasksCache);
   const [deals, setDeals] = useState(CrmDealsStore.list());
   const [dragOver, setDragOver] = useState<DealStage | null>(null);
   const navigate = useNavigate();
@@ -65,13 +75,13 @@ const DealsBoard = () => {
       probability: 10,
       createdAt: new Date().toISOString(),
     };
-    CrmDealsStore.upsert(deal);
+    void CrmDealsStore.upsert(deal);
     setDeals(CrmDealsStore.list());
     navigate(`/crm/deals/${deal.id}`);
   };
 
   const moveTo = (dealId: string, stage: DealStage) => {
-    CrmDealsStore.move(dealId, stage);
+    void CrmDealsStore.move(dealId, stage);
     setDeals(CrmDealsStore.list());
   };
 

@@ -1,4 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCache } from "@/lib/collectionCache";
+import { leadsCache } from "@/lib/crmLeadsStore";
+import { dealsCache } from "@/lib/crmDealsStore";
+import { crmCustomersCache } from "@/lib/crmCustomersStore";
+import { crmTasksCache } from "@/lib/crmTasksStore";
+import { FileVault } from "@/lib/fileVault";
+import { leadUuid } from "@/lib/crmRepo";
+import { toast } from "@/components/ui/use-toast";
 import { useNavigate, useParams } from "react-router-dom";
 import { CrmLeadsStore, type Lead, type LeadActivity, type LeadAttachment, type LeadStage } from "@/lib/crmLeadsStore";
 import { UsersStore } from "@/lib/usersStore";
@@ -20,6 +28,11 @@ const stageOptions: { key: LeadStage; label: string }[] = [
 ];
 
 const LeadDetail = () => {
+  // Rows come from Postgres via caches, so this re-renders when they arrive.
+  useCache(leadsCache);
+  useCache(dealsCache);
+  useCache(crmCustomersCache);
+  useCache(crmTasksCache);
   const { id } = useParams();
   const navigate = useNavigate();
   const [lead, setLead] = useState<Lead | undefined>(undefined);
@@ -41,7 +54,7 @@ const LeadDetail = () => {
   const update = async (patch: Partial<Lead>) => {
     const before = lead;
     const next = { ...lead, ...patch } as Lead;
-    CrmLeadsStore.upsert(next);
+    void CrmLeadsStore.upsert(next);
     setLead(next);
     // Automation: when moved to won, auto-create customer and deal (if not already)
     if (before?.stage !== 'won' && next.stage === 'won') {
@@ -50,7 +63,7 @@ const LeadDetail = () => {
         const existing = CustomersStore.list().find(c => (next.email && c.email && c.email.toLowerCase()===next.email.toLowerCase()) || (next.company && c.name.toLowerCase()===next.company.toLowerCase()));
         const cust = existing ?? (await CustomersStore.upsert({ id: `c_${Date.now()}`, name: next.company || next.name, email: next.email, billingAddress: next.address ? { line1: next.address } : undefined, phone: next.phone }));
         // Create a deal as Closed Won for traceability
-        CrmDealsStore.upsert({ id: `D_${Date.now()}`, title: `${next.company || next.name} - Won`, customerId: cust.id, leadId: next.id, value: 0, probability: 100, expectedClose: new Date().toISOString(), stage: 'closed_won', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+        void CrmDealsStore.upsert({ id: `D_${Date.now()}`, title: `${next.company || next.name} - Won`, customerId: cust.id, leadId: next.id, value: 0, probability: 100, expectedClose: new Date().toISOString(), stage: 'closed_won', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
       } catch {
       // ignore errors
     }
@@ -59,17 +72,42 @@ const LeadDetail = () => {
 
   const addActivity = (type: LeadActivity['type']) => {
     if (!activity.trim() || !me) return;
-    CrmLeadsStore.addActivity(lead.id, { id: Math.random().toString(36).slice(2), ts: new Date().toISOString(), type, text: activity, authorId: me });
+    void CrmLeadsStore.addActivity(lead.id, { id: Math.random().toString(36).slice(2), ts: new Date().toISOString(), type, text: activity, authorId: me });
     setActivity(""); refresh();
   };
 
+  // Files go to the lead-attachments bucket. They used to be read into base64
+  // and stored on the lead record, which put whole documents into a row that is
+  // loaded every time the pipeline is opened.
   const onFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const fs = Array.from(e.target.files||[]);
-    const toDataUrl = (file: File): Promise<LeadAttachment> => new Promise((resolve)=>{
-      const reader = new FileReader(); reader.onload = ()=> resolve({ id: Math.random().toString(36).slice(2), name: file.name, type: file.type, size: file.size, dataUrl: String(reader.result) }); reader.readAsDataURL(file);
-    });
-    const atts = await Promise.all(fs.map(toDataUrl));
-    for (const a of atts) CrmLeadsStore.addAttachment(lead.id, a);
+    const files = Array.from(e.target.files || []);
+    // attachments.owner_id is a uuid, and a lead created before the move has a
+    // text id, so it has to be resolved rather than passed through.
+    const ownerId = await leadUuid(lead.id);
+    if (!ownerId) {
+      toast({
+        title: "Could not attach the files",
+        description: "This lead has not been saved yet.",
+        variant: "destructive",
+      });
+      return;
+    }
+    for (const file of files) {
+      try {
+        await FileVault.upload({
+          bucketId: "lead-attachments",
+          file,
+          ownerTable: "leads",
+          ownerId,
+        });
+      } catch (err) {
+        toast({
+          title: `Could not attach ${file.name}`,
+          description: err instanceof Error ? err.message : "It was not uploaded.",
+          variant: "destructive",
+        });
+      }
+    }
     refresh();
   };
 
@@ -85,7 +123,7 @@ const LeadDetail = () => {
                 onClick={() => {
                   const ok = window.confirm("Delete this lead? This action cannot be undone.");
                   if (!ok) return;
-                  CrmLeadsStore.remove(lead.id);
+                  void CrmLeadsStore.remove(lead.id);
                   navigate(-1);
                 }}
               >

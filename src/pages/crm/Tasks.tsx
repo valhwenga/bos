@@ -1,4 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import { useCache } from "@/lib/collectionCache";
+import { leadsCache } from "@/lib/crmLeadsStore";
+import { dealsCache } from "@/lib/crmDealsStore";
+import { crmCustomersCache } from "@/lib/crmCustomersStore";
+import { crmTasksCache } from "@/lib/crmTasksStore";
 import { Check, RotateCcw, Bell, Pencil, Trash2, ListChecks, Circle, AlertCircle } from "lucide-react";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { PageHeader } from "@/components/ui/page-header";
@@ -16,6 +21,11 @@ import { NotificationsStore, notify } from "@/lib/notificationsStore";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 const Tasks = () => {
+  // Rows come from Postgres via caches, so this re-renders when they arrive.
+  useCache(leadsCache);
+  useCache(dealsCache);
+  useCache(crmCustomersCache);
+  useCache(crmTasksCache);
   const [list, setList] = useState(CrmTasksStore.list());
   const users = UsersStore.list();
   const [q, setQ] = useState("");
@@ -84,7 +94,7 @@ const Tasks = () => {
       completed: editing?.completed,
     };
     const prevAssignee = editing?.assigneeId;
-    CrmTasksStore.upsert(newTask);
+    void CrmTasksStore.upsert(newTask);
     setList(CrmTasksStore.list());
     setOpen(false);
     if (!editing) {
@@ -97,7 +107,7 @@ const Tasks = () => {
     setEditing(undefined);
   };
 
-  const toggle = (t: CrmTask) => { CrmTasksStore.upsert({ ...t, completed: !t.completed }); setList(CrmTasksStore.list()); };
+  const toggle = (t: CrmTask) => { void CrmTasksStore.upsert({ ...t, completed: !t.completed }); setList(CrmTasksStore.list()); };
 
   const remind = (t: CrmTask) => { if (!t.assigneeId) return; notify(t.assigneeId, 'ticket', `Task due: ${t.title}`, `Due: ${t.dueAt ? new Date(t.dueAt).toLocaleString() : 'N/A'}`); };
 
@@ -181,7 +191,7 @@ const Tasks = () => {
             aria-label="Delete task"
             onClick={() => {
               if (!window.confirm(`Delete task "${t.title}"? This cannot be undone.`)) return;
-              CrmTasksStore.remove(t.id);
+              void CrmTasksStore.remove(t.id);
               setList(CrmTasksStore.list());
             }}
           >

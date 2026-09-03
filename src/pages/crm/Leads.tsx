@@ -1,4 +1,9 @@
 import { useMemo, useState } from "react";
+import { useCache } from "@/lib/collectionCache";
+import { leadsCache } from "@/lib/crmLeadsStore";
+import { dealsCache } from "@/lib/crmDealsStore";
+import { crmCustomersCache } from "@/lib/crmCustomersStore";
+import { crmTasksCache } from "@/lib/crmTasksStore";
 import { UserPlus, UserX, CheckCircle2 } from "lucide-react";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { PageHeader } from "@/components/ui/page-header";
@@ -24,6 +29,11 @@ const stageOptions: { key: LeadStage; label: string }[] = [
 ];
 
 const Leads = () => {
+  // Rows come from Postgres via caches, so this re-renders when they arrive.
+  useCache(leadsCache);
+  useCache(dealsCache);
+  useCache(crmCustomersCache);
+  useCache(crmTasksCache);
   const navigate = useNavigate();
   const [list, setList] = useState(CrmLeadsStore.list());
   const [q, setQ] = useState("");
@@ -57,7 +67,7 @@ const Leads = () => {
       attachments: [],
       createdAt: new Date().toISOString(),
     };
-    CrmLeadsStore.upsert(l);
+    void CrmLeadsStore.upsert(l);
     setList(CrmLeadsStore.list());
     setOpen(false);
     setForm({ name: "", company: "", email: "", phone: "", address: "", source: 'manual', ownerId: users[0]?.id||"" });

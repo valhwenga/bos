@@ -3,7 +3,7 @@ import { UserStore } from "./userStore";
 import { HRMStore } from "./hrmStore";
 import { HRMDepartmentsStore } from "./hrmDepartmentsStore";
 import { SupportStore, type Ticket } from "./supportStore";
-import { CRMStore } from "./crmStore";
+import { CrmDealsStore } from "./crmDealsStore";
 import { ProjectStore } from "./projectStore";
 import { AccountingStore } from "./accountingStore";
 import { useEffect, useMemo, useState } from "react";
@@ -59,7 +59,10 @@ export function computeMetrics(): DashboardMetrics {
   const slaRate = withSla ? Math.round((slaHit / withSla) * 100) : 100;
 
   const projects = ProjectStore.listProjects().length;
-  const deals = CRMStore.list().length;
+  // Was CRMStore, a second deals store that wrote the same localStorage key
+  // with an incompatible stage vocabulary, so the dashboard count and the CRM
+  // board could disagree.
+  const deals = CrmDealsStore.list().length;
   const invoices = AccountingStore.listInvoices().length;
 
   return {

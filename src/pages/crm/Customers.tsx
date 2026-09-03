@@ -1,4 +1,9 @@
 import { useMemo, useState } from "react";
+import { useCache } from "@/lib/collectionCache";
+import { leadsCache } from "@/lib/crmLeadsStore";
+import { dealsCache } from "@/lib/crmDealsStore";
+import { crmCustomersCache } from "@/lib/crmCustomersStore";
+import { crmTasksCache } from "@/lib/crmTasksStore";
 import { Building2, Users } from "lucide-react";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { PageHeader } from "@/components/ui/page-header";
@@ -11,6 +16,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useNavigate } from "react-router-dom";
 
 const Customers = () => {
+  // Rows come from Postgres via caches, so this re-renders when they arrive.
+  useCache(leadsCache);
+  useCache(dealsCache);
+  useCache(crmCustomersCache);
+  useCache(crmTasksCache);
   const [list, setList] = useState(CrmCustomersStore.list());
   const [q, setQ] = useState("");
   const navigate = useNavigate();
@@ -22,7 +32,7 @@ const Customers = () => {
 
   const add = () => {
     const c: CrmCustomer = { id: `C_${Date.now()}`, name: "New Customer", contacts: [], createdAt: new Date().toISOString() };
-    CrmCustomersStore.upsert(c); setList(CrmCustomersStore.list());
+    void CrmCustomersStore.upsert(c); setList(CrmCustomersStore.list());
   };
 
   const columns: Column<CrmCustomer>[] = [

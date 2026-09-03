@@ -1,3 +1,10 @@
+/**
+ * CRM tasks, each hanging off a lead or a deal. Rows in Postgres now.
+ */
+
+import { createCache } from "./collectionCache";
+import { CrmTaskRepo } from "./crmRepo";
+
 export type TaskPriority = 'low' | 'medium' | 'high';
 export type CrmTask = {
   id: string;
@@ -12,14 +19,33 @@ export type CrmTask = {
   description?: string;
 };
 
-const K = { tasks: 'crm.tasks' };
-const r = <T,>(k: string, f: T): T => { try { const v = localStorage.getItem(k); return v ? (JSON.parse(v) as T) : f; } catch { return f; } };
-const w = (k: string, v: unknown) => localStorage.setItem(k, JSON.stringify(v));
-const emit = (name: string) => { try { window.dispatchEvent(new Event(name)); } catch { void 0; } };
+export const crmTasksCache = createCache<CrmTask>(() => CrmTaskRepo.list());
+
+const announce = () => {
+  try {
+    window.dispatchEvent(new Event("crm.tasks-changed"));
+  } catch {
+    void 0;
+  }
+};
 
 export const CrmTasksStore = {
-  list(): CrmTask[] { return r<CrmTask[]>(K.tasks, []); },
-  upsert(t: CrmTask) { const all = this.list(); const i = all.findIndex(x=> x.id===t.id); if (i>=0) all[i]=t; else all.unshift(t); w(K.tasks, all); emit('crm.tasks-changed'); return t; },
-  remove(id: string) { const all = this.list().filter(x=> x.id!==id); w(K.tasks, all); emit('crm.tasks-changed'); },
-  get(id: string) { return this.list().find(x=> x.id===id); },
+  list(): CrmTask[] {
+    return crmTasksCache.list();
+  },
+  load(): Promise<CrmTask[]> {
+    return crmTasksCache.ensureLoaded();
+  },
+  get(id: string) {
+    return this.list().find((x) => x.id === id);
+  },
+  async upsert(t: CrmTask): Promise<CrmTask> {
+    await crmTasksCache.mutate(() => CrmTaskRepo.upsert(t));
+    announce();
+    return t;
+  },
+  async remove(id: string): Promise<void> {
+    await crmTasksCache.mutate(() => CrmTaskRepo.remove(id));
+    announce();
+  },
 };

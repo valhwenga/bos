@@ -9,9 +9,8 @@ import { ProjectStore } from "./projectStore";
 import { HRMDepartmentsStore } from "./hrmDepartmentsStore";
 import { CommunicationStore } from "./communicationStore";
 import { SecurityStore } from "./securityStore";
-import { CRMStore } from "./crmStore";
-import { CrmCustomersStore } from "./crmCustomersStore";
 import { CrmDealsStore } from "./crmDealsStore";
+import { CrmCustomersStore } from "./crmCustomersStore";
 import { CrmLeadsStore } from "./crmLeadsStore";
 import { CrmTasksStore } from "./crmTasksStore";
 import { DocumentStore } from "./documentStore";
@@ -214,7 +213,7 @@ export const BackupStore = {
       },
       // CRM
       crm: {
-        deals: CRMStore.list(),
+        deals: CrmDealsStore.list(),
         customers: CrmCustomersStore.list(),
         leads: CrmLeadsStore.list(),
         tasks: CrmTasksStore.list()

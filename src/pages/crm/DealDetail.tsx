@@ -1,4 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
+import { useCache } from "@/lib/collectionCache";
+import { leadsCache } from "@/lib/crmLeadsStore";
+import { dealsCache } from "@/lib/crmDealsStore";
+import { crmCustomersCache } from "@/lib/crmCustomersStore";
+import { crmTasksCache } from "@/lib/crmTasksStore";
 import { useNavigate, useParams } from "react-router-dom";
 import { CrmDealsStore, type Deal, type DealStage, type DealComment } from "@/lib/crmDealsStore";
 import { UsersStore } from "@/lib/usersStore";
@@ -17,6 +22,11 @@ const STAGES: { key: DealStage; title: string }[] = [
 ];
 
 const DealDetail = () => {
+  // Rows come from Postgres via caches, so this re-renders when they arrive.
+  useCache(leadsCache);
+  useCache(dealsCache);
+  useCache(crmCustomersCache);
+  useCache(crmTasksCache);
   const { id } = useParams();
   const nav = useNavigate();
   const users = UsersStore.list();
@@ -36,8 +46,8 @@ const DealDetail = () => {
     </div>
   );
 
-  const update = (patch: Partial<Deal>) => { const next = { ...d, ...patch, updatedAt: new Date().toISOString() } as Deal; CrmDealsStore.upsert(next); setD(next); };
-  const addComment = () => { if (!note.trim()) return; CrmDealsStore.addComment(d.id, { id: Math.random().toString(36).slice(2), ts: new Date().toISOString(), authorId: me, text: note }); setNote(""); refresh(); };
+  const update = (patch: Partial<Deal>) => { const next = { ...d, ...patch, updatedAt: new Date().toISOString() } as Deal; void CrmDealsStore.upsert(next); setD(next); };
+  const addComment = () => { if (!note.trim()) return; void CrmDealsStore.addComment(d.id, { id: Math.random().toString(36).slice(2), ts: new Date().toISOString(), authorId: me, text: note }); setNote(""); refresh(); };
 
   return (
     <div className="p-6 space-y-4">
@@ -51,7 +61,7 @@ const DealDetail = () => {
                 onClick={() => {
                   const ok = window.confirm("Delete this deal? This action cannot be undone.");
                   if (!ok) return;
-                  CrmDealsStore.remove(d.id);
+                  void CrmDealsStore.remove(d.id);
                   nav(-1);
                 }}
               >
