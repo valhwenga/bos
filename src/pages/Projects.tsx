@@ -1,4 +1,14 @@
 import { useMemo, useState } from "react";
+import { useCache } from "@/lib/collectionCache";
+import {
+  projectsCache,
+  projectTasksCache,
+  projectTimeCache,
+  projectBugsCache,
+  projectEventsCache,
+  projectTypesCache,
+} from "@/lib/projectStore";
+import { toast } from "@/components/ui/use-toast";
 import { ProjectCard, type ProjectCardStatus } from "@/components/ProjectCard";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
@@ -15,6 +25,13 @@ import { ClientsStore } from "@/lib/clientsStore";
 import { Link } from "react-router-dom";
 
 const Projects = () => {
+  // Rows come from Postgres via caches, so this re-renders when they arrive.
+  useCache(projectsCache);
+  useCache(projectTasksCache);
+  useCache(projectTimeCache);
+  useCache(projectBugsCache);
+  useCache(projectEventsCache);
+  useCache(projectTypesCache);
   const acc = AuthStore.currentUser();
   const myClientId = acc?.clientId;
   const [open, setOpen] = useState(false);
@@ -36,7 +53,7 @@ const Projects = () => {
     if (!name.trim()) return;
     const id = `p_${Date.now()}`;
     const nextClientId = myClientId || (clientId || undefined);
-    ProjectStore.upsertProject({
+    void ProjectStore.upsertProject({
       id,
       name,
       clientId: nextClientId,

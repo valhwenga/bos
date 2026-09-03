@@ -1,21 +1,36 @@
 import React, { useState } from "react";
+import { useCache } from "@/lib/collectionCache";
+import {
+  projectsCache,
+  projectTasksCache,
+  projectTimeCache,
+  projectBugsCache,
+  projectEventsCache,
+  projectTypesCache,
+} from "@/lib/projectStore";
+import { toast } from "@/components/ui/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ProjectStore, Bug as BugType } from "@/lib/projectStore";
 
 const Bug: React.FC = () => {
+  // Rows come from Postgres via caches, so this re-renders when they arrive.
+  useCache(projectsCache);
+  useCache(projectTasksCache);
+  useCache(projectTimeCache);
+  useCache(projectBugsCache);
+  useCache(projectEventsCache);
+  useCache(projectTypesCache);
   const [title, setTitle] = useState("");
-  const [bugs, setBugs] = useState<BugType[]>(ProjectStore.listBugs());
+  const bugs = ProjectStore.listBugs();
   const add = () => {
     if (!title.trim()) return;
-    ProjectStore.upsertBug({ id: `b_${Date.now()}`, projectId: "p_default", title, severity: "med", open: true });
+    void ProjectStore.upsertBug({ id: `b_${Date.now()}`, projectId: "p_default", title, severity: "med", open: true });
     setTitle("");
-    setBugs(ProjectStore.listBugs());
   };
   const toggle = (b: BugType) => {
-    ProjectStore.upsertBug({ ...b, open: !b.open });
-    setBugs(ProjectStore.listBugs());
+    void ProjectStore.upsertBug({ ...b, open: !b.open });
   };
 
   return (

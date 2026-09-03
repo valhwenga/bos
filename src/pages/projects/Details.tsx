@@ -1,4 +1,14 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useCache } from "@/lib/collectionCache";
+import {
+  projectsCache,
+  projectTasksCache,
+  projectTimeCache,
+  projectBugsCache,
+  projectEventsCache,
+  projectTypesCache,
+} from "@/lib/projectStore";
+import { toast } from "@/components/ui/use-toast";
 import { useParams, useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,6 +23,13 @@ import { notify } from "@/lib/notificationsStore";
 import { UserStore } from "@/lib/userStore";
 
 const Details: React.FC = () => {
+  // Rows come from Postgres via caches, so this re-renders when they arrive.
+  useCache(projectsCache);
+  useCache(projectTasksCache);
+  useCache(projectTimeCache);
+  useCache(projectBugsCache);
+  useCache(projectEventsCache);
+  useCache(projectTypesCache);
   const { id } = useParams();
   const navigate = useNavigate();
   const canEdit = Permissions.canEditProjects();
@@ -69,7 +86,7 @@ const Details: React.FC = () => {
     );
   }
 
-  const save = () => { if (!canEdit) return; ProjectStore.upsertProject(project); };
+  const save = () => { if (!canEdit) return; void ProjectStore.upsertProject(project); };
   const addMilestone = () => { if (!canEdit || !msTitle.trim()) return; const m: Milestone = { id: `m_${Date.now()}`, title: msTitle, status: "pending" }; setMsTitle(""); setProject({ ...project, milestones: [...(project.milestones||[]), m] }); };
   const onFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!canEdit) return;
@@ -84,7 +101,7 @@ const Details: React.FC = () => {
       reader.readAsDataURL(file);
     });
   };
-  const addProjectComment = () => { if (!canEdit || !comment.trim()) return; ProjectStore.addProjectComment(project.id, { id: `c_${Date.now()}`, message: comment, createdAt: new Date().toISOString() }); setComment(""); setProject(ProjectStore.listProjects().find(p=> p.id===project.id)); };
+  const addProjectComment = () => { if (!canEdit || !comment.trim()) return; void ProjectStore.addProjectComment(project.id, { id: `c_${Date.now()}`, message: comment, createdAt: new Date().toISOString() }); setComment(""); setProject(ProjectStore.listProjects().find(p=> p.id===project.id)); };
 
   const types = ProjectStore.listTypes();
   const type = types.find(t => t.key === project.typeKey);
@@ -109,7 +126,7 @@ const Details: React.FC = () => {
       status: uid ? nextStatus : project.status,
     };
     setProject(next);
-    ProjectStore.upsertProject(next);
+    void ProjectStore.upsertProject(next);
   };
 
   const submitForApproval = () => {
@@ -117,7 +134,7 @@ const Details: React.FC = () => {
     const now = new Date().toISOString();
     const next: Project = { ...project, status: "pending_approval", submittedAt: now };
     setProject(next);
-    ProjectStore.upsertProject(next);
+    void ProjectStore.upsertProject(next);
     if (project.assignedToUserId) {
       notify(project.assignedToUserId, "ticket", `Project submitted for approval: ${project.name}`, undefined, `/projects/${project.id}`);
     }
@@ -135,7 +152,7 @@ const Details: React.FC = () => {
       rejectionReason: undefined,
     };
     setProject(next);
-    ProjectStore.upsertProject(next);
+    void ProjectStore.upsertProject(next);
     if (project.assignedToUserId) {
       notify(project.assignedToUserId, "ticket", `Project approved & closed: ${project.name}`, undefined, `/projects/${project.id}`);
     }
@@ -148,7 +165,7 @@ const Details: React.FC = () => {
     const now = new Date().toISOString();
     const next: Project = { ...project, status: "rejected", rejectionReason: reason.trim(), approvedAt: now, approvedByUserId: me };
     setProject(next);
-    ProjectStore.upsertProject(next);
+    void ProjectStore.upsertProject(next);
     if (project.assignedToUserId) {
       notify(project.assignedToUserId, "ticket", `Project completion rejected: ${project.name}`, reason.trim(), `/projects/${project.id}`);
     }

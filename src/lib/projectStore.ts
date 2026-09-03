@@ -1,3 +1,25 @@
+/**
+ * Projects, tasks, time, bugs and the project calendar.
+ *
+ * All of these were localStorage arrays, so a project assigned on one machine
+ * did not exist on any other and a bug raised against it was visible only to
+ * whoever raised it. They are rows now, behind the `projects` module's access
+ * rules.
+ *
+ * Reads stay synchronous from caches because the screens read during render;
+ * writes are async and go to the server.
+ */
+
+import { createCache } from "./collectionCache";
+import {
+  BugRepo,
+  CalendarRepo,
+  ProjectRepo,
+  ProjectTypeRepo,
+  TaskRepo,
+  TimeEntryRepo,
+} from "./projectRepo";
+
 export type ProjectFile = { id: string; name: string; type: string; size: number; dataUrl?: string };
 export type Milestone = { id: string; title: string; dueDate?: string; status?: "pending" | "inprogress" | "completed" };
 export type Comment = { id: string; author?: string; message: string; createdAt: string };
@@ -65,197 +87,214 @@ export type CalendarEvent = {
   remindHour?: boolean;
 };
 
-const K = {
-  projects: "proj.projects",
-  tasks: "proj.tasks",
-  time: "proj.time",
-  bugs: "proj.bugs",
-  events: "proj.events",
-  types: "proj.types",
-  remindersSent: "proj.reminders.sent",
-};
+export const projectsCache = createCache<Project>(() => ProjectRepo.list());
+export const projectTasksCache = createCache<Task>(() => TaskRepo.list());
+export const projectTimeCache = createCache<TimeEntry>(() => TimeEntryRepo.list());
+export const projectBugsCache = createCache<Bug>(() => BugRepo.list());
+export const projectEventsCache = createCache<CalendarEvent>(() => CalendarRepo.list());
+export const projectTypesCache = createCache<ProjectType>(() => ProjectTypeRepo.list());
 
-const r = <T,>(k: string, f: T): T => {
-  try { const v = localStorage.getItem(k); return v ? (JSON.parse(v) as T) : f; } catch { return f; }
-};
-const w = (k: string, v: unknown) => localStorage.setItem(k, JSON.stringify(v));
-const emit = (name: string) => { try { window.dispatchEvent(new Event(name)); } catch { void 0; } };
-
-const DEFAULT_TYPES: ProjectType[] = [
-  { key: "implementation", label: "Implementation", allowedRoleIds: ["role_project_manager", "role_employee"] },
-  { key: "support", label: "Support", allowedRoleIds: ["role_support_agent", "role_employee"] },
-  { key: "maintenance", label: "Maintenance", allowedRoleIds: ["role_project_manager", "role_employee"] },
-];
-
-const readSet = (k: string): Set<string> => {
+const emit = (name: string) => {
   try {
-    const v = localStorage.getItem(k);
-    if (!v) return new Set();
-    const arr = JSON.parse(v) as string[];
-    return new Set(arr || []);
+    window.dispatchEvent(new Event(name));
   } catch {
-    return new Set();
+    void 0;
   }
 };
-const writeSet = (k: string, s: Set<string>) => w(k, Array.from(s.values()));
 
 export const ProjectStore = {
-  listTypes(): ProjectType[] { return r<ProjectType[]>(K.types, DEFAULT_TYPES); },
-  upsertType(t: ProjectType) {
-    const all = this.listTypes();
-    const i = all.findIndex(x => x.key === t.key);
-    if (i >= 0) all[i] = t; else all.push(t);
-    w(K.types, all);
+  // --- Reads: synchronous, from the caches -------------------------------
+
+  listTypes(): ProjectType[] {
+    return projectTypesCache.list();
+  },
+  listProjects(): Project[] {
+    return projectsCache.list();
+  },
+  listTasks(): Task[] {
+    return projectTasksCache.list();
+  },
+  listTime(): TimeEntry[] {
+    return projectTimeCache.list();
+  },
+  listBugs(): Bug[] {
+    return projectBugsCache.list();
+  },
+  listEvents(): CalendarEvent[] {
+    return projectEventsCache.list();
+  },
+
+  /** Loads everything the project screens read. */
+  async load(): Promise<void> {
+    await Promise.all([
+      projectTypesCache.ensureLoaded(),
+      projectsCache.ensureLoaded(),
+      projectTasksCache.ensureLoaded(),
+      projectTimeCache.ensureLoaded(),
+      projectBugsCache.ensureLoaded(),
+      projectEventsCache.ensureLoaded(),
+    ]);
+  },
+
+  // --- Writes ------------------------------------------------------------
+
+  async upsertType(t: ProjectType): Promise<ProjectType> {
+    await projectTypesCache.mutate(() => ProjectTypeRepo.upsert(t));
     return t;
   },
 
-  ensureProjectDueEvent(p: Project) {
-    const evId = `ev_proj_due_${p.id}`;
-    const events = this.listEvents();
-    const idx = events.findIndex(e => e.id === evId);
+  async upsertProject(p: Project): Promise<Project> {
+    await projectsCache.mutate(() => ProjectRepo.upsert(p));
+    // The calendar entry is derived from the due date, so it is kept in step
+    // here rather than left to whichever screen happened to save the project.
+    try {
+      await this.ensureProjectDueEvent(p);
+    } catch {
+      void 0;
+    }
+    emit("proj.projects-changed");
+    return p;
+  },
+
+  async removeProject(id: string): Promise<void> {
+    await projectsCache.mutate(() => ProjectRepo.remove(id));
+    emit("proj.projects-changed");
+  },
+
+  async upsertTask(t: Task): Promise<Task> {
+    await projectTasksCache.mutate(() => TaskRepo.upsert(t));
+    try {
+      await this.ensureTaskDueEvent(t);
+    } catch {
+      void 0;
+    }
+    emit("proj.tasks-changed");
+    return t;
+  },
+
+  async removeTask(id: string): Promise<void> {
+    await projectTasksCache.mutate(() => TaskRepo.remove(id));
+    emit("proj.tasks-changed");
+  },
+
+  async upsertBug(b: Bug): Promise<Bug> {
+    await projectBugsCache.mutate(() => BugRepo.upsert(b));
+    return b;
+  },
+
+  async addTime(te: TimeEntry): Promise<TimeEntry> {
+    await projectTimeCache.mutate(() => TimeEntryRepo.add(te));
+    return te;
+  },
+
+  async addEvent(ev: CalendarEvent): Promise<CalendarEvent> {
+    await projectEventsCache.mutate(() => CalendarRepo.upsert(ev));
+    emit("proj.events-changed");
+    return ev;
+  },
+
+  async updateEvent(ev: CalendarEvent): Promise<CalendarEvent> {
+    await projectEventsCache.mutate(() => CalendarRepo.upsert(ev));
+    emit("proj.events-changed");
+    return ev;
+  },
+
+  async removeEvent(id: string): Promise<void> {
+    await projectEventsCache.mutate(() => CalendarRepo.remove(id));
+    emit("proj.events-changed");
+  },
+
+  // --- Derived calendar entries ------------------------------------------
+
+  /**
+   * Keeps the calendar entry for a project's due date in step with the project.
+   *
+   * Removing the due date removes the entry, rather than leaving a deadline in
+   * the calendar for something that no longer has one.
+   */
+  async ensureProjectDueEvent(p: Project): Promise<void> {
+    const eventId = `ev_proj_due_${p.id}`;
+    const existing = this.listEvents().find((e) => e.id === eventId);
 
     if (!p.dueAt) {
-      if (idx >= 0) {
-        events.splice(idx, 1);
-        w(K.events, events);
-        emit('proj.events-changed');
-      }
+      if (existing) await this.removeEvent(eventId);
       return;
     }
 
-    const iso = new Date(p.dueAt).toISOString();
-    const next: CalendarEvent = {
-      id: evId,
-      projectId: p.id,
-      date: iso.slice(0, 10),
-      title: `Project due: ${p.name}`,
-      startAt: iso,
-      type: "reminder",
-      description: `Due date for project: ${p.name}`,
-      remindWeek: true,
-      remindDay: true,
-      remindHour: true,
-    };
-
-    if (idx >= 0) events[idx] = { ...events[idx], ...next };
-    else events.push(next);
-    w(K.events, events);
-    emit('proj.events-changed');
+    const at = new Date(p.dueAt).toISOString();
+    await projectEventsCache.mutate(() =>
+      CalendarRepo.upsert({
+        id: eventId,
+        projectId: p.id,
+        date: at.slice(0, 10),
+        title: `Project due: ${p.name}`,
+        startAt: at,
+        type: "reminder",
+        description: `Due date for project: ${p.name}`,
+        remindWeek: true,
+        remindDay: true,
+        remindHour: true,
+      }),
+    );
+    emit("proj.events-changed");
   },
 
-  listProjects(): Project[] { return r<Project[]>(K.projects, [{ id: "p_default", name: "Default Project" }]); },
-  upsertProject(p: Project) {
-    const now = new Date().toISOString();
-    const next: Project = {
-      status: "open",
-      supervisorRole: "admin",
-      createdAt: now,
-      ...p,
-    };
-    const all = this.listProjects();
-    const i = all.findIndex(x=>x.id===p.id);
-    if(i>=0) {
-      all[i] = { ...all[i], ...next };
-    } else {
-      all.push(next);
-    }
-    w(K.projects, all);
-    emit('proj.projects-changed');
-    try { this.ensureProjectDueEvent(next); } catch { void 0; }
-    return next;
-  },
-  removeProject(id: string) {
-    const all = this.listProjects().filter(p => p.id !== id);
-    w(K.projects, all);
-    emit('proj.projects-changed');
-  },
+  async ensureTaskDueEvent(t: Task): Promise<void> {
+    const eventId = `ev_task_due_${t.id}`;
+    const existing = this.listEvents().find((e) => e.id === eventId);
 
-  markReminderSent(reminderId: string) {
-    const s = readSet(K.remindersSent);
-    s.add(reminderId);
-    writeSet(K.remindersSent, s);
-  },
-  reminderAlreadySent(reminderId: string) {
-    const s = readSet(K.remindersSent);
-    return s.has(reminderId);
-  },
-  listTasks(): Task[] { return r<Task[]>(K.tasks, []); },
-  listTime(): TimeEntry[] { return r<TimeEntry[]>(K.time, []); },
-  listBugs(): Bug[] { return r<Bug[]>(K.bugs, []); },
-  listEvents(): CalendarEvent[] { return r<CalendarEvent[]>(K.events, []); },
-
-  ensureTaskDueEvent(t: Task) {
-    const evId = `ev_task_due_${t.id}`;
-    const events = this.listEvents();
-    const idx = events.findIndex(e => e.id === evId);
     if (!t.dueAt) {
-      if (idx >= 0) {
-        events.splice(idx, 1);
-        w(K.events, events);
-        emit('proj.events-changed');
-      }
+      if (existing) await this.removeEvent(eventId);
       return;
     }
-    const iso = new Date(t.dueAt).toISOString();
-    const next: CalendarEvent = {
-      id: evId,
-      projectId: t.projectId,
-      date: iso.slice(0, 10),
-      title: `Task due: ${t.title}`,
-      startAt: iso,
-      type: "task",
-      description: `Due date for task: ${t.title}`,
-      remindWeek: true,
-      remindDay: true,
-      remindHour: true,
-    };
-    if (idx >= 0) events[idx] = { ...events[idx], ...next };
-    else events.push(next);
-    w(K.events, events);
-    emit('proj.events-changed');
+
+    const at = new Date(t.dueAt).toISOString();
+    await projectEventsCache.mutate(() =>
+      CalendarRepo.upsert({
+        id: eventId,
+        projectId: t.projectId,
+        date: at.slice(0, 10),
+        title: `Task due: ${t.title}`,
+        startAt: at,
+        type: "task",
+        description: `Due date for task: ${t.title}`,
+        remindWeek: true,
+        remindDay: true,
+        remindHour: true,
+      }),
+    );
+    emit("proj.events-changed");
   },
 
-  upsertTask(t: Task) {
-    const all = this.listTasks();
-    const i = all.findIndex(x=>x.id===t.id);
-    if(i>=0) all[i]=t; else all.push(t);
-    w(K.tasks, all);
-    try { this.ensureTaskDueEvent(t); } catch { void 0; }
-    emit('proj.tasks-changed');
-    return t;
-  },
-  upsertBug(b: Bug) { const all = this.listBugs(); const i = all.findIndex(x=>x.id===b.id); if(i>=0) all[i]=b; else all.push(b); w(K.bugs, all); return b; },
-  addTime(te: TimeEntry) { const all = this.listTime(); all.push(te); w(K.time, all); return te; },
-  addEvent(ev: CalendarEvent) { const all = this.listEvents(); all.push(ev); w(K.events, all); emit('proj.events-changed'); return ev; },
-  updateEvent(ev: CalendarEvent) { const all = this.listEvents(); const i = all.findIndex(x=> x.id===ev.id); if (i>=0) all[i]=ev; w(K.events, all); emit('proj.events-changed'); return ev; },
-  removeEvent(id: string) { const all = this.listEvents().filter(x=> x.id!==id); w(K.events, all); emit('proj.events-changed'); },
+  // --- Reminders ---------------------------------------------------------
+  //
+  // Recorded server-side. The list of "already sent" ids used to be per
+  // browser, so opening the app on a second machine re-sent every reminder
+  // that machine had not seen.
 
-  addProjectFile(projectId: string, file: ProjectFile) {
-    const projects = this.listProjects();
-    const p = projects.find(p=>p.id===projectId); if(!p) return;
-    p.files = p.files || [];
-    p.files.push(file);
-    this.upsertProject(p);
+  markReminderSent(reminderId: string): Promise<boolean> {
+    return CalendarRepo.claimReminder(reminderId);
   },
-  addMilestone(projectId: string, m: Milestone) {
-    const projects = this.listProjects();
-    const p = projects.find(p=>p.id===projectId); if(!p) return;
-    p.milestones = p.milestones || [];
-    p.milestones.push(m);
-    this.upsertProject(p);
+
+  reminderAlreadySent(reminderId: string): Promise<boolean> {
+    return CalendarRepo.reminderAlreadySent(reminderId);
   },
-  addProjectComment(projectId: string, c: Comment) {
-    const projects = this.listProjects();
-    const p = projects.find(p=>p.id===projectId); if(!p) return;
-    p.comments = p.comments || [];
-    p.comments.push(c);
-    this.upsertProject(p);
+
+  // --- Comments and task updates -----------------------------------------
+  //
+  // Appended to the record rather than kept in their own table: they are short
+  // notes read only with the thing they belong to, and never queried across
+  // projects.
+
+  async addProjectComment(projectId: string, c: Comment): Promise<void> {
+    const project = this.listProjects().find((p) => p.id === projectId);
+    if (!project) return;
+    await this.upsertProject({ ...project, comments: [...(project.comments ?? []), c] });
   },
-  addTaskUpdate(taskId: string, u: TaskUpdate) {
-    const tasks = this.listTasks();
-    const t = tasks.find(t=>t.id===taskId); if(!t) return;
-    t.updates = t.updates || [];
-    t.updates.push(u);
-    this.upsertTask(t);
-  }
+
+  async addTaskUpdate(taskId: string, u: TaskUpdate): Promise<void> {
+    const task = this.listTasks().find((t) => t.id === taskId);
+    if (!task) return;
+    await this.upsertTask({ ...task, updates: [...(task.updates ?? []), u] });
+  },
 };

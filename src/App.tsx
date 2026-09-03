@@ -40,6 +40,7 @@ import Sales from "./pages/accounting/Sales";
 import CreditNotes from "./pages/accounting/CreditNotes";
 import Recurring from "./pages/accounting/Recurring";
 import { UserStore } from "./lib/userStore";
+import { installFailureReporting } from "./lib/reportFailures";
 import { AuthStore } from "./lib/authStore";
 import AccessGuard from "@/components/auth/AccessGuard";
 import { getSession } from "@/lib/session";
@@ -104,6 +105,9 @@ type SimplePdf = {
 
 const App = () => {
   useEffect(() => {
+    // A write that fails without being handled where it was made still has to
+    // be visible; see reportFailures.
+    installFailureReporting();
     // Simple clock-in when the app mounts (user session starts)
     UserStore.clockIn();
     // Clear any SMTP password a previous version left in this browser.

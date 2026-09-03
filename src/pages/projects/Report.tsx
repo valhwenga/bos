@@ -1,4 +1,13 @@
 import React, { useMemo, useState } from "react";
+import { useCache } from "@/lib/collectionCache";
+import {
+  projectsCache,
+  projectTasksCache,
+  projectTimeCache,
+  projectBugsCache,
+  projectEventsCache,
+  projectTypesCache,
+} from "@/lib/projectStore";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ProjectStore, type Project, type Task, type TimeEntry } from "@/lib/projectStore";
@@ -7,6 +16,13 @@ import { AuthStore } from "@/lib/authStore";
 import { useAccounts } from "@/lib/useAccounts";
 
 const Report: React.FC = () => {
+  // Rows come from Postgres via caches, so this re-renders when they arrive.
+  useCache(projectsCache);
+  useCache(projectTasksCache);
+  useCache(projectTimeCache);
+  useCache(projectBugsCache);
+  useCache(projectEventsCache);
+  useCache(projectTypesCache);
   const projects = ProjectStore.listProjects();
   const [projectId, setProjectId] = useState(projects[0]?.id || "p_default");
 

@@ -1,9 +1,26 @@
 import React, { useEffect, useRef, useState } from "react";
+import { useCache } from "@/lib/collectionCache";
+import {
+  projectsCache,
+  projectTasksCache,
+  projectTimeCache,
+  projectBugsCache,
+  projectEventsCache,
+  projectTypesCache,
+} from "@/lib/projectStore";
+import { toast } from "@/components/ui/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ProjectStore } from "@/lib/projectStore";
 
 const Tracker: React.FC = () => {
+  // Rows come from Postgres via caches, so this re-renders when they arrive.
+  useCache(projectsCache);
+  useCache(projectTasksCache);
+  useCache(projectTimeCache);
+  useCache(projectBugsCache);
+  useCache(projectEventsCache);
+  useCache(projectTypesCache);
   const [running, setRunning] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const interval = useRef<number | null>(null);
@@ -21,7 +38,7 @@ const Tracker: React.FC = () => {
   const toggle = () => setRunning((r) => !r);
   const save = () => {
     if (seconds <= 0) return;
-    ProjectStore.addTime({ id: `te_${Date.now()}`, projectId: "p_default", seconds, startedAt: new Date().toISOString() });
+    void ProjectStore.addTime({ id: `te_${Date.now()}`, projectId: "p_default", seconds, startedAt: new Date().toISOString() });
     setSeconds(0);
     setRunning(false);
   };

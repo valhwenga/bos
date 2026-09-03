@@ -1,20 +1,36 @@
 import React, { useMemo, useState } from "react";
+import { useCache } from "@/lib/collectionCache";
+import {
+  projectsCache,
+  projectTasksCache,
+  projectTimeCache,
+  projectBugsCache,
+  projectEventsCache,
+  projectTypesCache,
+} from "@/lib/projectStore";
+import { toast } from "@/components/ui/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ProjectStore, TimeEntry } from "@/lib/projectStore";
 
 const Timesheet: React.FC = () => {
+  // Rows come from Postgres via caches, so this re-renders when they arrive.
+  useCache(projectsCache);
+  useCache(projectTasksCache);
+  useCache(projectTimeCache);
+  useCache(projectBugsCache);
+  useCache(projectEventsCache);
+  useCache(projectTypesCache);
   const [seconds, setSeconds] = useState(3600);
   const [taskId, setTaskId] = useState("");
-  const [entries, setEntries] = useState<TimeEntry[]>(ProjectStore.listTime());
+  const entries = ProjectStore.listTime();
   const tasks = ProjectStore.listTasks();
   const totalHrs = useMemo(() => entries.reduce((s, e) => s + e.seconds, 0) / 3600, [entries]);
 
   const add = () => {
     const te: TimeEntry = { id: `te_${Date.now()}`, projectId: "p_default", taskId: taskId || undefined, seconds, startedAt: new Date().toISOString() };
-    ProjectStore.addTime(te);
-    setEntries(ProjectStore.listTime());
+    void ProjectStore.addTime(te);
   };
 
   return (

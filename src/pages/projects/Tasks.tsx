@@ -1,4 +1,14 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useCache } from "@/lib/collectionCache";
+import {
+  projectsCache,
+  projectTasksCache,
+  projectTimeCache,
+  projectBugsCache,
+  projectEventsCache,
+  projectTypesCache,
+} from "@/lib/projectStore";
+import { toast } from "@/components/ui/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,7 +46,14 @@ const Column: React.FC<{ title: string; status: TaskStatus; tasks: Task[]; onMov
 );
 
 const Tasks: React.FC = () => {
-  const [tasks, setTasks] = useState<Task[]>(ProjectStore.listTasks());
+  // Rows come from Postgres via caches, so this re-renders when they arrive.
+  useCache(projectsCache);
+  useCache(projectTasksCache);
+  useCache(projectTimeCache);
+  useCache(projectBugsCache);
+  useCache(projectEventsCache);
+  useCache(projectTypesCache);
+  const tasks = ProjectStore.listTasks();
   const [title, setTitle] = useState("");
   const [open, setOpen] = useState(false);
   const [projectId, setProjectId] = useState("p_default");
@@ -47,8 +64,7 @@ const Tasks: React.FC = () => {
   const [commentOpen, setCommentOpen] = useState(false);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [comment, setComment] = useState("");
-  const refresh = () => setTasks(ProjectStore.listTasks());
-
+  const refresh = () => { /* the caches drive re-render */ };
   const me = AuthStore.currentUser()?.id;
   const accounts = useAccounts();
 
@@ -67,7 +83,7 @@ const Tasks: React.FC = () => {
 
   const add = () => {
     if (!title.trim()) return;
-    ProjectStore.upsertTask({
+    void ProjectStore.upsertTask({
       id: `t_${Date.now()}`,
       projectId,
       title,
@@ -84,7 +100,7 @@ const Tasks: React.FC = () => {
   const move = (id: string, status: TaskStatus) => {
     const t = ProjectStore.listTasks().find(x=>x.id===id);
     if (!t) return;
-    ProjectStore.upsertTask({ ...t, status });
+    void ProjectStore.upsertTask({ ...t, status });
     refresh();
   };
 
@@ -97,14 +113,14 @@ const Tasks: React.FC = () => {
       assignedTo: a?.name || t.assignedTo || "Me",
       dueAt: t.dueAt || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     };
-    ProjectStore.upsertTask(next);
+    void ProjectStore.upsertTask(next);
     refresh();
   };
   const onComment = (t: Task) => { setActiveTask(t); setCommentOpen(true); };
   const saveComment = () => {
     if (!activeTask || !comment.trim()) { setCommentOpen(false); return; }
     const u: TaskUpdate = { id: `u_${Date.now()}`, message: comment, createdAt: new Date().toISOString() };
-    ProjectStore.addTaskUpdate(activeTask.id, u);
+    void ProjectStore.addTaskUpdate(activeTask.id, u);
     setComment(""); setCommentOpen(false); refresh();
   };
   const grouped = useMemo(()=>({

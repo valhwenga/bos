@@ -1,4 +1,14 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useCache } from "@/lib/collectionCache";
+import {
+  projectsCache,
+  projectTasksCache,
+  projectTimeCache,
+  projectBugsCache,
+  projectEventsCache,
+  projectTypesCache,
+} from "@/lib/projectStore";
+import { toast } from "@/components/ui/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +18,13 @@ import { DayPicker } from "react-day-picker";
 import "react-day-picker/dist/style.css";
 
 const Calendar: React.FC = () => {
+  // Rows come from Postgres via caches, so this re-renders when they arrive.
+  useCache(projectsCache);
+  useCache(projectTasksCache);
+  useCache(projectTimeCache);
+  useCache(projectBugsCache);
+  useCache(projectEventsCache);
+  useCache(projectTypesCache);
   const [selected, setSelected] = useState<Date>(new Date());
   const [title, setTitle] = useState("");
   const [type, setType] = useState<CalendarEventType>("task");
@@ -16,7 +33,7 @@ const Calendar: React.FC = () => {
   const [remindWeek, setRemindWeek] = useState(true);
   const [remindDay, setRemindDay] = useState(true);
   const [remindHour, setRemindHour] = useState(true);
-  const [events, setEvents] = useState<CalendarEvent[]>(ProjectStore.listEvents());
+  const events = ProjectStore.listEvents();
   const [editEvent, setEditEvent] = useState<CalendarEvent | null>(null);
   const [editTask, setEditTask] = useState<Task | null>(null);
   const [addForTask, setAddForTask] = useState<Task | null>(null);
@@ -28,8 +45,7 @@ const Calendar: React.FC = () => {
     if (!title.trim()) return;
     const startAtIso = time ? new Date(time).toISOString() : new Date(selected).toISOString();
     const ev: CalendarEvent = { id: `ev_${Date.now()}`, date: dateKey(selected), title, projectId: "p_default", startAt: startAtIso, type, description, remindWeek, remindDay, remindHour };
-    ProjectStore.addEvent(ev);
-    setEvents(ProjectStore.listEvents());
+    void ProjectStore.addEvent(ev);
     setTitle("");
     setDescription("");
   };
@@ -58,7 +74,7 @@ const Calendar: React.FC = () => {
   };
 
   useEffect(() => {
-    const onChange = () => setEvents(ProjectStore.listEvents());
+    const onChange = () =>
     window.addEventListener('proj.events-changed', onChange);
     const onStorage = (e: StorageEvent) => { if (e.key && e.key.startsWith('proj.events')) onChange(); };
     window.addEventListener('storage', onStorage);
@@ -123,7 +139,7 @@ const Calendar: React.FC = () => {
                     </div>
                     <div className="flex items-center gap-2">
                       <Button size="sm" variant="secondary" onClick={()=> setEditEvent(e)}>View / Edit</Button>
-                      <Button size="sm" variant="destructive" onClick={()=> { ProjectStore.removeEvent(e.id); setEvents(ProjectStore.listEvents()); }}>Delete</Button>
+                      <Button size="sm" variant="destructive" onClick={()=> { void ProjectStore.removeEvent(e.id); }}>Delete</Button>
                     </div>
                   </div>
                 </div>
@@ -185,7 +201,7 @@ const Calendar: React.FC = () => {
           </div>)}
           <DialogFooter>
             <Button variant="secondary" onClick={()=> setEditEvent(null)}>Close</Button>
-            {editEvent && <Button onClick={()=> { ProjectStore.updateEvent(editEvent); setEvents(ProjectStore.listEvents()); setEditEvent(null); }}>Save</Button>}
+            {editEvent && <Button onClick={()=> { void ProjectStore.updateEvent(editEvent); setEditEvent(null); }}>Save</Button>}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -217,7 +233,7 @@ const Calendar: React.FC = () => {
           </div>)}
           <DialogFooter>
             <Button variant="secondary" onClick={()=> setEditTask(null)}>Close</Button>
-            {editTask && <Button onClick={()=> { ProjectStore.upsertTask(editTask); setEditTask(null); }}>Save</Button>}
+            {editTask && <Button onClick={()=> { void ProjectStore.upsertTask(editTask); setEditTask(null); }}>Save</Button>}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -263,7 +279,7 @@ const Calendar: React.FC = () => {
               const typeSel = (document.getElementById('add-type') as HTMLSelectElement)?.value as CalendarEventType;
               const iso = new Date(when).toISOString();
               const ev: CalendarEvent = { id: `ev_${Date.now()}`, projectId: addForTask.projectId, title: addForTask.title, date: iso.slice(0,10), startAt: iso, type: typeSel, description: addForTask.description };
-              ProjectStore.addEvent(ev); setEvents(ProjectStore.listEvents()); setAddForTask(null);
+              void ProjectStore.addEvent(ev); setAddForTask(null);
             }}>Add</Button>}
           </DialogFooter>
         </DialogContent>
