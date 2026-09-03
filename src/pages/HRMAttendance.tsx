@@ -1,4 +1,6 @@
 import { Button } from "@/components/ui/button";
+import { useCache } from "@/lib/collectionCache";
+import { attendanceCache } from "@/lib/userStore";
 import { Download, Calendar, Search, CalendarClock, CheckCircle2, Timer, ListChecks } from "lucide-react";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { PageHeader } from "@/components/ui/page-header";
@@ -26,13 +28,15 @@ const statusColors = {
 };
 
 const HRMAttendance = () => {
-  const [attendance, setAttendance] = useState<AttendanceEntry[]>(UserStore.attendance());
+  // Attendance comes from Postgres via a cache, so this re-renders when it
+  // loads and when a colleague clocks in.
+  const { rows: attendance } = useCache(attendanceCache);
   const [view, setView] = useState<ViewMode>("today");
   const [selectedDate, setSelectedDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const user = UserStore.get();
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
-      if (e.key === "auth.attendance") setAttendance(UserStore.attendance());
+      if (e.key === "auth.attendance") void attendanceCache.refresh();
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
@@ -70,8 +74,8 @@ const HRMAttendance = () => {
   const inProgress = rows.filter(r => r.status === 'In Progress').length;
   const absentCount = rows.filter(r => r.status === 'Absent').length;
 
-  const doClockIn = () => { UserStore.clockIn(); setAttendance(UserStore.attendance()); };
-  const doClockOut = () => { UserStore.clockOut(); setAttendance(UserStore.attendance()); };
+  const doClockIn = () => { void UserStore.clockIn(); };
+  const doClockOut = () => { void UserStore.clockOut(); };
 
   const handleExport = () => {
     const header = ["Employee","ID","Department","Date","Check In","Check Out","Work Hours","Status"];

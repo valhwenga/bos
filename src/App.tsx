@@ -109,15 +109,15 @@ const App = () => {
     // be visible; see reportFailures.
     installFailureReporting();
     // Simple clock-in when the app mounts (user session starts)
-    UserStore.clockIn();
+    void UserStore.clockIn();
     // Clear any SMTP password a previous version left in this browser.
     try { EmailStore.clearLegacySmtp(); } catch { void 0; }
     const onBeforeUnload = () => {
-      try { UserStore.clockOut(); } catch { void 0; }
+      void UserStore.clockOut().catch(() => undefined);
     };
     const onVis = () => {
       if (document.visibilityState === "hidden") {
-        try { UserStore.clockOut(); } catch { void 0; }
+        void UserStore.clockOut().catch(() => undefined);
       }
     };
     window.addEventListener("beforeunload", onBeforeUnload);
@@ -134,7 +134,7 @@ const App = () => {
           // This used to clock the user out of attendance and stop there, so
           // the session stayed valid and an unattended machine kept payroll and
           // banking open. A session timeout has to end the session.
-          try { UserStore.clockOut(); } catch { void 0; }
+          void UserStore.clockOut().catch(() => undefined);
           // Await the sign-out before navigating, or the request to revoke the
           // token is cancelled by the reload and the session stays alive.
           void AuthStore.signOut()

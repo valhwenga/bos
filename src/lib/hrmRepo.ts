@@ -538,3 +538,95 @@ export const BankDetailsRepo = {
     if (error) throw new Error(error.message);
   },
 };
+
+// ---------------------------------------------------------------------------
+// Attendance
+//
+// Clock-in and clock-out, one row per person per day. This was per browser,
+// which made it useless as an attendance record: signing in on a second machine
+// started a separate day, and nobody but that person could see any of it.
+//
+// Keyed on the signed-in profile rather than an employee record, because
+// clocking in has to work before anyone has linked the two.
+// ---------------------------------------------------------------------------
+
+export type AttendanceRow = {
+  date: string;
+  clockIn?: string;
+  clockOut?: string;
+  profileId?: string;
+  employeeName?: string;
+};
+
+export const AttendanceRepo = {
+  /** Everyone's attendance, for the HR view. */
+  async list(): Promise<AttendanceRow[]> {
+    const { data, error } = await supabase
+      .from("attendance_entries")
+      .select("work_date, clock_in, clock_out, profile_id")
+      .order("work_date", { ascending: false });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((row) => ({
+      date: row.work_date as string,
+      clockIn: (row.clock_in as string) ?? undefined,
+      clockOut: (row.clock_out as string) ?? undefined,
+      profileId: (row.profile_id as string) ?? undefined,
+    }));
+  },
+
+  /** Starts today, if it has not already started. */
+  async clockIn(): Promise<void> {
+    const { data: auth } = await supabase.auth.getUser();
+    const profileId = auth.user?.id;
+    if (!profileId) return;
+    const date = new Date().toISOString().slice(0, 10);
+
+    const { data: existing } = await supabase
+      .from("attendance_entries")
+      .select("id, clock_in")
+      .eq("profile_id", profileId)
+      .eq("work_date", date)
+      .maybeSingle();
+
+    // Re-opening the app must not reset the morning's start time.
+    if (existing?.clock_in) return;
+
+    if (existing) {
+      await supabase
+        .from("attendance_entries")
+        .update({ clock_in: new Date().toISOString() })
+        .eq("id", existing.id);
+      return;
+    }
+    await supabase
+      .from("attendance_entries")
+      .insert({ profile_id: profileId, work_date: date, clock_in: new Date().toISOString() });
+  },
+
+  async clockOut(): Promise<void> {
+    const { data: auth } = await supabase.auth.getUser();
+    const profileId = auth.user?.id;
+    if (!profileId) return;
+    const date = new Date().toISOString().slice(0, 10);
+
+    const { data: existing } = await supabase
+      .from("attendance_entries")
+      .select("id")
+      .eq("profile_id", profileId)
+      .eq("work_date", date)
+      .maybeSingle();
+
+    // The latest clock-out wins: leaving and returning extends the day rather
+    // than recording the first departure as final.
+    if (existing) {
+      await supabase
+        .from("attendance_entries")
+        .update({ clock_out: new Date().toISOString() })
+        .eq("id", existing.id);
+      return;
+    }
+    await supabase
+      .from("attendance_entries")
+      .insert({ profile_id: profileId, work_date: date, clock_out: new Date().toISOString() });
+  },
+};
