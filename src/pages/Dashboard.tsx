@@ -11,7 +11,6 @@ import { HRMDepartmentsStore } from "@/lib/hrmDepartmentsStore";
 import { ProjectStore } from "@/lib/projectStore";
 import { SupportStore } from "@/lib/supportStore";
 import { AuthStore } from "@/lib/authStore";
-import { CommunicationStore } from "@/lib/communicationStore";
 import { CrmTasksStore } from "@/lib/crmTasksStore";
 import { CrmDealsStore } from "@/lib/crmDealsStore";
 import { CrmLeadsStore } from "@/lib/crmLeadsStore";
@@ -169,21 +168,6 @@ const Dashboard = () => {
       }
     });
 
-    // Messages
-    CommunicationStore.getMessages().forEach(msg => {
-      if (msg.createdAt) {
-        activities.push({
-          id: `msg-${msg.id}`,
-          type: 'message',
-          title: `New message from ${msg.senderName || msg.senderId || 'Unknown'}`,
-          time: formatTime(msg.createdAt),
-          timestamp: new Date(msg.createdAt).getTime(),
-          icon: MessageCircle,
-          color: 'purple'
-        });
-      }
-    });
-
     // CRM Tasks
     CrmTasksStore.list().forEach(task => {
       if (task.createdAt) {
@@ -278,8 +262,8 @@ const Dashboard = () => {
   const dueSoonCount = liveStats.upcomingDeadlines.invoices.length;
 
   const quickActions = [
-    { label: "Analytics", icon: BarChart3, to: "/analytics" },
-    { label: "Communication", icon: MessageCircle, to: "/communication" },
+    { label: "Messenger", icon: MessageCircle, to: "/messenger" },
+    { label: "Support", icon: HeadphonesIcon, to: "/support" },
     { label: "Workflows", icon: Calendar, to: "/workflow" },
     { label: "Documents", icon: FileText, to: "/documents" },
     { label: "Invoices", icon: DollarSign, to: "/accounting/invoices" },

@@ -96,15 +96,12 @@ export const NAV_ITEMS: NavItem[] = [
   },
   {
     name: "Operations",
-    path: "/analytics",
+    path: "/workflow",
     icon: BarChart3,
     module: "dashboard",
     children: [
-      { name: "Analytics", path: "/analytics" },
-      { name: "High Priority", path: "/high-priority" },
       { name: "Workflow & Approvals", path: "/workflow" },
       { name: "Documents", path: "/documents" },
-      { name: "Communication", path: "/communication" },
     ],
   },
   {
@@ -172,13 +169,7 @@ export const NAV_ITEMS: NavItem[] = [
 /** Which permission module a route belongs to. */
 export function moduleForPath(path: string): ModuleKey | undefined {
   if (path === "/" || path.startsWith("/zoom")) return "dashboard";
-  if (
-    path.startsWith("/analytics") ||
-    path.startsWith("/high-priority") ||
-    path.startsWith("/workflow") ||
-    path.startsWith("/documents") ||
-    path.startsWith("/communication")
-  ) return "dashboard";
+  if (path.startsWith("/workflow") || path.startsWith("/documents")) return "dashboard";
   if (path.startsWith("/backup")) return "settings";
   if (path.startsWith("/hrm/employees")) return "hrm.employees";
   if (path.startsWith("/hrm/departments")) return "hrm.departments";

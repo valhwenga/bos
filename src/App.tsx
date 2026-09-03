@@ -88,12 +88,9 @@ import ForgotPassword from "./pages/auth/ForgotPassword";
 import ResetPassword from "./pages/auth/ResetPassword";
 import WhatsAppSettingsPage from "./pages/whatsapp/Settings";
 import WaConsole from "./pages/whatsapp/Console";
-import Analytics from "./pages/Analytics";
-import HighPriority from "./pages/HighPriority";
 import Settings from "./pages/Settings";
 import Workflow from "./pages/Workflow";
 import Documents from "./pages/Documents";
-import Communication from "./pages/Communication";
 
 const queryClient = new QueryClient();
 
@@ -465,10 +462,6 @@ const App = () => {
             {/* WhatsApp */}
             <Route path="whatsapp/settings" element={<AccessGuard module="whatsapp"><WhatsAppSettingsPage /></AccessGuard>} />
             <Route path="whatsapp" element={<AccessGuard module="whatsapp"><WaConsole /></AccessGuard>} />
-            {/* Analytics & Reporting */}
-            <Route path="analytics" element={<AccessGuard module="dashboard"><Analytics /></AccessGuard>} />
-            {/* High Priority Center */}
-            <Route path="high-priority" element={<AccessGuard module="dashboard"><HighPriority /></AccessGuard>} />
             {/* System Backup & Restore */}
             <Route path="backup" element={<AccessGuard module="settings"><BackupManagement /></AccessGuard>} />
             {/* Settings */}
@@ -477,8 +470,6 @@ const App = () => {
             <Route path="workflow" element={<AccessGuard module="dashboard"><Workflow /></AccessGuard>} />
             {/* Document Management */}
             <Route path="documents" element={<AccessGuard module="dashboard"><Documents /></AccessGuard>} />
-            {/* Communication & Collaboration */}
-            <Route path="communication" element={<AccessGuard module="dashboard"><Communication /></AccessGuard>} />
             <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>

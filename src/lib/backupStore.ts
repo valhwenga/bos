@@ -7,7 +7,6 @@ import { ProductsStore } from "./productsStore";
 import { SupportStore } from "./supportStore";
 import { ProjectStore } from "./projectStore";
 import { HRMDepartmentsStore } from "./hrmDepartmentsStore";
-import { CommunicationStore } from "./communicationStore";
 import { SecurityStore } from "./securityStore";
 import { CrmDealsStore } from "./crmDealsStore";
 import { CrmCustomersStore } from "./crmCustomersStore";
@@ -24,14 +23,12 @@ import { LeaveBalanceStore } from "./leaveBalanceStore";
 import { MessengerStore } from "./messengerStore";
 import { NotificationsStore } from "./notificationsStore";
 import { PayrollStore } from "./payrollStore";
-import { PriorityStore } from "./priorityStore";
 import { RecurringStore } from "./recurringStore";
 import { RolesStore } from "./rolesStore";
 import { SalesStore } from "./salesStore";
 import { UserStore } from "./userStore";
 import { WhatsAppStore } from "./whatsappStore";
 import { WorkflowStore } from "./workflowStore";
-import { AnalyticsStore } from "./analyticsStore";
 import { AuditLogStore } from "./auditLogStore";
 import { AuditStore } from "./auditStore";
 import { AuthStore } from "./authStore";
@@ -67,17 +64,6 @@ export type BackupData = {
   payroll: any[];
   leaveBalances: any[];
   employeeDocuments: any[];
-  // Communication
-  communication: {
-    messages: any[];
-    conversations: any[];
-    workspaces: any[];
-    meetings: any[];
-    calendars: any[];
-    notifications: any[];
-    directMessages: any[];
-    users: any[];
-  };
   // Security
   security: {
     users: any[];
@@ -98,13 +84,11 @@ export type BackupData = {
   expenses: any[];
   messenger: any[];
   notifications: any[];
-  priorities: any[];
   recurring: any[];
   roles: any[];
   sales: any[];
   whatsapp: any[];
   workflows: any[];
-  analytics: any[];
   auditLogs: any[];
   audits: any[];
   auth: any[];
@@ -153,10 +137,10 @@ export const BackupStore = {
       'company', 'invoices', 'quotes', 'payments', 'creditNotes',
       'users', 'customers', 'products', 'support', 'projects',
       'departments', 'employees', 'leaveRequests', 'performance',
-      'payroll', 'leaveBalances', 'employeeDocuments', 'communication',
+      'payroll', 'leaveBalances', 'employeeDocuments',
       'security', 'crm', 'documents', 'emails', 'expenses',
-      'messenger', 'notifications', 'priorities', 'recurring',
-      'roles', 'sales', 'whatsapp', 'workflows', 'analytics',
+      'messenger', 'notifications', 'recurring',
+      'roles', 'sales', 'whatsapp', 'workflows',
       'auditLogs', 'audits', 'auth', 'fullLocalStorage'
     ];
 
@@ -193,17 +177,6 @@ export const BackupStore = {
       // serialise. They are covered by the database and storage backups, not by
       // this export.
       employeeDocuments: [],
-      // Communication
-      communication: {
-        messages: CommunicationStore.getMessages(),
-        conversations: CommunicationStore.getConversations(),
-        workspaces: CommunicationStore.getWorkspaces(),
-        meetings: CommunicationStore.getMeetings(),
-        calendars: CommunicationStore.getCalendars(),
-        notifications: CommunicationStore.getNotifications(),
-        directMessages: CommunicationStore.getDirectMessages(),
-        users: CommunicationStore.getUsers()
-      },
       // Security
       security: {
         users: SecurityStore.list(),
@@ -224,13 +197,11 @@ export const BackupStore = {
       expenses: ExpenseStore.list(),
       messenger: [],
       notifications: [],
-      priorities: [],
       recurring: RecurringStore.list(),
       roles: RolesStore.list(),
       sales: SalesStore.list(),
       whatsapp: [],
       workflows: [],
-      analytics: [],
       auditLogs: [],
       audits: AuditLogStore.list(),
       auth: [],
