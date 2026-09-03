@@ -7,10 +7,8 @@ import {
   CreditCard,
   Headphones,
   Video,
-  MessageSquare,
   MessagesSquare,
   Mail,
-  BarChart3,
   Settings as SettingsIcon,
 } from "lucide-react";
 import { canAccess } from "@/lib/accessControl";
@@ -95,16 +93,6 @@ export const NAV_ITEMS: NavItem[] = [
     ],
   },
   {
-    name: "Operations",
-    path: "/workflow",
-    icon: BarChart3,
-    module: "dashboard",
-    children: [
-      { name: "Workflow & Approvals", path: "/workflow" },
-      { name: "Documents", path: "/documents" },
-    ],
-  },
-  {
     name: "Support",
     path: "/support",
     icon: Headphones,
@@ -127,16 +115,6 @@ export const NAV_ITEMS: NavItem[] = [
     ],
   },
   { name: "Messenger", path: "/messenger", icon: MessagesSquare, module: "messenger" },
-  {
-    name: "WhatsApp",
-    path: "/whatsapp",
-    icon: MessageSquare,
-    module: "whatsapp",
-    children: [
-      { name: "Console", path: "/whatsapp" },
-      { name: "Settings", path: "/whatsapp/settings" },
-    ],
-  },
   { name: "Products", path: "/products", icon: ShoppingCart, module: "inventory" },
   { name: "Point of Sale", path: "/pos", icon: CreditCard, module: "inventory" },
   { name: "Meetings", path: "/zoom", icon: Video, module: "dashboard" },
@@ -160,7 +138,6 @@ export const NAV_ITEMS: NavItem[] = [
     children: [
       { name: "Company", path: "/settings/company" },
       { name: "Email (SMTP)", path: "/settings/company/email" },
-      { name: "System", path: "/settings" },
       { name: "Backup & Restore", path: "/backup" },
     ],
   },
@@ -169,7 +146,6 @@ export const NAV_ITEMS: NavItem[] = [
 /** Which permission module a route belongs to. */
 export function moduleForPath(path: string): ModuleKey | undefined {
   if (path === "/" || path.startsWith("/zoom")) return "dashboard";
-  if (path.startsWith("/workflow") || path.startsWith("/documents")) return "dashboard";
   if (path.startsWith("/backup")) return "settings";
   if (path.startsWith("/hrm/employees")) return "hrm.employees";
   if (path.startsWith("/hrm/departments")) return "hrm.departments";
@@ -185,7 +161,6 @@ export function moduleForPath(path: string): ModuleKey | undefined {
   if (path.startsWith("/users") || path.startsWith("/settings")) return "settings";
   if (path.startsWith("/email")) return "email";
   if (path.startsWith("/messenger")) return "messenger";
-  if (path.startsWith("/whatsapp")) return "whatsapp";
   return undefined;
 }
 

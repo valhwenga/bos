@@ -1,18 +1,15 @@
 import { CompanySettingsStore } from "./companySettings";
 import { AccountingStore } from "./accountingStore";
 import { PaymentStore } from "./paymentStore";
-import { UsersStore } from "./usersStore";
 import { CustomersStore } from "./customersStore";
 import { ProductsStore } from "./productsStore";
 import { SupportStore } from "./supportStore";
 import { ProjectStore } from "./projectStore";
 import { HRMDepartmentsStore } from "./hrmDepartmentsStore";
-import { SecurityStore } from "./securityStore";
 import { CrmDealsStore } from "./crmDealsStore";
 import { CrmCustomersStore } from "./crmCustomersStore";
 import { CrmLeadsStore } from "./crmLeadsStore";
 import { CrmTasksStore } from "./crmTasksStore";
-import { DocumentStore } from "./documentStore";
 import { EmailStore } from "./emailStore";
 import { EmployeeDocumentsStore } from "./employeeDocumentsStore";
 import { ExpenseStore } from "./expenseStore";
@@ -27,8 +24,6 @@ import { RecurringStore } from "./recurringStore";
 import { RolesStore } from "./rolesStore";
 import { SalesStore } from "./salesStore";
 import { UserStore } from "./userStore";
-import { WhatsAppStore } from "./whatsappStore";
-import { WorkflowStore } from "./workflowStore";
 import { AuditLogStore } from "./auditLogStore";
 import { AuditStore } from "./auditStore";
 import { AuthStore } from "./authStore";
@@ -64,13 +59,6 @@ export type BackupData = {
   payroll: any[];
   leaveBalances: any[];
   employeeDocuments: any[];
-  // Security
-  security: {
-    users: any[];
-    session: any;
-    auditLogs: any[];
-    settings: any;
-  };
   // CRM
   crm: {
     deals: any[];
@@ -79,7 +67,6 @@ export type BackupData = {
     tasks: any[];
   };
   // Other
-  documents: any[];
   emails: any[];
   expenses: any[];
   messenger: any[];
@@ -87,8 +74,6 @@ export type BackupData = {
   recurring: any[];
   roles: any[];
   sales: any[];
-  whatsapp: any[];
-  workflows: any[];
   auditLogs: any[];
   audits: any[];
   auth: any[];
@@ -138,9 +123,9 @@ export const BackupStore = {
       'users', 'customers', 'products', 'support', 'projects',
       'departments', 'employees', 'leaveRequests', 'performance',
       'payroll', 'leaveBalances', 'employeeDocuments',
-      'security', 'crm', 'documents', 'emails', 'expenses',
+      'crm', 'emails', 'expenses',
       'messenger', 'notifications', 'recurring',
-      'roles', 'sales', 'whatsapp', 'workflows',
+      'roles', 'sales',
       'auditLogs', 'audits', 'auth', 'fullLocalStorage'
     ];
 
@@ -160,7 +145,8 @@ export const BackupStore = {
       payments: PaymentStore.list(),
       creditNotes: CreditNotesStore.list(),
       // Core Data
-      users: UsersStore.list(),
+      // Staff accounts are rows in Postgres now, covered by the database backup.
+      users: [],
       customers: CustomersStore.list(),
       products: ProductsStore.list(),
       // Projects & Support
@@ -177,13 +163,6 @@ export const BackupStore = {
       // serialise. They are covered by the database and storage backups, not by
       // this export.
       employeeDocuments: [],
-      // Security
-      security: {
-        users: SecurityStore.list(),
-        session: SecurityStore.getCurrentSession(),
-        auditLogs: AuditLogStore.list(),
-        settings: SecurityStore.getSettings()
-      },
       // CRM
       crm: {
         deals: CrmDealsStore.list(),
@@ -192,7 +171,6 @@ export const BackupStore = {
         tasks: CrmTasksStore.list()
       },
       // Other - skip stores without list method, handled by fullLocalStorage
-      documents: [],
       emails: [],
       expenses: ExpenseStore.list(),
       messenger: [],
@@ -200,8 +178,6 @@ export const BackupStore = {
       recurring: RecurringStore.list(),
       roles: RolesStore.list(),
       sales: SalesStore.list(),
-      whatsapp: [],
-      workflows: [],
       auditLogs: [],
       audits: AuditLogStore.list(),
       auth: [],

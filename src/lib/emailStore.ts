@@ -57,10 +57,11 @@ export const EmailStore = {
     const sent: MailMessage = { ...m, id, date, folder: "sent" } as MailMessage;
     this.upsert(sent);
     try {
-      // Notify internal recipients whose emails match
-      const { UsersStore } = await import("@/lib/usersStore");
+      // Notify internal recipients whose emails match. The directory is a
+      // server read now, so this awaits it rather than reading localStorage.
+      const { AuthStore } = await import("@/lib/authStore");
       const { notify } = await import("@/lib/notificationsStore");
-      const users = UsersStore.list();
+      const users = await AuthStore.listAccounts();
       const cc = (m.cc || []) as MailAddress[];
       const toEmails = [...(m.to || []), ...cc].map(a => a.email.toLowerCase());
       for (const u of users) {

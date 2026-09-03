@@ -9,7 +9,7 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { CrmLeadsStore, type Lead, type LeadStage } from "@/lib/crmLeadsStore";
-import { UsersStore } from "@/lib/usersStore";
+import { useAccounts, useStaffAccounts } from "@/lib/useAccounts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -38,7 +38,8 @@ const Leads = () => {
   const [list, setList] = useState(CrmLeadsStore.list());
   const [q, setQ] = useState("");
   const [stage, setStage] = useState<LeadStage | 'all'>('all');
-  const users = UsersStore.list();
+  const users = useAccounts();
+  const staff = useStaffAccounts();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<{ name: string; company: string; email: string; phone: string; address: string; source: 'website'|'referral'|'campaign'|'manual'; ownerId: string }>({ name: "", company: "", email: "", phone: "", address: "", source: 'manual', ownerId: users[0]?.id||"" });
 
@@ -190,7 +191,7 @@ const Leads = () => {
               <Select value={form.ownerId} onValueChange={(v)=> setForm({ ...form, ownerId: v })}>
                 <SelectTrigger><SelectValue placeholder="Assign owner" /></SelectTrigger>
                 <SelectContent>
-                  {users.map(u=> <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+                  {staff.map(u=> <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

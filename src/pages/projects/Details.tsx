@@ -15,10 +15,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ProjectStore, type Project, type Milestone, type ProjectFile } from "@/lib/projectStore";
 import { CustomersStore } from "@/lib/customersStore";
-import { Permissions } from "@/lib/permissions";
 import { AuthStore } from "@/lib/authStore";
 import { useAccounts } from "@/lib/useAccounts";
-import { getCurrentRole } from "@/lib/accessControl";
+import { getCurrentRole, canAccess } from "@/lib/accessControl";
 import { notify } from "@/lib/notificationsStore";
 import { UserStore } from "@/lib/userStore";
 
@@ -32,7 +31,10 @@ const Details: React.FC = () => {
   useCache(projectTypesCache);
   const { id } = useParams();
   const navigate = useNavigate();
-  const canEdit = Permissions.canEditProjects();
+  // The role's real project access, not the old localStorage `auth.role` key,
+  // which defaulted to "admin" and was never written — so this was always true.
+  const canEdit = canAccess("projects", "edit");
+  const accounts = useAccounts();
   const role = getCurrentRole();
   const acc = AuthStore.currentUser();
   const me = acc?.id || UserStore.get().id;
@@ -105,7 +107,6 @@ const Details: React.FC = () => {
 
   const types = ProjectStore.listTypes();
   const type = types.find(t => t.key === project.typeKey);
-  const accounts = useAccounts();
   const allowedAccounts = accounts.filter(a => {
     if (!type) return true;
     if (type.allowedUserIds && type.allowedUserIds.length > 0) return type.allowedUserIds.includes(a.id);

@@ -11,7 +11,7 @@ import { StatCard } from "@/components/ui/stat-card";
 import { CrmTasksStore, type CrmTask, type TaskPriority } from "@/lib/crmTasksStore";
 import { CrmLeadsStore } from "@/lib/crmLeadsStore";
 import { CrmDealsStore } from "@/lib/crmDealsStore";
-import { UsersStore } from "@/lib/usersStore";
+import { useAccounts, useStaffAccounts } from "@/lib/useAccounts";
 import { AuthStore } from "@/lib/authStore";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,7 +27,8 @@ const Tasks = () => {
   useCache(crmCustomersCache);
   useCache(crmTasksCache);
   const [list, setList] = useState(CrmTasksStore.list());
-  const users = UsersStore.list();
+  const users = useAccounts();
+  const staff = useStaffAccounts();
   const [q, setQ] = useState("");
   const [show, setShow] = useState<'all'|'open'|'completed'>('all');
   const [open, setOpen] = useState(false);
@@ -318,7 +319,7 @@ const Tasks = () => {
                 <Select value={assigneeId} onValueChange={setAssigneeId}>
                   <SelectTrigger><SelectValue placeholder="Select user" /></SelectTrigger>
                   <SelectContent>
-                    {users.map(u=> <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+                    {staff.map(u=> <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
                 <div className="flex justify-end">

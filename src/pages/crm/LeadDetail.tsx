@@ -9,7 +9,7 @@ import { leadUuid } from "@/lib/crmRepo";
 import { toast } from "@/components/ui/use-toast";
 import { useNavigate, useParams } from "react-router-dom";
 import { CrmLeadsStore, type Lead, type LeadActivity, type LeadAttachment, type LeadStage } from "@/lib/crmLeadsStore";
-import { UsersStore } from "@/lib/usersStore";
+import { useAccounts, useStaffAccounts } from "@/lib/useAccounts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -37,7 +37,8 @@ const LeadDetail = () => {
   const navigate = useNavigate();
   const [lead, setLead] = useState<Lead | undefined>(undefined);
   const [activity, setActivity] = useState("");
-  const users = UsersStore.list();
+  const users = useAccounts();
+  const staff = useStaffAccounts();
   const me = users[0]?.id;
 
   const refresh = useCallback(() => {
@@ -174,7 +175,7 @@ const LeadDetail = () => {
                 <SelectTrigger><SelectValue placeholder="Assign owner" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="unassigned">Unassigned</SelectItem>
-                  {users.map(u=> <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+                  {staff.map(u=> <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

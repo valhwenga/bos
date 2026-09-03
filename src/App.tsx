@@ -86,11 +86,6 @@ import TwoFactorChallenge from "./pages/auth/TwoFactorChallenge";
 import PendingApprovals from "./pages/auth/PendingApprovals";
 import ForgotPassword from "./pages/auth/ForgotPassword";
 import ResetPassword from "./pages/auth/ResetPassword";
-import WhatsAppSettingsPage from "./pages/whatsapp/Settings";
-import WaConsole from "./pages/whatsapp/Console";
-import Settings from "./pages/Settings";
-import Workflow from "./pages/Workflow";
-import Documents from "./pages/Documents";
 
 const queryClient = new QueryClient();
 
@@ -459,17 +454,8 @@ const App = () => {
             <Route path="email/sent" element={<AccessGuard module="email"><EmailSent /></AccessGuard>} />
             <Route path="email/compose" element={<AccessGuard module="email"><EmailCompose /></AccessGuard>} />
             <Route path="email/:id" element={<AccessGuard module="email"><EmailMessage /></AccessGuard>} />
-            {/* WhatsApp */}
-            <Route path="whatsapp/settings" element={<AccessGuard module="whatsapp"><WhatsAppSettingsPage /></AccessGuard>} />
-            <Route path="whatsapp" element={<AccessGuard module="whatsapp"><WaConsole /></AccessGuard>} />
             {/* System Backup & Restore */}
             <Route path="backup" element={<AccessGuard module="settings"><BackupManagement /></AccessGuard>} />
-            {/* Settings */}
-            <Route path="settings" element={<AccessGuard module="settings"><Settings /></AccessGuard>} />
-            {/* Workflow & Approvals */}
-            <Route path="workflow" element={<AccessGuard module="dashboard"><Workflow /></AccessGuard>} />
-            {/* Document Management */}
-            <Route path="documents" element={<AccessGuard module="dashboard"><Documents /></AccessGuard>} />
             <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>

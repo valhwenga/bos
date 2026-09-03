@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { SupportStore, type Ticket, type Attachment, type Comment } from "@/lib/supportStore";
 import { AuditLogStore } from "@/lib/auditLogStore";
 import { getCurrentRole, canAccess } from "@/lib/accessControl";
-import { UsersStore } from "@/lib/usersStore";
+import { useAccounts, useStaffAccounts } from "@/lib/useAccounts";
 import { AuthStore } from "@/lib/authStore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +37,8 @@ const TicketDetail = () => {
   const [rejectReason, setRejectReason] = useState("");
   const [cannedId, setCannedId] = useState<string>("");
   const canned = SupportStore.canned();
+  const users = useAccounts();
+  const staff = useStaffAccounts();
 
   const refresh = useCallback(() => {
     setT(id ? SupportStore.get(id) : undefined);
@@ -80,7 +82,6 @@ const TicketDetail = () => {
       toast({ title: `Status updated`, description: `Ticket moved to ${s.replace(/_/g,' ')}` });
       try {
         // Notify requester and assignee on status updates
-        const users = UsersStore.list();
         const requester = users.find(u => u.id === next.requester);
         if (requester) notify(requester.id, "ticket", `Ticket ${next.id} status: ${s.replace(/_/g,' ')}`, next.title, `/support/tickets/${next.id}`);
         if (next.assigneeId) notify(next.assigneeId, "ticket", `Ticket ${next.id} status: ${s.replace(/_/g,' ')}`, next.title, `/support/tickets/${next.id}`);
@@ -100,14 +101,12 @@ const TicketDetail = () => {
     } else if (action === "approve_closure") {
       toast({ title: "Ticket closed" });
       try {
-        const users = UsersStore.list();
         const requester = users.find(u => u.id === next.requester);
         if (requester) notify(requester.id, "ticket", `Ticket closed: ${next.title}`, undefined, `/support/tickets/${next.id}`);
       } catch { void 0; }
     } else if (action === "reject_closure") {
       toast({ title: "Closure rejected", description: details });
       try {
-        const users = UsersStore.list();
         const requester = users.find(u => u.id === next.requester);
         if (requester) notify(requester.id, "ticket", `Closure rejected: ${next.title}`, details, `/support/tickets/${next.id}`);
       } catch { void 0; }
@@ -237,7 +236,7 @@ const TicketDetail = () => {
                 <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="">Unassigned</SelectItem>
-                  {UsersStore.list().map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+                  {staff.map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
                 </SelectContent>
               </Select>
               <div className="flex justify-end">

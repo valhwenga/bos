@@ -16,8 +16,7 @@ export type ModuleKey =
   | "settings"
   | "crm"
   | "email"
-  | "messenger"
-  | "whatsapp";
+  | "messenger";
 
 export const Modules: { key: ModuleKey; label: string }[] = [
   { key: "dashboard", label: "Dashboard" },
@@ -35,7 +34,6 @@ export const Modules: { key: ModuleKey; label: string }[] = [
   { key: "settings", label: "Settings" },
   { key: "email", label: "Email" },
   { key: "messenger", label: "Messenger" },
-  { key: "whatsapp", label: "WhatsApp" },
 ];
 
 export type Role = {

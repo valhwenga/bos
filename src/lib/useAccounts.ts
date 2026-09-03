@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AuthStore, type Account } from "./authStore";
 
 /**
@@ -59,4 +59,22 @@ export function useAccounts(): Account[] {
   }, []);
 
   return accounts;
+}
+
+/**
+ * The colleagues you can actually give something to.
+ *
+ * `useAccounts` is the whole directory, which is right for resolving the name
+ * against an id already on a record — including a client portal login or
+ * somebody since deactivated, whose name still has to render on the ticket they
+ * raised. It is wrong for a picker: assigning a deal to a customer's portal
+ * account, or to a signup nobody has approved, gives the work to someone who
+ * cannot open it.
+ */
+export function useStaffAccounts(): Account[] {
+  const accounts = useAccounts();
+  return useMemo(
+    () => accounts.filter((a) => a.status === "active" && !a.clientId),
+    [accounts],
+  );
 }

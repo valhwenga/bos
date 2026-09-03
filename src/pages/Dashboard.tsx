@@ -6,7 +6,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { CompanySettingsStore } from "@/lib/companySettings";
 import { AccountingStore } from "@/lib/accountingStore";
 import { PaymentStore } from "@/lib/paymentStore";
-import { UsersStore } from "@/lib/usersStore";
+import { useAccounts } from "@/lib/useAccounts";
 import { HRMDepartmentsStore } from "@/lib/hrmDepartmentsStore";
 import { ProjectStore } from "@/lib/projectStore";
 import { SupportStore } from "@/lib/supportStore";
@@ -66,12 +66,12 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const dataVersion = useDataVersion();
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const users = useAccounts();
 
   // Calculate live stats
   const liveStats = useMemo(() => {
     const accounting = AccountingStore.listInvoices();
     const payments = PaymentStore.list();
-    const users = UsersStore.list();
     const departments = HRMDepartmentsStore.list();
     const projects = ProjectStore.listProjects();
     const support = SupportStore.list();
@@ -125,7 +125,9 @@ const Dashboard = () => {
       urgentTickets,
       upcomingDeadlines
     };
-  }, [dataVersion]);
+    // `users` is a server read that arrives after the first render, so the head
+    // count has to recompute when it lands.
+  }, [dataVersion, users]);
 
   // Get recent activities from all system stores
   const recentActivities = useMemo(() => {

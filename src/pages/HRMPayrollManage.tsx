@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PayrollStore, type PayrollEntry } from "@/lib/payrollStore";
-import { UsersStore } from "@/lib/usersStore";
+import { useAccounts } from "@/lib/useAccounts";
 import { HRMStore, type Employee } from "@/lib/hrmStore";
 import { CompanySettingsStore } from "@/lib/companySettings";
 import { generatePayslipPdf } from "@/lib/payslipPdf";
@@ -27,7 +27,7 @@ const HRMPayrollManage = () => {
   const [processingPayroll, setProcessingPayroll] = useState(false);
   
   const employees = HRMStore.list();
-  const users = UsersStore.list();
+  const users = useAccounts();
   const cs = CompanySettingsStore.get();
 
   const [form, setForm] = useState<Omit<PayrollEntry, 'id' | 'createdAt' | 'netSalary'>>({

@@ -8,7 +8,7 @@ import { useNavigate } from "react-router-dom";
 import { CalendarClock, CircleDollarSign, Plus, Target, Trophy } from "lucide-react";
 import { CrmDealsStore, type Deal, type DealStage } from "@/lib/crmDealsStore";
 import { CrmCustomersStore } from "@/lib/crmCustomersStore";
-import { UsersStore } from "@/lib/usersStore";
+import { useAccounts } from "@/lib/useAccounts";
 import { CompanySettingsStore } from "@/lib/companySettings";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
@@ -35,7 +35,7 @@ const DealsBoard = () => {
   const [deals, setDeals] = useState(CrmDealsStore.list());
   const [dragOver, setDragOver] = useState<DealStage | null>(null);
   const navigate = useNavigate();
-  const users = UsersStore.list();
+  const users = useAccounts();
   const customers = CrmCustomersStore.list();
   const currency = CompanySettingsStore.get().currencySymbol || "$";
 

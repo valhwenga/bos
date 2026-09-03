@@ -14,7 +14,6 @@ const K = { conversations: "im.conversations", messages: "im.messages" };
 const r = <T,>(k: string, f: T): T => { try { const v = localStorage.getItem(k); return v ? (JSON.parse(v) as T) : f; } catch { return f; } };
 const w = (k: string, v: unknown) => localStorage.setItem(k, JSON.stringify(v));
 import { notify } from "@/lib/notificationsStore";
-import { UsersStore } from "@/lib/usersStore";
 
 export const MessengerStore = {
   listConversations(): Conversation[] { return r<Conversation[]>(K.conversations, []); },
@@ -28,7 +27,12 @@ export const MessengerStore = {
     const c: Conversation = { id: `c_${Math.random().toString(36).slice(2,8)}`, isGroup, members: Array.from(new Set(members)), name, createdAt: new Date().toISOString(), unreadBy: {} };
     return this.upsertConversation(c);
   },
-  sendMessage(convId: string, authorId: string, body: string, attachments?: ChatAttachment[], replyToId?: string) {
+  /**
+   * `authorName` is passed in rather than looked up: the staff directory is a
+   * server read now, and this is called from a click handler that already has
+   * the name.
+   */
+  sendMessage(convId: string, authorId: string, body: string, attachments?: ChatAttachment[], replyToId?: string, authorName?: string) {
     const c = this.getConversation(convId); if(!c) throw new Error('conversation not found');
     const m: ChatMessage = { id: `m_${Math.random().toString(36).slice(2,8)}`, convId, authorId, body, ts: new Date().toISOString(), attachments, delivered: true, readBy: [authorId], replyToId };
     this.upsertMessage(m);
@@ -36,10 +40,9 @@ export const MessengerStore = {
     for (const uid of c.members) { if (uid !== authorId) next.unreadBy[uid] = (next.unreadBy[uid]||0) + 1; }
     this.upsertConversation(next);
     try {
-      const author = UsersStore.list().find(u => u.id===authorId);
       for (const uid of c.members) {
         if (uid === authorId) continue;
-        notify(uid, "message", author ? `New message from ${author.name}` : "New message", body.slice(0, 120), `/messenger/${convId}`);
+        notify(uid, "message", authorName ? `New message from ${authorName}` : "New message", body.slice(0, 120), `/messenger/${convId}`);
       }
     } catch { void 0; }
     return m;

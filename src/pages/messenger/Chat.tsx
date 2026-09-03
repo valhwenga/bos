@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { MessengerStore, type ChatMessage, type Conversation } from "@/lib/messengerStore";
-import { UsersStore } from "@/lib/usersStore";
+import { useAccounts } from "@/lib/useAccounts";
+import { AuthStore } from "@/lib/authStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Paperclip, Smile, X, Quote, Check, CheckCheck, Image as ImageIcon, File as FileIcon } from "lucide-react";
@@ -14,8 +15,8 @@ const Chat = () => {
   const [c, setC] = useState<Conversation | undefined>(undefined);
   const [msgs, setMsgs] = useState<ChatMessage[]>([]);
   const [text, setText] = useState("");
-  const users = UsersStore.list();
-  const me = users[0]?.id || "me";
+  const users = useAccounts();
+  const me = AuthStore.currentUser()?.id ?? "";
   const [typingUsers, setTypingUsers] = useState<Record<string, number>>({}); // userId -> last ts
   const [replyToId, setReplyToId] = useState<string | null>(null);
   const [files, setFiles] = useState<File[]>([]);
@@ -48,7 +49,7 @@ const Chat = () => {
   const send = async () => {
     if (!text.trim()) return;
     const atts = attachmentsPreview.length ? attachmentsPreview : undefined;
-    MessengerStore.sendMessage(c.id, me, text, atts, replyToId || undefined);
+    MessengerStore.sendMessage(c.id, me, text, atts, replyToId || undefined, users.find(u => u.id === me)?.name);
     setText("");
     setReplyToId(null);
     setFiles([]);

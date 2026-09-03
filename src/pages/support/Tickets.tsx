@@ -16,7 +16,7 @@ import { AuditLogStore } from "@/lib/auditLogStore";
 import { Textarea } from "@/components/ui/textarea";
 import { Link, useNavigate } from "react-router-dom";
 import { UserStore } from "@/lib/userStore";
-import { UsersStore } from "@/lib/usersStore";
+import { useAccounts, useStaffAccounts } from "@/lib/useAccounts";
 import { AuthStore } from "@/lib/authStore";
 
 const statusOptions: TicketStatus[] = ["open","in_progress","waiting","resolved","pending_approval","closed","rejected"];
@@ -28,6 +28,8 @@ const Tickets = () => {
   useCache(clientsCache);
   const acc = AuthStore.currentUser();
   const myClientId = acc?.clientId;
+  const users = useAccounts();
+  const staff = useStaffAccounts();
   const [list, setList] = useState<Ticket[]>(SupportStore.list().filter(t => (myClientId ? t.clientId === myClientId : true)));
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<TicketStatus | "all">("all");
@@ -175,7 +177,7 @@ const Tickets = () => {
                 <SelectItem value="all">All assignees</SelectItem>
                 <SelectItem value="unassigned">Unassigned</SelectItem>
                 <SelectItem value="me">Assigned to me</SelectItem>
-                {UsersStore.list().map((u) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+                {staff.map((u) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </>

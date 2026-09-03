@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { MessengerStore, type Conversation } from "@/lib/messengerStore";
-import { UsersStore } from "@/lib/usersStore";
+import { useAccounts, useStaffAccounts } from "@/lib/useAccounts";
+import { AuthStore } from "@/lib/authStore";
 import { PenSquare, Search, UsersRound, MessagesSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
@@ -19,7 +20,8 @@ const Conversations = () => {
   const [name, setName] = useState("");
   const [members, setMembers] = useState<string[]>([]);
   const [memberQ, setMemberQ] = useState("");
-  const users = UsersStore.list();
+  const users = useAccounts();
+  const staff = useStaffAccounts();
 
   const refresh = () => setList(MessengerStore.listConversations());
   useEffect(()=>{ refresh(); }, []);
@@ -31,7 +33,8 @@ const Conversations = () => {
 
   const startNew = (group: boolean) => { setIsGroup(group); setName(""); setMembers([]); setOpen(true); };
   const save = () => {
-    const me = UsersStore.list()[0]?.id || "me";
+    const me = AuthStore.currentUser()?.id;
+    if (!me) return;
     const mem = Array.from(new Set([...members, me]));
     MessengerStore.createConversation(isGroup, mem, isGroup ? name : undefined);
     setOpen(false); refresh();
@@ -39,7 +42,7 @@ const Conversations = () => {
 
   const navigate = useNavigate();
 
-  const me = users[0]?.id;
+  const me = AuthStore.currentUser()?.id;
 
   const titleFor = (c: Conversation) =>
     c.isGroup
@@ -178,7 +181,7 @@ const Conversations = () => {
               <label className="text-xs text-muted-foreground">Members</label>
               <TextInput placeholder="Search people..." value={memberQ} onChange={(e)=> setMemberQ(e.target.value)} />
               <div className="max-h-56 overflow-y-auto mt-2 border rounded">
-                {users
+                {staff
                   .filter(u => (u.name+" "+u.email).toLowerCase().includes(memberQ.toLowerCase()))
                   .map(u => {
                     const selected = members.includes(u.id);
@@ -194,7 +197,7 @@ const Conversations = () => {
                       </button>
                     );
                   })}
-                {users.filter(u => (u.name+" "+u.email).toLowerCase().includes(memberQ.toLowerCase())).length===0 && (
+                {staff.filter(u => (u.name+" "+u.email).toLowerCase().includes(memberQ.toLowerCase())).length===0 && (
                   <div className="px-3 py-2 text-xs text-muted-foreground">No matches</div>
                 )}
               </div>

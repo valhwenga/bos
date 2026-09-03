@@ -6,7 +6,7 @@ import { crmCustomersCache } from "@/lib/crmCustomersStore";
 import { crmTasksCache } from "@/lib/crmTasksStore";
 import { useNavigate, useParams } from "react-router-dom";
 import { CrmDealsStore, type Deal, type DealStage, type DealComment } from "@/lib/crmDealsStore";
-import { UsersStore } from "@/lib/usersStore";
+import { useAccounts, useStaffAccounts } from "@/lib/useAccounts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -29,7 +29,8 @@ const DealDetail = () => {
   useCache(crmTasksCache);
   const { id } = useParams();
   const nav = useNavigate();
-  const users = UsersStore.list();
+  const users = useAccounts();
+  const staff = useStaffAccounts();
   const me = users[0]?.id || "me";
   const [d, setD] = useState<Deal | undefined>(undefined);
   const [note, setNote] = useState("");
@@ -104,7 +105,7 @@ const DealDetail = () => {
                 <SelectTrigger><SelectValue placeholder="Assign" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="unassigned">Unassigned</SelectItem>
-                  {users.map(u=> <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+                  {staff.map(u=> <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
