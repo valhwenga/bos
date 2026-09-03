@@ -1,9 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
+import { useCache } from "@/lib/collectionCache";
+import { ticketsCache } from "@/lib/supportStore";
+import { clientsCache } from "@/lib/clientsStore";
 import { SupportStore, type Ticket } from "@/lib/supportStore";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 
 const Dashboard = () => {
+  // Rows come from Postgres via caches, so this re-renders when they arrive.
+  useCache(ticketsCache);
+  useCache(clientsCache);
   const [list, setList] = useState<Ticket[]>(SupportStore.list());
   const refresh = () => setList(SupportStore.list());
   useEffect(()=>{ refresh(); }, []);

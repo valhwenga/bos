@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCache } from "@/lib/collectionCache";
+import { ticketsCache } from "@/lib/supportStore";
+import { clientsCache } from "@/lib/clientsStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -11,6 +14,9 @@ import { AuthStore } from "@/lib/authStore";
 const priorityOptions: Priority[] = ["low","medium","high","urgent"];
 
 const ClientTickets = () => {
+  // Rows come from Postgres via caches, so this re-renders when they arrive.
+  useCache(ticketsCache);
+  useCache(clientsCache);
   const me = UserStore.get();
   const acc = AuthStore.currentUser();
   const myClientId = acc?.clientId;
@@ -38,7 +44,7 @@ const ClientTickets = () => {
     if (!form.title.trim()) return;
     const now = new Date().toISOString();
     const data = { ...form, clientId: myClientId, requester: me.id, createdAt: now, updatedAt: now };
-    SupportStore.upsert(data);
+    void SupportStore.upsert(data);
     setOpen(false);
     refresh();
   };

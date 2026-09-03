@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCache } from "@/lib/collectionCache";
+import { ticketsCache } from "@/lib/supportStore";
+import { clientsCache } from "@/lib/clientsStore";
 import { Button } from "@/components/ui/button";
 import { Plus, Filter, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -20,6 +23,9 @@ const statusOptions: TicketStatus[] = ["open","in_progress","waiting","resolved"
 const priorityOptions: Priority[] = ["low","medium","high","urgent"];
 
 const Tickets = () => {
+  // Rows come from Postgres via caches, so this re-renders when they arrive.
+  useCache(ticketsCache);
+  useCache(clientsCache);
   const acc = AuthStore.currentUser();
   const myClientId = acc?.clientId;
   const [list, setList] = useState<Ticket[]>(SupportStore.list().filter(t => (myClientId ? t.clientId === myClientId : true)));
@@ -58,7 +64,7 @@ const Tickets = () => {
     const slaHrs = s.slaTargets[form.priority];
     const due = new Date(now.getTime() + slaHrs*3600000).toISOString();
     const data = { ...form, clientId: myClientId, requester: me.id, createdAt: now.toISOString(), updatedAt: now.toISOString(), dueAt: due };
-    SupportStore.upsert(data);
+    void SupportStore.upsert(data);
     AuditLogStore.append({ id: crypto.randomUUID?.() || String(Date.now()), ts: new Date().toISOString(), actor: "user", entity: "ticket", entityId: data.id, action: "create", details: data.title });
     setOpen(false);
     refresh();

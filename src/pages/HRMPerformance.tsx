@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
+import { useCache } from "@/lib/collectionCache";
+import { performanceCache } from "@/lib/hrmPerformanceStore";
 import { Button } from "@/components/ui/button";
 import { Plus, TrendingUp, Target, Award, Calculator } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -72,6 +74,8 @@ const statusColors = {
 };
 
 const HRMPerformance = () => {
+  // Rows come from Postgres via a cache.
+  useCache(performanceCache);
   const [data, setData] = useState<Performance[]>(HRMPerformanceStore.list());
   const performanceStats = useMemo(() => buildPerformanceStats(data), [data]);
   const [open, setOpen] = useState(false);
@@ -115,7 +119,7 @@ const HRMPerformance = () => {
   };
   const add = () => {
     if (!form.employee.trim() || !form.employeeId.trim()) return;
-    HRMPerformanceStore.upsert(form);
+    void HRMPerformanceStore.upsert(form);
     setData(HRMPerformanceStore.list());
     setOpen(false);
     setForm({ id: `PR${Math.floor(Math.random()*900+100)}`, employee: "", employeeId: "", department: "", rating: 0, goalsCompleted: 0, totalGoals: 10, attendance: 0, productivity: 0, status: "Good", reviewDate: new Date().toISOString().slice(0,10) });

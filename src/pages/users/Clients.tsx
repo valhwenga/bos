@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { useCache } from "@/lib/collectionCache";
+import { ticketsCache } from "@/lib/supportStore";
+import { clientsCache } from "@/lib/clientsStore";
 import { Button } from "@/components/ui/button";
 import { Plus, Edit, Trash } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -15,6 +18,9 @@ import { useAccounts, invalidateAccounts } from "@/lib/useAccounts";
 import { RolesStore } from "@/lib/rolesStore";
 
 const Clients = () => {
+  // Rows come from Postgres via caches, so this re-renders when they arrive.
+  useCache(ticketsCache);
+  useCache(clientsCache);
   const [list, setList] = useState<Client[]>(ClientsStore.list());
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
@@ -56,11 +62,11 @@ const Clients = () => {
   const remove = (id: string) => {
     const ok = window.confirm("Delete this client? This action cannot be undone.");
     if (!ok) return;
-    ClientsStore.remove(id);
+    void ClientsStore.remove(id);
     AuditLogStore.append({ id: crypto.randomUUID?.() || String(Date.now()), ts: new Date().toISOString(), actor: "admin", entity: "client", entityId: id, action: "delete" });
     refresh();
   };
-  const save = () => { if (!form.name.trim()) return; const data = { ...form, createdAt: editing ? form.createdAt : new Date().toISOString() }; ClientsStore.upsert(data); AuditLogStore.append({ id: crypto.randomUUID?.() || String(Date.now()), ts: new Date().toISOString(), actor: "admin", entity: "client", entityId: data.id, action: editing ? "update" : "create" }); setOpen(false); refresh(); };
+  const save = () => { if (!form.name.trim()) return; const data = { ...form, createdAt: editing ? form.createdAt : new Date().toISOString() }; void ClientsStore.upsert(data); AuditLogStore.append({ id: crypto.randomUUID?.() || String(Date.now()), ts: new Date().toISOString(), actor: "admin", entity: "client", entityId: data.id, action: editing ? "update" : "create" }); setOpen(false); refresh(); };
 
   const generateTempPassword = () => {
     const p = Math.random().toString(36).slice(2, 8) + Math.random().toString(36).slice(2, 6);

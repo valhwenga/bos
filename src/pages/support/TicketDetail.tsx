@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCache } from "@/lib/collectionCache";
+import { ticketsCache } from "@/lib/supportStore";
+import { clientsCache } from "@/lib/clientsStore";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +25,9 @@ function toDataUrl(file: File): Promise<Attachment> {
 }
 
 const TicketDetail = () => {
+  // Rows come from Postgres via caches, so this re-renders when they arrive.
+  useCache(ticketsCache);
+  useCache(clientsCache);
   const { id } = useParams();
   const navigate = useNavigate();
   const [t, setT] = useState<Ticket | undefined>(undefined);
@@ -66,7 +72,7 @@ const TicketDetail = () => {
   );
 
   const saveTicket = (next: Ticket, action: string, details?: string) => {
-    SupportStore.upsert({ ...next, updatedAt: new Date().toISOString() });
+    void SupportStore.upsert({ ...next, updatedAt: new Date().toISOString() });
     AuditLogStore.append({ id: crypto.randomUUID?.() || String(Date.now()), ts: new Date().toISOString(), actor: "user", entity: "ticket", entityId: next.id, action: "update", details: details || action });
     refresh();
     if (action.startsWith("status:")) {

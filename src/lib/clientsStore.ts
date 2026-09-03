@@ -1,3 +1,10 @@
+/**
+ * Clients. Rows in Postgres now; a client portal login points at one of these.
+ */
+
+import { createCache } from "./collectionCache";
+import { ClientRepo } from "./supportRepo";
+
 export type ClientStatus = "active" | "inactive";
 
 export type Client = {
@@ -10,15 +17,23 @@ export type Client = {
   createdAt: string; // ISO
 };
 
-const K = { clients: "user.clients" };
-const r = <T,>(k: string, f: T): T => { try { const v = localStorage.getItem(k); return v ? (JSON.parse(v) as T) : f; } catch { return f; } };
-const w = (k: string, v: unknown) => localStorage.setItem(k, JSON.stringify(v));
-
-const SEED: Client[] = [];
+export const clientsCache = createCache<Client>(() => ClientRepo.list());
 
 export const ClientsStore = {
-  list(): Client[] { return r<Client[]>(K.clients, SEED); },
-  upsert(c: Client) { const all = this.list(); const i = all.findIndex(x=> x.id===c.id); if(i>=0) all[i]=c; else all.push(c); w(K.clients, all); return c; },
-  remove(id: string) { const all = this.list().filter(x=> x.id!==id); w(K.clients, all); },
-  get(id: string) { return this.list().find(x=> x.id===id); }
+  list(): Client[] {
+    return clientsCache.list();
+  },
+  load(): Promise<Client[]> {
+    return clientsCache.ensureLoaded();
+  },
+  get(id: string) {
+    return this.list().find((c) => c.id === id);
+  },
+  async upsert(c: Client): Promise<Client> {
+    await clientsCache.mutate(() => ClientRepo.upsert(c));
+    return c;
+  },
+  async remove(id: string): Promise<void> {
+    await clientsCache.mutate(() => ClientRepo.remove(id));
+  },
 };
