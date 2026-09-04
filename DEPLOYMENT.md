@@ -222,13 +222,18 @@ them:
   that role out of the app until they enrol, which is the intent — say so before
   switching it on.
 
-- **Workflow, Documents, Analytics and the Support dashboard were restyled but
-  never audited.** Expect controls that look functional and are not; that
-  pattern was found repeatedly everywhere else in the codebase.
-- **The backup export no longer covers everything.** It serialises what the app
-  holds in the browser, and most data is in Postgres now. Rely on the database
-  and storage backups (step 11), not on this button.
+- **There is no restore button, by design.** Settings → Export data downloads a
+  copy of the records to keep off the system; it is not restorable. Restoring
+  is a Postgres restore or point-in-time recovery on the Supabase project
+  (step 12). The old "Backup & Restore" panel kept its snapshots in
+  localStorage — inside the thing it was backing up, doubling in size each
+  time — and its import silently did nothing while reporting success.
+- **Email has no inbox.** The system sends; it does not receive. Receiving
+  needs an inbound webhook or IMAP polling, and neither is built.
 - **"System lockdown" ends only the current session.** Revoking everyone else's
   needs an admin API call the browser cannot make.
-- **132 lint errors**, mostly `no-explicit-any`. Not user-visible, but they are
+- **108 lint errors**, mostly `no-explicit-any`. Not user-visible, but they are
   where type errors hide.
+- **Typecheck with `npx tsc -p tsconfig.app.json --noEmit`.** The bare
+  `npx tsc --noEmit` compiles nothing: the root config has `"files": []` and
+  only project references, so it always passes.

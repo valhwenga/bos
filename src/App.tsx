@@ -58,7 +58,7 @@ import MessengerConversations from "./pages/messenger/Conversations";
 import MessengerChat from "./pages/messenger/Chat";
 import InvoicePrint from "./pages/accounting/InvoicePrint";
 import QuotationPrint from "./pages/accounting/QuotationPrint";
-import BackupManagement from "./pages/BackupManagement";
+import DataExport from "./pages/DataExport";
 import CrmLeads from "./pages/crm/Leads";
 import CrmLeadDetail from "./pages/crm/LeadDetail";
 import CrmCustomers from "./pages/crm/Customers";
@@ -73,6 +73,7 @@ import { notify, subscribeToNotifications } from "./lib/notificationsStore";
 import { RecurringStore } from "./lib/recurringStore";
 import { AccountingStore } from "./lib/accountingStore";
 import { EmailStore } from "./lib/emailStore";
+import { clearLegacyBackups } from "./lib/dataExport";
 import { Invoice } from "./lib/accountingStore";
 import { CompanySettingsStore } from "./lib/companySettings";
 import { allocateNumber } from "./lib/documentNumbers";
@@ -104,6 +105,9 @@ const App = () => {
     void UserStore.clockIn();
     // Clear any SMTP password a previous version left in this browser.
     try { EmailStore.clearLegacyLocalMail(); } catch { void 0; }
+    // The old backup panel stored snapshots inside localStorage, each one
+    // containing the previous, so they doubled every time. Reclaim the quota.
+    clearLegacyBackups();
     const onBeforeUnload = () => {
       void UserStore.clockOut().catch(() => undefined);
     };
@@ -473,8 +477,9 @@ const App = () => {
             <Route path="email/sent" element={<AccessGuard module="email"><EmailSent /></AccessGuard>} />
             <Route path="email/compose" element={<AccessGuard module="email"><EmailCompose /></AccessGuard>} />
             <Route path="email/:id" element={<AccessGuard module="email"><EmailMessage /></AccessGuard>} />
-            {/* System Backup & Restore */}
-            <Route path="backup" element={<AccessGuard module="settings"><BackupManagement /></AccessGuard>} />
+            <Route path="settings/export" element={<AccessGuard module="settings"><DataExport /></AccessGuard>} />
+            {/* The old Backup & Restore address, kept so bookmarks still land. */}
+            <Route path="backup" element={<Navigate to="/settings/export" replace />} />
             <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>

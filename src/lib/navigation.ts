@@ -138,7 +138,7 @@ export const NAV_ITEMS: NavItem[] = [
     children: [
       { name: "Company", path: "/settings/company" },
       { name: "Email (SMTP)", path: "/settings/company/email" },
-      { name: "Backup & Restore", path: "/backup" },
+      { name: "Export data", path: "/settings/export" },
     ],
   },
 ];
@@ -146,7 +146,7 @@ export const NAV_ITEMS: NavItem[] = [
 /** Which permission module a route belongs to. */
 export function moduleForPath(path: string): ModuleKey | undefined {
   if (path === "/" || path.startsWith("/zoom")) return "dashboard";
-  if (path.startsWith("/backup")) return "settings";
+
   if (path.startsWith("/hrm/employees")) return "hrm.employees";
   if (path.startsWith("/hrm/departments")) return "hrm.departments";
   if (path.startsWith("/hrm/attendance")) return "hrm.attendance";
