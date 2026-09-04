@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { UserCheck } from "lucide-react";
 import { AuthStore, type PendingSignup } from "@/lib/authStore";
-import { RolesStore } from "@/lib/rolesStore";
+import { useCache } from "@/lib/collectionCache";
+import { RolesStore, rolesCache } from "@/lib/rolesStore";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DataTable, type Column } from "@/components/ui/data-table";
@@ -12,6 +13,7 @@ type PendingRequest = PendingSignup;
 
 const PendingApprovals: React.FC = () => {
   const [pending, setPending] = useState<PendingRequest[]>([]);
+  useCache(rolesCache);
   const roles = RolesStore.list();
 
   // The list is a server read now, so it loads after mount rather than being

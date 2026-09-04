@@ -15,7 +15,7 @@ import { AuditLogStore } from "@/lib/auditLogStore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AuthStore, type Account } from "@/lib/authStore";
 import { useAccounts, invalidateAccounts } from "@/lib/useAccounts";
-import { RolesStore } from "@/lib/rolesStore";
+import { RolesStore, rolesCache } from "@/lib/rolesStore";
 
 const Clients = () => {
   // Rows come from Postgres via caches, so this re-renders when they arrive.
@@ -38,6 +38,7 @@ const Clients = () => {
   const refresh = () => setList(ClientsStore.list());
   useEffect(()=>{ refresh(); }, []);
 
+  useCache(rolesCache);
   const roles = RolesStore.list();
   const externalRoles = roles.filter(r => r.level === "External");
 

@@ -1,4 +1,4 @@
-import { Modules, type AccessLevel, type ModuleKey, type Role } from "./rolesStore";
+import { Modules, type AccessLevel, type ModuleKey, type Role } from "./modules";
 import { getSession } from "./session";
 
 const ACCESS_ORDER = { none: 0, view: 1, edit: 2, full: 3 } as const;

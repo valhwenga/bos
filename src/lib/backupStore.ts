@@ -21,7 +21,6 @@ import { MessengerStore } from "./messengerStore";
 import { NotificationsStore } from "./notificationsStore";
 import { PayrollStore } from "./payrollStore";
 import { RecurringStore } from "./recurringStore";
-import { RolesStore } from "./rolesStore";
 import { SalesStore } from "./salesStore";
 import { UserStore } from "./userStore";
 import { AuditLogStore } from "./auditLogStore";
@@ -176,7 +175,9 @@ export const BackupStore = {
       messenger: [],
       notifications: [],
       recurring: RecurringStore.list(),
-      roles: RolesStore.list(),
+      // Roles and their access matrix are rows in Postgres now, covered by
+      // the database backup.
+      roles: [],
       sales: SalesStore.list(),
       auditLogs: [],
       audits: AuditLogStore.list(),

@@ -6,7 +6,8 @@ import { AuthStore } from "@/lib/authStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Paperclip, Smile, X, Quote, Check, CheckCheck, Image as ImageIcon, File as FileIcon } from "lucide-react";
-import { RolesStore } from "@/lib/rolesStore";
+import { useCache } from "@/lib/collectionCache";
+import { RolesStore, rolesCache } from "@/lib/rolesStore";
 import { HRMStore } from "@/lib/hrmStore";
 
 const Chat = () => {
@@ -15,6 +16,7 @@ const Chat = () => {
   const [c, setC] = useState<Conversation | undefined>(undefined);
   const [msgs, setMsgs] = useState<ChatMessage[]>([]);
   const [text, setText] = useState("");
+  useCache(rolesCache);
   const users = useAccounts();
   const me = AuthStore.currentUser()?.id ?? "";
   const [typingUsers, setTypingUsers] = useState<Record<string, number>>({}); // userId -> last ts
@@ -62,7 +64,7 @@ const Chat = () => {
   const getUserMeta = (userId: string) => {
     const u = users.find(x => x.id === userId);
     if (!u) return "Unknown";
-    const role = RolesStore.get(u.roleId)?.name;
+    const role = u.roleId ? RolesStore.get(u.roleId)?.name : undefined;
     const emp = u.email ? HRMStore.list().find(e => (e.email||'').toLowerCase() === u.email.toLowerCase()) : undefined;
     const dept = emp?.department;
     const desig = emp?.designation;

@@ -22,7 +22,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
-import { RolesStore } from "@/lib/rolesStore";
+import { useCache } from "@/lib/collectionCache";
+import { RolesStore, rolesCache } from "@/lib/rolesStore";
 import { AuthStore, type Account } from "@/lib/authStore";
 import { useAccounts, invalidateAccounts } from "@/lib/useAccounts";
 import { AuditLogStore } from "@/lib/auditLogStore";
@@ -62,6 +63,7 @@ const ManageUsers = () => {
   const [roleId, setRoleId] = useState("");
   const [status, setStatus] = useState<Account["status"]>("active");
 
+  useCache(rolesCache);
   const roles = RolesStore.list();
   const roleMap = useMemo(() => Object.fromEntries(roles.map((r) => [r.id, r])), [roles]);
 
