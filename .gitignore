@@ -37,3 +37,7 @@ temp_style.txt
 
 # Local function secrets; the deployed ones are set with `supabase secrets set`.
 supabase/functions/.env
+
+# Local-only scripts. These hold credentials for the Docker database and must
+# never be committed — this repository is public.
+scripts/*.local.sh
