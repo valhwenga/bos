@@ -209,6 +209,46 @@ duplicates. The local copy is renamed, not deleted.
 Supabase takes daily backups on paid plans. Before trusting it, do one restore
 into a scratch project. A backup you have never restored is a hypothesis.
 
+### 13. Receiving email (optional)
+
+Sending works with SMTP alone. Receiving needs a provider to take delivery for
+your domain and post each message to the `receive-email` function.
+
+1. Deploy the function. It is the one endpoint that does not require a signed-in
+   caller, because a mail provider has no session:
+
+   ```
+   supabase functions deploy receive-email --no-verify-jwt
+   ```
+
+2. Invent a long random secret and set it. This is the only thing standing
+   between your inbox and anyone who learns the URL, so treat it like a
+   password:
+
+   ```
+   supabase secrets set INBOUND_EMAIL_SECRET="$(openssl rand -hex 32)"
+   ```
+
+3. Point a provider at it. The URL is
+   `https://<project>.supabase.co/functions/v1/receive-email`, and the secret
+   goes in an `x-inbound-secret` header, or as `?secret=…` if the provider
+   cannot set headers.
+
+   - **SendGrid** — Inbound Parse, pointed at a subdomain such as
+     `mail.yourcompany.co.za`, with an MX record for it.
+   - **Mailgun** — a Route with a `forward()` action.
+   - **Postmark** — an inbound stream's webhook.
+
+   All three post a format the function reads.
+
+4. Send a test message to the address and watch it appear in Email → Inbox.
+
+The function stores only the plain text part of each message, records what the
+provider says about SPF and DKIM, and the app shows a warning on anything that
+fails those checks. Do not remove that warning: an email claiming to be your own
+accounts address, asking for bank details to be changed, is the most common
+invoice fraud there is, and the SPF result is what distinguishes it.
+
 ---
 
 ## Known gaps at launch
@@ -228,8 +268,8 @@ them:
   (step 12). The old "Backup & Restore" panel kept its snapshots in
   localStorage — inside the thing it was backing up, doubling in size each
   time — and its import silently did nothing while reporting success.
-- **Email has no inbox.** The system sends; it does not receive. Receiving
-  needs an inbound webhook or IMAP polling, and neither is built.
+- **Inbound email needs a provider and a domain.** Until you do step 13 the
+  inbox is empty and says so; sending works regardless.
 - **"System lockdown" ends only the current session.** Revoking everyone else's
   needs an admin API call the browser cannot make.
 - **108 lint errors**, mostly `no-explicit-any`. Not user-visible, but they are

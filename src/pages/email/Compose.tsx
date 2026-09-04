@@ -5,7 +5,7 @@ import { EmailStore, sentMailCache, type MailAddress, type MailAttachment } from
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 function toDataUrl(file: File): Promise<MailAttachment> {
   return new Promise((resolve) => {
@@ -16,9 +16,12 @@ function toDataUrl(file: File): Promise<MailAttachment> {
 }
 
 const Compose = () => {
-  const [to, setTo] = useState("");
-  const [subject, setSubject] = useState("");
-  const [body, setBody] = useState("");
+  // Pre-filled when replying from the inbox. Read once as the initial state
+  // rather than synced, so typing is not fighting the query string.
+  const [params] = useSearchParams();
+  const [to, setTo] = useState(() => params.get("to") ?? "");
+  const [subject, setSubject] = useState(() => params.get("subject") ?? "");
+  const [body, setBody] = useState(() => params.get("body") ?? "");
   const [attachments, setAttachments] = useState<MailAttachment[]>([]);
   const [sending, setSending] = useState(false);
   const navigate = useNavigate();

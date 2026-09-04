@@ -105,10 +105,11 @@ export const NAV_ITEMS: NavItem[] = [
   },
   {
     name: "Email",
-    path: "/email/sent",
+    path: "/email/inbox",
     icon: Mail,
     module: "email",
     children: [
+      { name: "Inbox", path: "/email/inbox" },
       { name: "Sent", path: "/email/sent" },
       { name: "Compose", path: "/email/compose" },
     ],

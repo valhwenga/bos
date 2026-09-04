@@ -434,3 +434,10 @@ enabled = true
 # declarative_schema_path = "./database"
 # JSON string passed through to pg-delta SQL formatting.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":80,\"commaStyle\":\"trailing\"}"
+
+# The mail provider posting inbound email has no Supabase session, so this one
+# endpoint cannot require a JWT. It authenticates the caller with a shared
+# secret instead — see receive-email/index.ts. Every other function keeps the
+# default and is reachable only by a signed-in user.
+[functions.receive-email]
+verify_jwt = false

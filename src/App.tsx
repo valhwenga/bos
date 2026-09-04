@@ -51,6 +51,8 @@ import SupportSettings from "./pages/support/Settings";
 import SupportDashboard from "./pages/support/Dashboard";
 import ClientPortalSupport from "./pages/portal/support/ClientTickets";
 import EmailSent from "./pages/email/Sent";
+import EmailInbox from "./pages/email/Inbox";
+import EmailInboundMessage from "./pages/email/InboundMessage";
 import EmailCompose from "./pages/email/Compose";
 import EmailMessage from "./pages/email/Message";
 import EmailSettings from "./pages/settings/EmailSettings";
@@ -472,8 +474,9 @@ const App = () => {
             <Route path="zoom" element={<AccessGuard module="dashboard"><Placeholder /></AccessGuard>} />
             <Route path="messenger" element={<AccessGuard module="messenger"><MessengerConversations /></AccessGuard>} />
             <Route path="messenger/:id" element={<AccessGuard module="messenger"><MessengerChat /></AccessGuard>} />
-            {/* The inbox is gone: nothing could ever arrive in it. */}
-            <Route path="email" element={<Navigate to="/email/sent" replace />} />
+            <Route path="email" element={<Navigate to="/email/inbox" replace />} />
+            <Route path="email/inbox" element={<AccessGuard module="email"><EmailInbox /></AccessGuard>} />
+            <Route path="email/inbox/:id" element={<AccessGuard module="email"><EmailInboundMessage /></AccessGuard>} />
             <Route path="email/sent" element={<AccessGuard module="email"><EmailSent /></AccessGuard>} />
             <Route path="email/compose" element={<AccessGuard module="email"><EmailCompose /></AccessGuard>} />
             <Route path="email/:id" element={<AccessGuard module="email"><EmailMessage /></AccessGuard>} />
