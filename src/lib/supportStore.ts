@@ -20,10 +20,15 @@ export type Comment = { id: string; author: string; ts: string; message: string;
 
 export type Ticket = {
   id: string;
+  /** Short public reference, e.g. T-00042. Goes in the subject of ticket mail
+   *  so a customer's reply threads onto the same ticket. */
+  reference?: string;
   title: string;
   description: string;
   clientId?: string;
   requester: string; // user id or email
+  /** Set when the ticket arrived by email, so a reply can go back out. */
+  requesterEmail?: string;
   departmentId?: string;
   assigneeId?: string;
   category?: string;

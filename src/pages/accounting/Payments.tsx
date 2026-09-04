@@ -19,6 +19,9 @@ import { AccountingStore, Invoice, Quotation } from "@/lib/accountingStore";
 import { CompanySettingsStore } from "@/lib/companySettings";
 import { toast } from "@/components/ui/use-toast";
 
+/** Radix reserves "" to mean "no selection", so a sentinel is needed instead. */
+const NONE = "__none__";
+
 const Payments: React.FC = () => {
   const cs = CompanySettingsStore.get();
   // Rows come from Postgres via a cache, so this re-renders when they arrive.
@@ -309,12 +312,12 @@ const Payments: React.FC = () => {
             
             <div className="space-y-2">
               <label className="text-sm font-medium">Apply to Invoice</label>
-              <Select value={targetInvoiceId} onValueChange={(value) => { setTargetInvoiceId(value); setTargetQuoteId(""); }}>
+              <Select value={targetInvoiceId || NONE} onValueChange={(value) => { setTargetInvoiceId(value === NONE ? "" : value); setTargetQuoteId(""); }}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select invoice (optional)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">None</SelectItem>
+                  <SelectItem value={NONE}>None</SelectItem>
                   {AccountingStore.listInvoices()
                     .filter(inv => inv.customer.id === selectedPayment?.customerId)
                     .map(inv => (
@@ -328,12 +331,12 @@ const Payments: React.FC = () => {
             
             <div className="space-y-2">
               <label className="text-sm font-medium">Apply to Quote</label>
-              <Select value={targetQuoteId} onValueChange={(value) => { setTargetQuoteId(value); setTargetInvoiceId(""); }}>
+              <Select value={targetQuoteId || NONE} onValueChange={(value) => { setTargetQuoteId(value === NONE ? "" : value); setTargetInvoiceId(""); }}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select quote (optional)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">None</SelectItem>
+                  <SelectItem value={NONE}>None</SelectItem>
                   {AccountingStore.listQuotes()
                     .filter(q => q.status !== "converted" && q.customer.id === selectedPayment?.customerId)
                     .map(q => (

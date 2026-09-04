@@ -42,7 +42,7 @@ async function uuidFor(table: string, id?: string): Promise<string | null> {
 // ---------------------------------------------------------------------------
 
 const TICKET_COLUMNS =
-  "id, legacy_id, title, description, client_id, requester, department_id, assignee_id, category, priority, status, first_response_at, resolved_at, due_at, comments, closure_request, approval, created_at, updated_at";
+  "id, legacy_id, reference, title, description, client_id, requester, requester_email, department_id, assignee_id, category, priority, status, first_response_at, resolved_at, due_at, comments, closure_request, approval, created_at, updated_at";
 
 export const TicketRepo = {
   async list(): Promise<Ticket[]> {
@@ -55,10 +55,12 @@ export const TicketRepo = {
 
     return (data ?? []).map((row) => ({
       id: appId(row as { id: string; legacy_id: string | null }),
+      reference: (row.reference as string) ?? undefined,
       title: row.title as string,
       description: (row.description as string) ?? "",
       clientId: row.client_id ? clientIds.get(row.client_id as string) ?? (row.client_id as string) : undefined,
       requester: (row.requester as string) ?? "",
+      requesterEmail: (row.requester_email as string) ?? undefined,
       departmentId: row.department_id
         ? departmentIds.get(row.department_id as string) ?? (row.department_id as string)
         : undefined,

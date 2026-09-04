@@ -23,9 +23,14 @@
  * It writes with the service key. A mail provider has no session, and the
  * alternative — a table the browser could insert into — would let any
  * signed-in user forge an email from anyone.
+ *
+ * Some addresses do more than land in the inbox. `inbound_routes` says which:
+ * mail to a `ticket` address opens a support ticket, and a reply to one becomes
+ * a comment on it rather than a second ticket.
  */
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { smtpConfig, sendMail } from "../_shared/smtp.ts";
 
 const MAX_BODY_BYTES = 1_000_000;
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
@@ -78,6 +83,19 @@ function pick(source: Record<string, string>, ...names: string[]): string {
     if (found && source[found]) return source[found];
   }
   return "";
+}
+
+/**
+ * The ticket a message is a reply to, if any.
+ *
+ * Read from the subject rather than from In-Reply-To. Threading headers are
+ * dropped or rewritten by enough mail clients that relying on them means a
+ * customer's reply silently opening a duplicate ticket, which is worse than the
+ * mild ugliness of a reference in the subject line.
+ */
+function ticketReferenceIn(subject: string): string | null {
+  const found = subject.match(/\bT-\d{5,}\b/i);
+  return found ? found[0].toUpperCase() : null;
 }
 
 type Incoming = {
@@ -242,5 +260,164 @@ Deno.serve(async (req) => {
     stored.push(safeName);
   }
 
-  return json({ received: true, id: emailId, attachments: stored.length, truncated });
+  // ---------------------------------------------------------------------
+  // Routing
+  //
+  // A failure here must not fail the delivery: the mail is filed, and a
+  // provider told the message was rejected redelivers it forever.
+  // ---------------------------------------------------------------------
+  let ticketOutcome: Record<string, unknown> = { routed: "inbox" };
+  try {
+    ticketOutcome = await route(supabase, record, emailId, stored);
+  } catch (err) {
+    ticketOutcome = { routed: "inbox", routingError: String(err) };
+  }
+
+  return json({ received: true, id: emailId, attachments: stored.length, truncated, ...ticketOutcome });
 });
+
+/**
+ * Turns mail to a routed address into a ticket, or into a comment on the ticket
+ * it is replying to.
+ */
+async function route(
+  supabase: ReturnType<typeof createClient>,
+  record: Record<string, unknown>,
+  emailId: string,
+  attachmentNames: string[],
+): Promise<Record<string, unknown>> {
+  const recipients = (record.to_addresses as string[]) ?? [];
+  const cc = (record.cc_addresses as string[]) ?? [];
+  const all = [...recipients, ...cc];
+  if (all.length === 0) return { routed: "inbox" };
+
+  const { data: routes } = await supabase
+    .from("inbound_routes")
+    .select("address, action, category, priority")
+    .eq("action", "ticket")
+    .eq("active", true)
+    .in("address", all);
+
+  const match = routes?.[0];
+  if (!match) return { routed: "inbox" };
+
+  const subject = (record.subject as string) ?? "";
+  const from = record.from_address as string;
+  const body = (record.body as string) ?? "";
+  const attachmentNote = attachmentNames.length
+    ? `\n\n[Attached: ${attachmentNames.join(", ")} — see the original email.]`
+    : "";
+
+  // A reply to an existing ticket becomes a comment on it.
+  const reference = ticketReferenceIn(subject);
+  if (reference) {
+    const { data: existing } = await supabase
+      .from("tickets")
+      .select("id, comments, status")
+      .eq("reference", reference)
+      .maybeSingle();
+
+    if (existing) {
+      const comments = Array.isArray(existing.comments) ? existing.comments : [];
+      comments.push({
+        id: crypto.randomUUID(),
+        author: from,
+        ts: new Date().toISOString(),
+        message: body + attachmentNote,
+      });
+      // A reply to something already resolved reopens it. Somebody writing back
+      // is the clearest signal there is that it was not finished.
+      const status = existing.status === "closed" || existing.status === "resolved"
+        ? "open"
+        : existing.status;
+      await supabase
+        .from("tickets")
+        .update({ comments, status, updated_at: new Date().toISOString() })
+        .eq("id", existing.id);
+      return { routed: "ticket-comment", ticket: reference };
+    }
+  }
+
+  // Otherwise a new ticket. Linked to a client if the sender is a known one,
+  // so their history is in one place.
+  const { data: client } = await supabase
+    .from("clients")
+    .select("id")
+    .ilike("email", from)
+    .maybeSingle();
+
+  const { data: settings } = await supabase
+    .from("support_settings")
+    .select("sla_low, sla_medium, sla_high, sla_urgent")
+    .eq("id", true)
+    .maybeSingle();
+
+  const priority = (match.priority as string) ?? "medium";
+  const slaHours = Number(
+    (settings as Record<string, unknown> | null)?.[`sla_${priority}`] ?? 48,
+  );
+
+  const { data: ticket, error } = await supabase
+    .from("tickets")
+    .insert({
+      title: subject || "(no subject)",
+      description: body + attachmentNote,
+      requester: from,
+      requester_email: from,
+      client_id: client?.id ?? null,
+      category: match.category ?? null,
+      priority,
+      status: "open",
+      due_at: new Date(Date.now() + slaHours * 3600_000).toISOString(),
+      source_email_id: emailId,
+      comments: [],
+    })
+    .select("reference")
+    .single();
+
+  if (error) return { routed: "inbox", routingError: error.message };
+
+  // Acknowledge it.
+  //
+  // Not a courtesy. The reference in this subject is the only thing the
+  // customer has to reply to, and without it their next message opens a second
+  // ticket instead of continuing this one. A failure to send is reported in the
+  // result but does not undo the ticket — the request is in the queue either
+  // way, which is what matters.
+  const acknowledged = await acknowledge(supabase, from, ticket.reference as string, subject);
+
+  return { routed: "ticket", ticket: ticket.reference, acknowledged };
+}
+
+async function acknowledge(
+  supabase: ReturnType<typeof createClient>,
+  to: string,
+  reference: string,
+  originalSubject: string,
+): Promise<boolean> {
+  const settings = smtpConfig();
+  if ("error" in settings) return false;
+
+  const subject = `[${reference}] ${originalSubject || "Your request"}`;
+  const body =
+    `Thank you — your request has been logged as ${reference}.\n\n` +
+    `Someone will be in touch. Please keep ${reference} in the subject when ` +
+    `replying, so your message reaches the same ticket.\n`;
+
+  try {
+    await sendMail(settings.config, { to: [to], subject, body });
+  } catch (_) {
+    return false;
+  }
+
+  // Recorded in the sent log like any other outgoing mail, so the trail of what
+  // the customer was told is complete.
+  await supabase.from("email_messages").insert({
+    to_addresses: [to],
+    subject,
+    body,
+    module: "support",
+    status: "sent",
+  });
+  return true;
+}

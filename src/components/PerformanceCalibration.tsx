@@ -12,6 +12,9 @@ import { PerformanceAdvancedStore, type CalibrationSession } from "@/lib/perform
 import { HRMStore } from "@/lib/hrmStore";
 import { HRMDepartmentsStore } from "@/lib/hrmDepartmentsStore";
 
+/** Radix reserves "" to mean "no selection", so a sentinel is needed instead. */
+const ALL_DEPARTMENTS = "__all_departments__";
+
 export function PerformanceCalibration() {
   const [sessions, setSessions] = useState(PerformanceAdvancedStore.listCalibrations());
   const [open, setOpen] = useState(false);
@@ -209,12 +212,15 @@ export function PerformanceCalibration() {
             </div>
             <div>
               <label className="text-xs text-muted-foreground">Department (optional)</label>
-              <Select value={form.departmentId} onValueChange={(v) => setForm({ ...form, departmentId: v })}>
+              <Select
+                value={form.departmentId || ALL_DEPARTMENTS}
+                onValueChange={(v) => setForm({ ...form, departmentId: v === ALL_DEPARTMENTS ? undefined : v })}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="All departments" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Departments</SelectItem>
+                  <SelectItem value={ALL_DEPARTMENTS}>All Departments</SelectItem>
                   {departments.map((d) => (
                     <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
                   ))}

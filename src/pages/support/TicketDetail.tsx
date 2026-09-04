@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { SupportStore, type Ticket, type Attachment, type Comment } from "@/lib/supportStore";
 import { AuditLogStore } from "@/lib/auditLogStore";
+import { sendEmail } from "@/lib/sendDocument";
 import { getCurrentRole, canAccess } from "@/lib/accessControl";
 import { useAccounts, useStaffAccounts } from "@/lib/useAccounts";
 import { AuthStore } from "@/lib/authStore";
@@ -24,6 +25,9 @@ function toDataUrl(file: File): Promise<Attachment> {
   });
 }
 
+/** Radix reserves "" to mean "no selection", so a sentinel is needed instead. */
+const UNASSIGNED = "__unassigned__";
+
 const TicketDetail = () => {
   // Rows come from Postgres via caches, so this re-renders when they arrive.
   useCache(ticketsCache);
@@ -32,6 +36,9 @@ const TicketDetail = () => {
   const navigate = useNavigate();
   const [t, setT] = useState<Ticket | undefined>(undefined);
   const [comment, setComment] = useState("");
+  // Defaults on for a ticket raised by email, off for one raised internally.
+  const [emailReply, setEmailReply] = useState(true);
+  const [emailing, setEmailing] = useState(false);
   const [cFiles, setCFiles] = useState<Attachment[]>([]);
   const [closeNote, setCloseNote] = useState("");
   const [rejectReason, setRejectReason] = useState("");
@@ -118,8 +125,35 @@ const TicketDetail = () => {
     const c: Comment = { id: Math.random().toString(36).slice(2), author: "user", ts: new Date().toISOString(), message: comment, attachments: cFiles };
     const firstResponseAt = t.firstResponseAt || c.ts;
     const next: Ticket = { ...t, comments: [...t.comments, c], firstResponseAt };
+    const text = comment;
     setComment(""); setCFiles([]);
     saveTicket(next, "comment");
+
+    // A ticket that arrived by email is a conversation with somebody outside
+    // the system. A comment they never receive leaves them waiting while the
+    // ticket looks answered from in here, so it goes to them as well — with the
+    // reference in the subject, which is what threads their reply back onto
+    // this ticket rather than opening a new one.
+    if (emailReply && t.requesterEmail && text.trim()) {
+      setEmailing(true);
+      try {
+        await sendEmail({
+          to: t.requesterEmail,
+          subject: `[${t.reference ?? t.id}] ${t.title}`,
+          body: text,
+          module: "support",
+        });
+        toast({ title: "Replied", description: `Emailed to ${t.requesterEmail}.` });
+      } catch (err: unknown) {
+        toast({
+          title: "Comment saved, but not emailed",
+          description: err instanceof Error ? err.message : "The mail server refused it.",
+          variant: "destructive",
+        });
+      } finally {
+        setEmailing(false);
+      }
+    }
   };
 
   const onAttach = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -159,7 +193,7 @@ const TicketDetail = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold mb-1">{t.title}</h1>
-          <p className="text-sm text-muted-foreground">Ticket {t.id} • {t.category} • <span className="capitalize">{t.priority}</span> • <span className="capitalize">{t.status.replace(/_/g,' ')}</span></p>
+          <p className="text-sm text-muted-foreground">{t.reference ?? `Ticket ${t.id}`} • {t.category} • <span className="capitalize">{t.priority}</span> • <span className="capitalize">{t.status.replace(/_/g,' ')}</span></p>
           <div className="mt-1 flex items-center gap-2 text-xs">
             {t.dueAt && (
               <Badge variant="secondary">SLA Due: {new Date(t.dueAt).toLocaleString()}</Badge>
@@ -208,7 +242,17 @@ const TicketDetail = () => {
               ))}
             </div>
             <div className="mt-3 grid gap-2">
-              <Textarea placeholder="Write a comment..." value={comment} onChange={(e)=> setComment(e.target.value)} />
+              <Textarea placeholder={t.requesterEmail ? "Write a reply..." : "Write a comment..."} value={comment} onChange={(e)=> setComment(e.target.value)} />
+              {t.requesterEmail && (
+                <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={emailReply}
+                    onChange={(e) => setEmailReply(e.target.checked)}
+                  />
+                  Email this to {t.requesterEmail}
+                </label>
+              )}
               <div className="flex items-center gap-2">
                 <Select value={cannedId} onValueChange={(v)=> { setCannedId(v); const found = canned.find(c => c.id===v); if(found) setComment((prev)=> (prev ? prev+"\n\n" : "") + found.body); }}>
                   <SelectTrigger className="w-64"><SelectValue placeholder="Insert canned response..." /></SelectTrigger>
@@ -222,7 +266,9 @@ const TicketDetail = () => {
                 {cFiles.map(f => (
                   <span key={f.id} className="text-xs text-muted-foreground">{f.name}</span>
                 ))}
-                <Button onClick={addComment}>Add Comment</Button>
+                <Button onClick={() => void addComment()} disabled={emailing}>
+                  {emailing ? "Sending…" : t.requesterEmail && emailReply ? "Reply to customer" : "Add comment"}
+                </Button>
               </div>
             </div>
           </div>
@@ -232,10 +278,13 @@ const TicketDetail = () => {
           <div className="rounded-lg border p-4">
             <h4 className="font-semibold mb-2">Assignment</h4>
             <div className="grid gap-2">
-              <Select value={t.assigneeId || ""} onValueChange={(v)=> saveTicket({ ...t, assigneeId: v || undefined } as Ticket, 'assign', v || 'unassigned')}>
+              <Select
+                value={t.assigneeId || UNASSIGNED}
+                onValueChange={(v)=> saveTicket({ ...t, assigneeId: v === UNASSIGNED ? undefined : v } as Ticket, 'assign', v === UNASSIGNED ? 'unassigned' : users.find(u => u.id === v)?.name ?? v)}
+              >
                 <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Unassigned</SelectItem>
+                  <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
                   {staff.map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
                 </SelectContent>
               </Select>

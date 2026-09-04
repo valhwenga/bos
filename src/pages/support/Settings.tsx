@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/use-toast";
 import { useCache } from "@/lib/collectionCache";
 import { supportSettingsCache } from "@/lib/supportStore";
+import { InboundRoutes } from "@/components/InboundRoutes";
 
 const SupportSettings = () => {
   // Settings are shared now, so this re-renders when they load or somebody
@@ -63,6 +64,8 @@ const SupportSettings = () => {
           )}
         </div>
       </div>
+
+      <InboundRoutes />
     </div>
   );
 };

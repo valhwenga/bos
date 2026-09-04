@@ -13,7 +13,7 @@
  */
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
+import { smtpConfig, sendMail } from "../_shared/smtp.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -130,86 +130,20 @@ Deno.serve(async (req) => {
     }
   }
 
-  const host = Deno.env.get("SMTP_HOST");
-  const port = Number(Deno.env.get("SMTP_PORT") ?? "587");
-  const username = Deno.env.get("SMTP_USER");
-  const password = Deno.env.get("SMTP_PASSWORD");
-  const fromAddress = Deno.env.get("SMTP_FROM");
-  const fromName = Deno.env.get("SMTP_FROM_NAME") ?? "";
-
-  if (!host || !fromAddress) {
-    // Named explicitly. "Failed to send" would send someone hunting through
-    // application code for a configuration problem.
-    return json(
-      {
-        error:
-          "Email is not configured on the server. Set SMTP_HOST and SMTP_FROM " +
-          "as function secrets (plus SMTP_USER and SMTP_PASSWORD if the server " +
-          "requires authentication).",
-      },
-      503,
-    );
-  }
-
-  // Credentials are optional: an internal relay that accepts mail from its own
-  // network without authenticating is a normal arrangement. What is not
-  // negotiable is sending a password in the clear — the library refuses, and
-  // rightly, so the two must be configured together.
-  const authenticate = Boolean(username && password);
-  // 465 is implicit TLS; 587 upgrades with STARTTLS.
-  const secure = port === 465;
-  const allowInsecure = Deno.env.get("SMTP_INSECURE") === "true";
-
-  if (authenticate && !secure && !allowInsecure) {
-    return json(
-      {
-        error:
-          `SMTP_USER is set but port ${port} is not a TLS port, so the password ` +
-          "would be sent in the clear. Use port 465, or drop the credentials if " +
-          "the relay does not need them.",
-      },
-      503,
-    );
-  }
-
-  const client = new SMTPClient({
-    connection: {
-      hostname: host,
-      port,
-      tls: secure,
-      ...(authenticate ? { auth: { username: username!, password: password! } } : {}),
-    },
-    // The library refuses a plaintext connection unless told explicitly, which
-    // is the right default — SMTP_INSECURE is the deliberate opt-in, and exists
-    // for a local mail catcher or an internal relay on a trusted network.
-    ...(allowInsecure ? { debug: { allowUnsecure: true } } : {}),
-  });
+  const settings = smtpConfig();
+  if ("error" in settings) return json({ error: settings.error }, 503);
 
   try {
-    await client.send({
-      from: fromName ? `${fromName} <${fromAddress}>` : fromAddress,
+    await sendMail(settings.config, {
       to: recipients,
       subject: payload.subject,
-      content: payload.body ?? "",
-      attachments: (payload.attachments ?? []).map((a) => ({
-        filename: a.filename,
-        contentType: a.contentType ?? "application/pdf",
-        encoding: "base64" as const,
-        content: a.contentBase64,
-      })),
+      body: payload.body ?? "",
+      attachments: payload.attachments,
     });
   } catch (err) {
     const message = `The mail server rejected the message: ${String(err)}`;
     await record(asCaller, payload, recipients, "failed", message);
     return json({ error: message }, 502);
-  } finally {
-    // Leaving the connection open exhausts the provider's limit after a few
-    // sends, which looks like intermittent failure.
-    try {
-      await client.close();
-    } catch {
-      // Already closed.
-    }
   }
 
   await record(asCaller, payload, recipients, "sent");

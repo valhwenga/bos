@@ -249,6 +249,18 @@ fails those checks. Do not remove that warning: an email claiming to be your own
 accounts address, asking for bank details to be changed, is the most common
 invoice fraud there is, and the SPF result is what distinguishes it.
 
+**Addresses that open tickets.** Support → Settings lists which addresses turn
+mail into a support ticket rather than leaving it in the shared inbox. Add
+`support@` there and mail to it becomes a ticket, the sender gets an
+acknowledgement carrying the reference (`[T-00042]`), and their replies land as
+comments on that ticket instead of opening new ones. Any address not listed goes
+to the inbox — mail is never dropped for want of configuration.
+
+**How many addresses?** As many as you like on the receiving side: each is a row,
+and the provider delivers the whole domain. Sending is the limit — `SMTP_FROM` is
+a single address, so everything the system sends goes out from that one, whatever
+address it arrived at.
+
 ---
 
 ## Known gaps at launch

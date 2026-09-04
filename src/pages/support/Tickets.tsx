@@ -24,13 +24,21 @@ const priorityOptions: Priority[] = ["low","medium","high","urgent"];
 
 const Tickets = () => {
   // Rows come from Postgres via caches, so this re-renders when they arrive.
-  useCache(ticketsCache);
+  // The rows the cache holds, which is what re-renders when they arrive.
+  const { rows: ticketRows } = useCache(ticketsCache);
   useCache(clientsCache);
   const acc = AuthStore.currentUser();
   const myClientId = acc?.clientId;
   const users = useAccounts();
   const staff = useStaffAccounts();
-  const [list, setList] = useState<Ticket[]>(SupportStore.list().filter(t => (myClientId ? t.clientId === myClientId : true)));
+  // Read straight from the cache rather than copied into state on mount.
+  // Copying meant the list was whatever had loaded by the first render — which
+  // for a server read is nothing — and useCache's re-render did not recompute
+  // it, so the page showed "No tickets" over a database that had plenty.
+  const list = useMemo(
+    () => ticketRows.filter(t => (myClientId ? t.clientId === myClientId : true)),
+    [ticketRows, myClientId],
+  );
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<TicketStatus | "all">("all");
   const [priority, setPriority] = useState<Priority | "all">("all");
@@ -39,9 +47,8 @@ const Tickets = () => {
   const [form, setForm] = useState<Ticket>({ id: "", title: "", description: "", requester: "user", priority: "medium", status: "open", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), comments: [], attachments: [], category: "General", closureRequest: null, approval: null });
 
   const refresh = useCallback(() => {
-    setList(SupportStore.list().filter(t => (myClientId ? t.clientId === myClientId : true)));
-  }, [myClientId]);
-  useEffect(()=>{ refresh(); }, [refresh]);
+    void ticketsCache.refresh();
+  }, []);
 
   const me = UserStore.get();
   const filtered = useMemo(() => list.filter(t => {
