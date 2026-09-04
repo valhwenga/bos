@@ -1,11 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Paperclip, PenSquare } from "lucide-react";
-import { EmailStore, type MailMessage } from "@/lib/emailStore";
+import { Paperclip, PenSquare, AlertTriangle } from "lucide-react";
+import { EmailStore, sentMailCache, type MailMessage } from "@/lib/emailStore";
+import { useCache } from "@/lib/collectionCache";
 import { Button } from "@/components/ui/button";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { PageHeader } from "@/components/ui/page-header";
-import { cn } from "@/lib/utils";
 
 const formatWhen = (iso: string) => {
   const date = new Date(iso);
@@ -15,64 +14,29 @@ const formatWhen = (iso: string) => {
     : date.toLocaleDateString();
 };
 
-const addressLabel = (a: { name?: string; email: string }) => a.name || a.email;
-
-interface MailListProps {
-  folder: "inbox" | "sent";
-  title: string;
-  description: string;
-  /** Inbox shows who sent it; Sent shows who it went to. */
-  peopleHeader: string;
-  emptyTitle: string;
-  emptyDescription: string;
-}
-
 /**
- * Inbox and Sent differ only in which folder they read and whether the people
- * column shows sender or recipients, so they share one implementation.
+ * What the company has sent.
+ *
+ * This used to render either an inbox or a sent folder from the same
+ * localStorage array. The inbox is gone — nothing could ever arrive in it —
+ * and the sent list is a shared server record now, so it shows who sent each
+ * message rather than assuming it was you.
  */
-export const MailList = ({
-  folder,
-  title,
-  description,
-  peopleHeader,
-  emptyTitle,
-  emptyDescription,
-}: MailListProps) => {
-  const [messages, setMessages] = useState<MailMessage[]>(() => EmailStore.byFolder(folder));
+export const MailList = () => {
+  const { loading, error } = useCache(sentMailCache);
+  const messages = EmailStore.list();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    const refresh = () => setMessages(EmailStore.byFolder(folder));
-    refresh();
-    window.addEventListener("storage", refresh);
-    window.addEventListener("mail-changed", refresh as EventListener);
-    return () => {
-      window.removeEventListener("storage", refresh);
-      window.removeEventListener("mail-changed", refresh as EventListener);
-    };
-  }, [folder]);
-
-  const people = (m: MailMessage) =>
-    folder === "inbox" ? addressLabel(m.from) : m.to.map(addressLabel).join(", ");
-
-  // Newest first, which is what every mail client does and this did not.
-  const ordered = useMemo(
-    () => [...messages].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
-    [messages],
-  );
-
-  const unread = ordered.filter((m) => m.read === false).length;
+  const failed = messages.filter((m) => m.status === "failed").length;
 
   const columns: Column<MailMessage>[] = [
     {
-      id: "people",
-      header: peopleHeader,
-      width: "22%",
-      sortValue: people,
+      id: "to",
+      header: "To",
+      sortValue: (m) => m.to.map((a) => a.email).join(", "),
       cell: (m) => (
-        <span className={cn("block truncate", m.read === false ? "font-semibold text-foreground" : "text-foreground")}>
-          {people(m) || "—"}
+        <span className="font-medium">
+          {m.to.map((a) => a.name || a.email).join(", ") || "—"}
         </span>
       ),
     },
@@ -81,23 +45,28 @@ export const MailList = ({
       header: "Subject",
       sortValue: (m) => m.subject,
       cell: (m) => (
-        <div className="flex min-w-0 items-center gap-2">
-          {m.read === false && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-label="Unread" />}
-          <span className={cn("truncate", m.read === false && "font-semibold")}>{m.subject || "(no subject)"}</span>
-          {!!m.attachments?.length && (
+        <span className="flex items-center gap-1.5">
+          {m.status === "failed" && (
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-danger" aria-label="Not delivered" />
+          )}
+          <span className="truncate">{m.subject || "(no subject)"}</span>
+          {m.attachmentNames.length > 0 && (
             <Paperclip className="h-3 w-3 shrink-0 text-muted-foreground" aria-label="Has attachments" />
           )}
-          <span className="hidden truncate text-xs text-muted-foreground sm:inline">
-            — {m.body.replace(/<[^>]*>/g, " ").slice(0, 80)}
-          </span>
-        </div>
+        </span>
       ),
     },
     {
+      id: "sentBy",
+      header: "Sent by",
+      hideOnMobile: true,
+      sortValue: (m) => m.sentByName ?? "",
+      cell: (m) => <span className="text-muted-foreground">{m.sentByName || "System"}</span>,
+    },
+    {
       id: "date",
-      header: "Date",
+      header: "When",
       align: "right",
-      width: "1%",
       sortValue: (m) => m.date,
       cell: (m) => <span className="whitespace-nowrap text-muted-foreground">{formatWhen(m.date)}</span>,
     },
@@ -106,9 +75,9 @@ export const MailList = ({
   return (
     <div className="flex flex-col gap-6 p-6">
       <PageHeader
-        title={title}
-        description={unread ? `${description} · ${unread} unread` : description}
-        breadcrumbs={[{ label: "Email", to: "/email" }, { label: title }]}
+        title="Sent mail"
+        description="Everything the system has emailed out, including invoices and quotations."
+        breadcrumbs={[{ label: "Email", to: "/email" }, { label: "Sent" }]}
         actions={
           <Button onClick={() => navigate("/email/compose")}>
             <PenSquare className="mr-2 h-4 w-4" aria-hidden="true" />
@@ -117,18 +86,31 @@ export const MailList = ({
         }
       />
 
+      {error && (
+        <div className="rounded-md border border-danger/40 bg-danger-soft px-4 py-3 text-sm text-danger">
+          Could not load sent mail: {error.message}
+        </div>
+      )}
+
+      {failed > 0 && (
+        <div className="rounded-md border border-danger/40 bg-danger-soft px-4 py-3 text-sm text-danger">
+          {failed} {failed === 1 ? "message was" : "messages were"} refused by the mail server. Open one to
+          see why.
+        </div>
+      )}
+
       <DataTable
-        rows={ordered}
+        rows={messages}
         columns={columns}
         rowKey={(m) => m.id}
-        searchAccessor={(m) => `${m.subject} ${m.body} ${people(m)}`}
-        searchPlaceholder="Search mail…"
         onRowClick={(m) => navigate(`/email/${m.id}`)}
-        pageSize={30}
+        searchAccessor={(m) => `${m.subject} ${m.to.map((a) => a.email).join(" ")} ${m.sentByName ?? ""}`}
+        searchPlaceholder="Search by recipient, subject or sender…"
         empty={{
-          title: emptyTitle,
-          description: emptyDescription,
-          action: <Button onClick={() => navigate("/email/compose")}>Compose</Button>,
+          title: loading ? "Loading…" : "Nothing sent yet",
+          description: loading
+            ? "Reading the log."
+            : "Messages you send — including emailed invoices — will be listed here.",
         }}
       />
     </div>

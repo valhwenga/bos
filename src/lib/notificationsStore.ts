@@ -165,8 +165,14 @@ export function subscribeToNotifications(onArrive?: (n: AppNotification) => void
   const me = getSession().profile?.id;
   if (!me) return () => undefined;
 
+  // A unique topic per subscriber. Supabase returns the *existing* channel for
+  // a repeated topic, so two components subscribing under one name meant the
+  // second `.on()` was added after the first had already subscribed — which
+  // throws, and took the whole app down through the error boundary. Both the
+  // header and the desktop-notification effect subscribe, so that was every
+  // page load.
   const channel = supabase
-    .channel(`notifications:${me}`)
+    .channel(`notifications:${me}:${crypto.randomUUID()}`)
     .on(
       "postgres_changes",
       {

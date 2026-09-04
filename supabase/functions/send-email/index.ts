@@ -21,6 +21,41 @@ const cors = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+/**
+ * Records what was attempted, and what came of it.
+ *
+ * Written here rather than by the browser because only this function knows
+ * whether the mail server accepted the message. A client-written log would
+ * record what the browser believed, which is the defect this replaces: the
+ * recurring sweep used to write "sent" to localStorage without ever contacting
+ * a mail server.
+ *
+ * A failure to log must not turn a delivered email into a reported failure, so
+ * this never throws.
+ */
+async function record(
+  asCaller: ReturnType<typeof createClient>,
+  payload: Payload,
+  recipients: string[],
+  status: "sent" | "failed",
+  error?: string,
+): Promise<void> {
+  try {
+    await asCaller.from("email_messages").insert({
+      to_addresses: recipients,
+      cc_addresses: [],
+      subject: payload.subject ?? "",
+      body: payload.body ?? "",
+      attachment_names: (payload.attachments ?? []).map((a) => a.filename),
+      module: payload.module ?? null,
+      status,
+      error: error ?? null,
+    });
+  } catch (_) {
+    // The mail itself is what matters; the log is secondary.
+  }
+}
+
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
@@ -164,7 +199,9 @@ Deno.serve(async (req) => {
       })),
     });
   } catch (err) {
-    return json({ error: `The mail server rejected the message: ${String(err)}` }, 502);
+    const message = `The mail server rejected the message: ${String(err)}`;
+    await record(asCaller, payload, recipients, "failed", message);
+    return json({ error: message }, 502);
   } finally {
     // Leaving the connection open exhausts the provider's limit after a few
     // sends, which looks like intermittent failure.
@@ -175,5 +212,6 @@ Deno.serve(async (req) => {
     }
   }
 
+  await record(asCaller, payload, recipients, "sent");
   return json({ sent: true, to: recipients });
 });

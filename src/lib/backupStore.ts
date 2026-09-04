@@ -10,7 +10,6 @@ import { CrmDealsStore } from "./crmDealsStore";
 import { CrmCustomersStore } from "./crmCustomersStore";
 import { CrmLeadsStore } from "./crmLeadsStore";
 import { CrmTasksStore } from "./crmTasksStore";
-import { EmailStore } from "./emailStore";
 import { EmployeeDocumentsStore } from "./employeeDocumentsStore";
 import { ExpenseStore } from "./expenseStore";
 import { HRMLeaveStore } from "./hrmLeaveStore";
@@ -164,6 +163,8 @@ export const BackupStore = {
         tasks: CrmTasksStore.list()
       },
       // Other - skip stores without list method, handled by fullLocalStorage
+      // Sent mail is a shared, append-only log in Postgres now, covered by
+      // the database backup.
       emails: [],
       expenses: ExpenseStore.list(),
       // Conversations and messages are rows in Postgres now, readable only by

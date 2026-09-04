@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { sendEmail } from "@/lib/sendDocument";
 import { toast } from "@/components/ui/use-toast";
-import { EmailStore, type MailAddress, type MailAttachment } from "@/lib/emailStore";
+import { EmailStore, sentMailCache, type MailAddress, type MailAttachment } from "@/lib/emailStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -60,21 +60,12 @@ const Compose = () => {
       return;
     }
 
-    // Only recorded once it has actually gone.
-    const msg = await EmailStore.send({
-      // The sending address belongs to the server's configuration; the browser
-      // no longer holds mail credentials to read it from.
-      from: { email: "" },
-      to: parseRecipients(to),
-      subject,
-      body,
-      cc: [],
-      attachments,
-      threadId: undefined,
-      read: true,
-    });
+    // The send-email function records the message as it sends it, so there is
+    // nothing to write here — only the list to refresh.
+    await EmailStore.load();
+    void sentMailCache.refresh();
     setSending(false);
-    navigate(`/email/${msg.id}`);
+    navigate("/email/sent");
   };
 
   return (

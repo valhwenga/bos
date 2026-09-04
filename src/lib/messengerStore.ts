@@ -436,8 +436,10 @@ async function uploadAttachments(convId: string, messageId: string, files: File[
 export function subscribeToMessages(conversationId: string, onArrive?: () => void): () => void {
   if (!me()) return () => undefined;
 
+  // Unique per subscriber, for the same reason as notifications: a repeated
+  // topic returns the existing channel and the second `.on()` throws.
   const channel = supabase
-    .channel(`messages:${conversationId}`)
+    .channel(`messages:${conversationId}:${crypto.randomUUID()}`)
     .on(
       "postgres_changes",
       {

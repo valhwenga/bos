@@ -230,9 +230,32 @@ const Recurring: React.FC = () => {
         let tot = 0; t.items.forEach((it:any)=> { pdf.text(`${it.name}  ${it.qty} x ${it.price.toFixed(2)}`, 20, y); y+=6; tot += (it.qty||0)*(it.price||0); });
         y+=4; pdf.text(`Total: ${tot.toFixed(2)} ${cs.currencyCode || ''}`, 15, y);
         const dataUrl = pdf.output('datauristring');
-        await EmailStore.send({ from: { name: cs.name || 'Billing', email: cs.email || 'noreply@example.com' }, to: [{ name: t.customer.name, email: t.customer.email }], subject, body, attachments: [{ id: `att_${Date.now()}`, name: `${inv.number}.pdf`, type: 'application/pdf', size: dataUrl.length, dataUrl }] } as any);
+        // This called a simulated send, so `autoSend` generated the invoice
+        // and emailed nobody. The failure below is reported rather than
+        // swallowed: an invoice the customer never received looks identical to
+        // one they did, and the difference only surfaces when they do not pay.
+        await EmailStore.send({
+          to: [{ name: t.customer.name, email: t.customer.email }],
+          subject,
+          body,
+          module: 'accounting',
+          attachments: [{
+            filename: `${inv.number}.pdf`,
+            contentBase64: dataUrl.split(',')[1],
+            contentType: 'application/pdf',
+          }],
+        });
+        toast({ title: 'Invoice sent', description: `${inv.number} was emailed to ${t.customer.email}.` });
       }
-    } catch { /* ignore */ }
+    } catch (err) {
+      toast({
+        title: 'Invoice created but not emailed',
+        description: `${inv.number} was generated and the schedule advanced. ${
+          err instanceof Error ? err.message : 'The mail server refused it.'
+        }`,
+        variant: 'destructive',
+      });
+    }
     void recurringCache.refresh();
   };
 

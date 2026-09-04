@@ -50,7 +50,6 @@ import SupportTicketDetail from "./pages/support/TicketDetail";
 import SupportSettings from "./pages/support/Settings";
 import SupportDashboard from "./pages/support/Dashboard";
 import ClientPortalSupport from "./pages/portal/support/ClientTickets";
-import EmailInbox from "./pages/email/Inbox";
 import EmailSent from "./pages/email/Sent";
 import EmailCompose from "./pages/email/Compose";
 import EmailMessage from "./pages/email/Message";
@@ -104,7 +103,7 @@ const App = () => {
     // Simple clock-in when the app mounts (user session starts)
     void UserStore.clockIn();
     // Clear any SMTP password a previous version left in this browser.
-    try { EmailStore.clearLegacySmtp(); } catch { void 0; }
+    try { EmailStore.clearLegacyLocalMail(); } catch { void 0; }
     const onBeforeUnload = () => {
       void UserStore.clockOut().catch(() => undefined);
     };
@@ -221,13 +220,29 @@ const App = () => {
             t.items.forEach((it) => { const line = `${it.name}  ${it.qty} x ${it.price.toFixed(2)}`; pdf.text(line, 20, y); y += 6; total += (it.qty||0)*(it.price||0); });
             y += 4; pdf.text(`Total: ${total.toFixed(2)} ${cs.currencyCode || ''}`, 15, y);
             const dataUrl = pdf.output('datauristring');
-            await EmailStore.send({
-              from: { name: cs.name || 'Billing', email: cs.email || 'noreply@example.com' },
-              to: [{ name: t.customer.name, email: t.customer.email }],
-              subject,
-              body,
-              attachments: [{ id: `att_${Date.now()}`, name: `${inv.number}.pdf`, type: 'application/pdf', size: dataUrl.length, dataUrl }],
-            });
+            // This used to call a simulated send that wrote to localStorage and
+            // returned, after which the schedule advanced — so the period was
+            // marked billed and the customer never received anything.
+            //
+            // Caught rather than thrown: the invoice has already been created,
+            // and letting a mail failure abort the sweep would leave the
+            // schedule unadvanced and bill the period again on the next run.
+            // The failure is recorded in the sent log with the server's reason.
+            try {
+              await EmailStore.send({
+                to: [{ name: t.customer.name, email: t.customer.email }],
+                subject,
+                body,
+                module: 'accounting',
+                attachments: [{
+                  filename: `${inv.number}.pdf`,
+                  contentBase64: dataUrl.split(',')[1],
+                  contentType: 'application/pdf',
+                }],
+              });
+            } catch (err) {
+              console.error(`Invoice ${inv.number} was generated but could not be emailed:`, err);
+            }
           }
         }
         if (generated > 0) await RecurringStore.upsert(cursor);
@@ -453,7 +468,8 @@ const App = () => {
             <Route path="zoom" element={<AccessGuard module="dashboard"><Placeholder /></AccessGuard>} />
             <Route path="messenger" element={<AccessGuard module="messenger"><MessengerConversations /></AccessGuard>} />
             <Route path="messenger/:id" element={<AccessGuard module="messenger"><MessengerChat /></AccessGuard>} />
-            <Route path="email" element={<AccessGuard module="email"><EmailInbox /></AccessGuard>} />
+            {/* The inbox is gone: nothing could ever arrive in it. */}
+            <Route path="email" element={<Navigate to="/email/sent" replace />} />
             <Route path="email/sent" element={<AccessGuard module="email"><EmailSent /></AccessGuard>} />
             <Route path="email/compose" element={<AccessGuard module="email"><EmailCompose /></AccessGuard>} />
             <Route path="email/:id" element={<AccessGuard module="email"><EmailMessage /></AccessGuard>} />
