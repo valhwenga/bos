@@ -15,18 +15,24 @@ const priorityOptions: Priority[] = ["low","medium","high","urgent"];
 
 const ClientTickets = () => {
   // Rows come from Postgres via caches, so this re-renders when they arrive.
-  useCache(ticketsCache);
+  const { rows: ticketRows } = useCache(ticketsCache);
   useCache(clientsCache);
   const me = UserStore.get();
   const acc = AuthStore.currentUser();
   const myClientId = acc?.clientId;
-  const [list, setList] = useState<Ticket[]>(SupportStore.list().filter(t => (myClientId ? t.clientId === myClientId : t.requester===me.id)));
+  // Read from the cache rather than copied into state on mount: for a server
+  // read there is nothing there yet on the first render, and useCache's
+  // re-render does not recompute state that was seeded once.
+  const list = useMemo(
+    () => ticketRows.filter(t => (myClientId ? t.clientId === myClientId : t.requester === me.id)),
+    [ticketRows, myClientId, me.id],
+  );
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<Ticket>({ id: "", title: "", description: "", clientId: myClientId, requester: me.id, priority: "medium", status: "open", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), comments: [], attachments: [], category: SupportStore.settings().categories[0] || "General", closureRequest: null, approval: null });
 
   const refresh = useCallback(() => {
-    setList(SupportStore.list().filter(t => (myClientId ? t.clientId === myClientId : t.requester===me.id)));
+    void ticketsCache.refresh();
   }, [me.id, myClientId]);
   useEffect(()=>{ refresh(); }, [refresh]);
 

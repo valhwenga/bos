@@ -8,10 +8,13 @@ import { useNavigate } from "react-router-dom";
 
 const Dashboard = () => {
   // Rows come from Postgres via caches, so this re-renders when they arrive.
-  useCache(ticketsCache);
+  const { rows: ticketRows } = useCache(ticketsCache);
   useCache(clientsCache);
-  const [list, setList] = useState<Ticket[]>(SupportStore.list());
-  const refresh = () => setList(SupportStore.list());
+  // Read from the cache rather than copied into state on mount: for a server
+  // read there is nothing there yet on the first render, and useCache's
+  // re-render does not recompute state that was seeded once.
+  const list = ticketRows;
+  const refresh = () => void ticketsCache.refresh();
   useEffect(()=>{ refresh(); }, []);
 
   const counts = useMemo(() => {

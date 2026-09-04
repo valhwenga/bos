@@ -3,7 +3,16 @@ import { Link, useNavigate } from "react-router-dom";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { CompanySettingsStore } from "@/lib/companySettings";
+import { CompanySettingsStore, companySettingsCache } from "@/lib/companySettings";
+import { useCache } from "@/lib/collectionCache";
+import { invoicesCache } from "@/lib/accountingStore";
+import { paymentsCache } from "@/lib/paymentStore";
+import { departmentsCache } from "@/lib/hrmDepartmentsStore";
+import { projectsCache } from "@/lib/projectStore";
+import { ticketsCache } from "@/lib/supportStore";
+import { crmTasksCache } from "@/lib/crmTasksStore";
+import { dealsCache } from "@/lib/crmDealsStore";
+import { leadsCache } from "@/lib/crmLeadsStore";
 import { AccountingStore } from "@/lib/accountingStore";
 import { PaymentStore } from "@/lib/paymentStore";
 import { useAccounts } from "@/lib/useAccounts";
@@ -21,16 +30,20 @@ import {
 } from "lucide-react";
 
 /**
- * Ticks whenever stored data may have changed, so the summaries below
- * recompute. They previously used an empty dependency array and therefore
- * showed whatever was true when the page first mounted.
+ * Ticks when the signed-in account may have changed.
+ *
+ * It used to invalidate the summaries too, back when they read the stores
+ * directly. They read the caches now, which update themselves, so this is left
+ * with the one job the caches do not cover.
  */
 const DATA_CHANGE_EVENTS = [
   "storage",
   "auth-changed",
   "acct.recurring-changed",
   "proj.events-changed",
-  "company-settings-changed",
+  // The store dispatches this with a dot. It was spelled with a hyphen
+  // here and in the sidebar, so neither ever heard it.
+  "company.settings-changed",
 ];
 
 function useDataVersion() {
@@ -64,17 +77,31 @@ const HeaderClock = () => {
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  // Every figure below is read from a cache. Without these the page rendered
+  // whatever had loaded by the first paint — nothing — and stayed at zero until
+  // the window lost and regained focus.
+  const { rows: invoiceRows } = useCache(invoicesCache);
+  const { rows: paymentRows } = useCache(paymentsCache);
+  const { rows: projectRows } = useCache(projectsCache);
+  const { rows: ticketRows } = useCache(ticketsCache);
+  const { rows: departmentRows } = useCache(departmentsCache);
+  const { rows: crmTaskRows } = useCache(crmTasksCache);
+  const { rows: dealRows } = useCache(dealsCache);
+  const { rows: leadRows } = useCache(leadsCache);
+  useCache(companySettingsCache);
   const dataVersion = useDataVersion();
   const [currentUser, setCurrentUser] = useState<any>(null);
   const users = useAccounts();
 
   // Calculate live stats
   const liveStats = useMemo(() => {
-    const accounting = AccountingStore.listInvoices();
-    const payments = PaymentStore.list();
-    const departments = HRMDepartmentsStore.list();
-    const projects = ProjectStore.listProjects();
-    const support = SupportStore.list();
+    // The cache rows themselves, so the dependency list below is the real
+    // thing the figures depend on rather than a proxy the linter cannot see.
+    const accounting = invoiceRows;
+    const payments = paymentRows;
+    const departments = departmentRows;
+    const projects = projectRows;
+    const support = ticketRows;
 
     // Calculate metrics
     const totalRevenue = accounting
@@ -125,9 +152,9 @@ const Dashboard = () => {
       urgentTickets,
       upcomingDeadlines
     };
-    // `users` is a server read that arrives after the first render, so the head
-    // count has to recompute when it lands.
-  }, [dataVersion, users]);
+    // Each of these is a server read that arrives after the first render, so
+    // the figures have to recompute as they land.
+  }, [users, invoiceRows, paymentRows, projectRows, ticketRows, departmentRows]);
 
   // Get recent activities from all system stores
   const recentActivities = useMemo(() => {
@@ -156,7 +183,7 @@ const Dashboard = () => {
     };
 
     // Invoices
-    AccountingStore.listInvoices().forEach(inv => {
+    invoiceRows.forEach(inv => {
       if (inv.createdAt) {
         activities.push({
           id: `inv-${inv.id}`,
@@ -171,7 +198,7 @@ const Dashboard = () => {
     });
 
     // CRM Tasks
-    CrmTasksStore.list().forEach(task => {
+    crmTaskRows.forEach(task => {
       if (task.createdAt) {
         activities.push({
           id: `task-${task.id}`,
@@ -186,7 +213,7 @@ const Dashboard = () => {
     });
 
     // CRM Deals
-    CrmDealsStore.list().forEach(deal => {
+    dealRows.forEach(deal => {
       if (deal.createdAt) {
         activities.push({
           id: `deal-${deal.id}`,
@@ -201,7 +228,7 @@ const Dashboard = () => {
     });
 
     // CRM Leads
-    CrmLeadsStore.list().forEach(lead => {
+    leadRows.forEach(lead => {
       if (lead.createdAt) {
         activities.push({
           id: `lead-${lead.id}`,
@@ -216,7 +243,7 @@ const Dashboard = () => {
     });
 
     // Support Tickets
-    SupportStore.list().forEach(ticket => {
+    ticketRows.forEach(ticket => {
       if (ticket.createdAt) {
         activities.push({
           id: `ticket-${ticket.id}`,
@@ -231,7 +258,7 @@ const Dashboard = () => {
     });
 
     // Projects
-    ProjectStore.listProjects().forEach(proj => {
+    projectRows.forEach(proj => {
       if (proj.createdAt) {
         activities.push({
           id: `proj-${proj.id}`,
@@ -249,7 +276,7 @@ const Dashboard = () => {
     return activities
       .sort((a, b) => b.timestamp - a.timestamp)
       .slice(0, 10);
-  }, [dataVersion]);
+  }, [invoiceRows, crmTaskRows, dealRows, leadRows, ticketRows, projectRows]);
 
   // Identity comes from the signed-in account. SecurityStore is a separate,
   // parallel user system and returns null for accounts created via AuthStore,
@@ -263,13 +290,16 @@ const Dashboard = () => {
   const overdueCount = liveStats.upcomingDeadlines.overdue.length;
   const dueSoonCount = liveStats.upcomingDeadlines.invoices.length;
 
+  // Every one of these is checked against App.tsx. Two of them pointed at
+  // /workflow and /documents, which were removed with the modules behind them,
+  // so they had been landing on the 404 page.
   const quickActions = [
-    { label: "Messenger", icon: MessageCircle, to: "/messenger" },
+    { label: "Inbox", icon: MessageCircle, to: "/email/inbox" },
     { label: "Support", icon: HeadphonesIcon, to: "/support" },
-    { label: "Workflows", icon: Calendar, to: "/workflow" },
-    { label: "Documents", icon: FileText, to: "/documents" },
+    { label: "Projects", icon: Calendar, to: "/projects" },
     { label: "Invoices", icon: DollarSign, to: "/accounting/invoices" },
-    { label: "Backup", icon: Database, to: "/backup" },
+    { label: "Leads", icon: TrendingUp, to: "/crm/leads" },
+    { label: "Export data", icon: Database, to: "/settings/export" },
   ];
 
   const ACTIVITY_TONE: Record<string, string> = {

@@ -25,8 +25,11 @@ const Tasks = () => {
   useCache(leadsCache);
   useCache(dealsCache);
   useCache(crmCustomersCache);
-  useCache(crmTasksCache);
-  const [list, setList] = useState(CrmTasksStore.list());
+  const { rows: taskRows } = useCache(crmTasksCache);
+  // Read from the cache rather than copied into state on mount: for a server
+  // read there is nothing there yet on the first render, and useCache's
+  // re-render does not recompute state that was seeded once.
+  const list = taskRows;
   const users = useAccounts();
   const staff = useStaffAccounts();
   const [q, setQ] = useState("");
@@ -59,7 +62,7 @@ const Tasks = () => {
   }), [list, q, show]);
 
   useEffect(() => {
-    const refresh = () => setList(CrmTasksStore.list());
+    const refresh = () => void crmTasksCache.refresh();
     const onStorage = (e: StorageEvent) => { if (e.key && e.key.startsWith('crm.tasks')) refresh(); };
     window.addEventListener('crm.tasks-changed', refresh);
     window.addEventListener('storage', onStorage);
@@ -96,7 +99,7 @@ const Tasks = () => {
     };
     const prevAssignee = editing?.assigneeId;
     void CrmTasksStore.upsert(newTask);
-    setList(CrmTasksStore.list());
+    void crmTasksCache.refresh();
     setOpen(false);
     if (!editing) {
       if (newTask.assigneeId) void notify(newTask.assigneeId, 'message', `New CRM Task: ${newTask.title}`, newTask.dueAt ? `Due: ${new Date(newTask.dueAt).toLocaleString()}` : undefined);
@@ -108,7 +111,7 @@ const Tasks = () => {
     setEditing(undefined);
   };
 
-  const toggle = (t: CrmTask) => { void CrmTasksStore.upsert({ ...t, completed: !t.completed }); setList(CrmTasksStore.list()); };
+  const toggle = (t: CrmTask) => { void CrmTasksStore.upsert({ ...t, completed: !t.completed }); };
 
   const remind = (t: CrmTask) => { if (!t.assigneeId) return; void notify(t.assigneeId, 'ticket', `Task due: ${t.title}`, `Due: ${t.dueAt ? new Date(t.dueAt).toLocaleString() : 'N/A'}`); };
 
@@ -193,7 +196,6 @@ const Tasks = () => {
             onClick={() => {
               if (!window.confirm(`Delete task "${t.title}"? This cannot be undone.`)) return;
               void CrmTasksStore.remove(t.id);
-              setList(CrmTasksStore.list());
             }}
           >
             <Trash2 className="h-3.5 w-3.5" />

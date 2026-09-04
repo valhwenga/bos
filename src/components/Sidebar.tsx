@@ -5,20 +5,24 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SidebarNav } from "./SidebarNav";
-import { CompanySettingsStore } from "@/lib/companySettings";
+import { CompanySettingsStore, companySettingsCache } from "@/lib/companySettings";
+import { useCache } from "@/lib/collectionCache";
 
 const COLLAPSE_KEY = "ui.sidebar.collapsed";
 
 /** Company identity. The only place the brand is rendered in the app shell. */
 export const BrandMark = ({ collapsed = false }: { collapsed?: boolean }) => {
-  const [company, setCompany] = useState(() => CompanySettingsStore.get());
+  // Settings are a server read, so the name and logo arrive after the first
+  // render. This listened for "company-settings-changed" while the store
+  // dispatches "company.settings-changed", so it heard neither the load nor a
+  // later change and showed the fallback until a full reload.
+  useCache(companySettingsCache);
+  const company = CompanySettingsStore.get();
 
   useEffect(() => {
-    const refresh = () => setCompany(CompanySettingsStore.get());
-    window.addEventListener("company-settings-changed", refresh as EventListener);
+    const refresh = () => void companySettingsCache.refresh();
     window.addEventListener("storage", refresh);
     return () => {
-      window.removeEventListener("company-settings-changed", refresh as EventListener);
       window.removeEventListener("storage", refresh);
     };
   }, []);

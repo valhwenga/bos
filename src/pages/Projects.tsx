@@ -26,7 +26,7 @@ import { Link } from "react-router-dom";
 
 const Projects = () => {
   // Rows come from Postgres via caches, so this re-renders when they arrive.
-  useCache(projectsCache);
+  const { rows: projectRows } = useCache(projectsCache);
   useCache(projectTasksCache);
   useCache(projectTimeCache);
   useCache(projectBugsCache);
@@ -48,7 +48,13 @@ const Projects = () => {
   const [files, setFiles] = useState<ProjectFile[]>([]);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [list, setList] = useState(ProjectStore.listProjects().filter(p => (myClientId ? p.clientId === myClientId : true)));
+  // Read from the cache rather than copied into state on mount: for a server
+  // read there is nothing there yet on the first render, and useCache's
+  // re-render does not recompute state that was seeded once.
+  const list = useMemo(
+    () => projectRows.filter(p => (myClientId ? p.clientId === myClientId : true)),
+    [projectRows, myClientId],
+  );
   const add = () => {
     if (!name.trim()) return;
     const id = `p_${Date.now()}`;
@@ -77,7 +83,7 @@ const Projects = () => {
     setMilestones([]);
     setFiles([]);
     setOpen(false);
-    setList(ProjectStore.listProjects().filter(p => (myClientId ? p.clientId === myClientId : true)));
+    void projectsCache.refresh();
   };
   const addMilestone = () => {
     if (!msTitle.trim()) return;

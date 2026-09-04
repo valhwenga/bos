@@ -20,8 +20,11 @@ import { RolesStore, rolesCache } from "@/lib/rolesStore";
 const Clients = () => {
   // Rows come from Postgres via caches, so this re-renders when they arrive.
   useCache(ticketsCache);
-  useCache(clientsCache);
-  const [list, setList] = useState<Client[]>(ClientsStore.list());
+  const { rows: clientRows } = useCache(clientsCache);
+  // Read from the cache rather than copied into state on mount: for a server
+  // read there is nothing there yet on the first render, and useCache's
+  // re-render does not recompute state that was seeded once.
+  const list = clientRows;
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Client | null>(null);
@@ -35,7 +38,7 @@ const Clients = () => {
   const [loginTempPass, setLoginTempPass] = useState<string>("");
   const [loginError, setLoginError] = useState<string>("");
 
-  const refresh = () => setList(ClientsStore.list());
+  const refresh = () => void clientsCache.refresh();
   useEffect(()=>{ refresh(); }, []);
 
   useCache(rolesCache);

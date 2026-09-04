@@ -29,10 +29,13 @@ const CLOSED: DealStage[] = ["closed_won", "closed_lost"];
 const DealsBoard = () => {
   // Rows come from Postgres via caches, so this re-renders when they arrive.
   useCache(leadsCache);
-  useCache(dealsCache);
+  const { rows: dealRows } = useCache(dealsCache);
   useCache(crmCustomersCache);
   useCache(crmTasksCache);
-  const [deals, setDeals] = useState(CrmDealsStore.list());
+  // Read from the cache rather than copied into state on mount: for a server
+  // read there is nothing there yet on the first render, and useCache's
+  // re-render does not recompute state that was seeded once.
+  const deals = dealRows;
   const [dragOver, setDragOver] = useState<DealStage | null>(null);
   const navigate = useNavigate();
   const users = useAccounts();
@@ -44,7 +47,7 @@ const DealsBoard = () => {
   const dragOrigin = useRef<{ id?: string; x: number; y: number }>({ x: 0, y: 0 });
 
   useEffect(() => {
-    const refresh = () => setDeals(CrmDealsStore.list());
+    const refresh = () => void dealsCache.refresh();
     window.addEventListener("storage", refresh);
     return () => window.removeEventListener("storage", refresh);
   }, []);
@@ -76,13 +79,13 @@ const DealsBoard = () => {
       createdAt: new Date().toISOString(),
     };
     void CrmDealsStore.upsert(deal);
-    setDeals(CrmDealsStore.list());
+    void dealsCache.refresh();
     navigate(`/crm/deals/${deal.id}`);
   };
 
   const moveTo = (dealId: string, stage: DealStage) => {
     void CrmDealsStore.move(dealId, stage);
-    setDeals(CrmDealsStore.list());
+    void dealsCache.refresh();
   };
 
   const columnTotal = (stage: DealStage) =>

@@ -75,8 +75,11 @@ const statusColors = {
 
 const HRMPerformance = () => {
   // Rows come from Postgres via a cache.
-  useCache(performanceCache);
-  const [data, setData] = useState<Performance[]>(HRMPerformanceStore.list());
+  const { rows: performanceRows } = useCache(performanceCache);
+  // Read from the cache rather than copied into state on mount: for a server
+  // read there is nothing there yet on the first render, and useCache's
+  // re-render does not recompute state that was seeded once.
+  const data = performanceRows;
   const performanceStats = useMemo(() => buildPerformanceStats(data), [data]);
   const [open, setOpen] = useState(false);
   const [detail, setDetail] = useState<Performance | null>(null);
@@ -120,7 +123,7 @@ const HRMPerformance = () => {
   const add = () => {
     if (!form.employee.trim() || !form.employeeId.trim()) return;
     void HRMPerformanceStore.upsert(form);
-    setData(HRMPerformanceStore.list());
+    void performanceCache.refresh();
     setOpen(false);
     setForm({ id: `PR${Math.floor(Math.random()*900+100)}`, employee: "", employeeId: "", department: "", rating: 0, goalsCompleted: 0, totalGoals: 10, attendance: 0, productivity: 0, status: "Good", reviewDate: new Date().toISOString().slice(0,10) });
   };

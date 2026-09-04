@@ -30,12 +30,15 @@ const stageOptions: { key: LeadStage; label: string }[] = [
 
 const Leads = () => {
   // Rows come from Postgres via caches, so this re-renders when they arrive.
-  useCache(leadsCache);
+  const { rows: leadRows } = useCache(leadsCache);
   useCache(dealsCache);
   useCache(crmCustomersCache);
   useCache(crmTasksCache);
   const navigate = useNavigate();
-  const [list, setList] = useState(CrmLeadsStore.list());
+  // Read from the cache rather than copied into state on mount: for a server
+  // read there is nothing there yet on the first render, and useCache's
+  // re-render does not recompute state that was seeded once.
+  const list = leadRows;
   const [q, setQ] = useState("");
   const [stage, setStage] = useState<LeadStage | 'all'>('all');
   const users = useAccounts();
@@ -69,7 +72,7 @@ const Leads = () => {
       createdAt: new Date().toISOString(),
     };
     void CrmLeadsStore.upsert(l);
-    setList(CrmLeadsStore.list());
+    void leadsCache.refresh();
     setOpen(false);
     setForm({ name: "", company: "", email: "", phone: "", address: "", source: 'manual', ownerId: users[0]?.id||"" });
   };

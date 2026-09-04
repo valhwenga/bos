@@ -19,9 +19,12 @@ const Customers = () => {
   // Rows come from Postgres via caches, so this re-renders when they arrive.
   useCache(leadsCache);
   useCache(dealsCache);
-  useCache(crmCustomersCache);
+  const { rows: customerRows } = useCache(crmCustomersCache);
   useCache(crmTasksCache);
-  const [list, setList] = useState(CrmCustomersStore.list());
+  // Read from the cache rather than copied into state on mount: for a server
+  // read there is nothing there yet on the first render, and useCache's
+  // re-render does not recompute state that was seeded once.
+  const list = customerRows;
   const [q, setQ] = useState("");
   const navigate = useNavigate();
 
@@ -32,7 +35,7 @@ const Customers = () => {
 
   const add = () => {
     const c: CrmCustomer = { id: `C_${Date.now()}`, name: "New Customer", contacts: [], createdAt: new Date().toISOString() };
-    void CrmCustomersStore.upsert(c); setList(CrmCustomersStore.list());
+    void CrmCustomersStore.upsert(c);
   };
 
   const columns: Column<CrmCustomer>[] = [
