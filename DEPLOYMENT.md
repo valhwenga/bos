@@ -256,10 +256,17 @@ acknowledgement carrying the reference (`[T-00042]`), and their replies land as
 comments on that ticket instead of opening new ones. Any address not listed goes
 to the inbox — mail is never dropped for want of configuration.
 
-**How many addresses?** As many as you like on the receiving side: each is a row,
-and the provider delivers the whole domain. Sending is the limit — `SMTP_FROM` is
-a single address, so everything the system sends goes out from that one, whatever
-address it arrived at.
+**How many addresses?** As many as you like, both ways. Receiving takes whatever
+the provider delivers for the domain. Sending is configured in
+Settings → Email: each address you list there may be used as the From address,
+a ticket reply goes out from the address the customer wrote to, and Compose lets
+you pick. With none listed, everything falls back to `SMTP_FROM`.
+
+Listing an address only permits *this system* to use it. Your mail provider must
+also accept it, and the domain's SPF and DKIM must cover it, or the mail is
+delivered to spam or refused. An address can be restricted to a module, so a
+support agent cannot write to a customer as accounts@ asking for bank details to
+be changed.
 
 ---
 

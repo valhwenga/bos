@@ -29,6 +29,8 @@ export type Ticket = {
   requester: string; // user id or email
   /** Set when the ticket arrived by email, so a reply can go back out. */
   requesterEmail?: string;
+  /** Which of the company's addresses it arrived at, so the reply matches. */
+  inboxAddress?: string;
   departmentId?: string;
   assigneeId?: string;
   category?: string;

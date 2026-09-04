@@ -370,6 +370,9 @@ async function route(
       status: "open",
       due_at: new Date(Date.now() + slaHours * 3600_000).toISOString(),
       source_email_id: emailId,
+      // So a reply goes back out from the address the customer wrote to,
+      // rather than from whatever the default happens to be.
+      inbox_address: match.address as string,
       comments: [],
     })
     .select("reference")
@@ -384,7 +387,13 @@ async function route(
   // ticket instead of continuing this one. A failure to send is reported in the
   // result but does not undo the ticket — the request is in the queue either
   // way, which is what matters.
-  const acknowledged = await acknowledge(supabase, from, ticket.reference as string, subject);
+  const acknowledged = await acknowledge(
+    supabase,
+    from,
+    ticket.reference as string,
+    subject,
+    match.address as string,
+  );
 
   return { routed: "ticket", ticket: ticket.reference, acknowledged };
 }
@@ -394,9 +403,28 @@ async function acknowledge(
   to: string,
   reference: string,
   originalSubject: string,
+  inboxAddress: string,
 ): Promise<boolean> {
   const settings = smtpConfig();
   if ("error" in settings) return false;
+
+  // From the address they wrote to, if the company has configured it as one it
+  // may send as. Answering support@ from billing@ sends the customer's next
+  // message to billing@, which is not where the queue is.
+  //
+  // Looked up rather than used directly: the route address is administrator-
+  // configured, but so is this table, and the send path everywhere else
+  // requires an identity to exist before it will use it.
+  const { data: identity } = await supabase
+    .from("send_identities")
+    .select("address, display_name")
+    .eq("address", inboxAddress)
+    .eq("active", true)
+    .maybeSingle();
+
+  const from = identity
+    ? { address: identity.address as string, name: (identity.display_name as string) ?? "" }
+    : undefined;
 
   const subject = `[${reference}] ${originalSubject || "Your request"}`;
   const body =
@@ -405,7 +433,7 @@ async function acknowledge(
     `replying, so your message reaches the same ticket.\n`;
 
   try {
-    await sendMail(settings.config, { to: [to], subject, body });
+    await sendMail(settings.config, { to: [to], subject, body, from });
   } catch (_) {
     return false;
   }
@@ -417,6 +445,7 @@ async function acknowledge(
     subject,
     body,
     module: "support",
+    from_address: from?.address ?? settings.config.fromAddress,
     status: "sent",
   });
   return true;

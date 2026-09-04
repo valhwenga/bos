@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { SupportStore, type Ticket, type Attachment, type Comment } from "@/lib/supportStore";
 import { AuditLogStore } from "@/lib/auditLogStore";
 import { sendEmail } from "@/lib/sendDocument";
+import { SendIdentities, sendIdentitiesCache } from "@/lib/sendIdentities";
 import { getCurrentRole, canAccess } from "@/lib/accessControl";
 import { useAccounts, useStaffAccounts } from "@/lib/useAccounts";
 import { AuthStore } from "@/lib/authStore";
@@ -31,6 +32,7 @@ const UNASSIGNED = "__unassigned__";
 const TicketDetail = () => {
   // Rows come from Postgres via caches, so this re-renders when they arrive.
   useCache(ticketsCache);
+  useCache(sendIdentitiesCache);
   useCache(clientsCache);
   const { id } = useParams();
   const navigate = useNavigate();
@@ -137,13 +139,19 @@ const TicketDetail = () => {
     if (emailReply && t.requesterEmail && text.trim()) {
       setEmailing(true);
       try {
-        await sendEmail({
+        const result = await sendEmail({
           to: t.requesterEmail,
           subject: `[${t.reference ?? t.id}] ${t.title}`,
           body: text,
           module: "support",
+          // From the address they wrote to, so their next reply comes back to
+          // the queue rather than to whoever the default happens to be.
+          fromIdentity: SendIdentities.forAddress(t.inboxAddress)?.address,
         });
-        toast({ title: "Replied", description: `Emailed to ${t.requesterEmail}.` });
+        toast({
+          title: "Replied",
+          description: `Emailed to ${t.requesterEmail}${result.from ? ` from ${result.from}` : ""}.`,
+        });
       } catch (err: unknown) {
         toast({
           title: "Comment saved, but not emailed",

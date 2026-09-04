@@ -6,6 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SendIdentities, sendIdentitiesCache } from "@/lib/sendIdentities";
+import { useCache } from "@/lib/collectionCache";
 
 function toDataUrl(file: File): Promise<MailAttachment> {
   return new Promise((resolve) => {
@@ -15,6 +18,9 @@ function toDataUrl(file: File): Promise<MailAttachment> {
   });
 }
 
+/** Radix reserves "" to mean "no selection", so a sentinel is needed instead. */
+const DEFAULT_IDENTITY = "__default__";
+
 const Compose = () => {
   // Pre-filled when replying from the inbox. Read once as the initial state
   // rather than synced, so typing is not fighting the query string.
@@ -23,6 +29,11 @@ const Compose = () => {
   const [subject, setSubject] = useState(() => params.get("subject") ?? "");
   const [body, setBody] = useState(() => params.get("body") ?? "");
   const [attachments, setAttachments] = useState<MailAttachment[]>([]);
+  useCache(sendIdentitiesCache);
+  const identities = SendIdentities.usable();
+  // Empty means the server's default, which is right when none are configured
+  // and is also a legitimate choice when they are.
+  const [fromIdentity, setFromIdentity] = useState("");
   const [sending, setSending] = useState(false);
   const navigate = useNavigate();
 
@@ -45,6 +56,7 @@ const Compose = () => {
         subject,
         body,
         module: "email",
+        fromIdentity: fromIdentity || undefined,
         attachments: attachments
           .filter((a) => a.dataUrl?.includes(","))
           .map((a) => ({
@@ -83,6 +95,24 @@ const Compose = () => {
 
       <div className="grid gap-3">
         <div className="grid gap-1">
+          {identities.length > 0 && (
+            <>
+              <label className="text-xs text-muted-foreground">From</label>
+              <Select value={fromIdentity || DEFAULT_IDENTITY} onValueChange={(v) => setFromIdentity(v === DEFAULT_IDENTITY ? "" : v)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={DEFAULT_IDENTITY}>The system default address</SelectItem>
+                  {identities.map((i) => (
+                    <SelectItem key={i.id} value={i.address}>
+                      {i.displayName ? `${i.displayName} <${i.address}>` : i.address}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </>
+          )}
           <label className="text-xs text-muted-foreground">To</label>
           <Input placeholder="email@example.com, other@example.com" value={to} onChange={(e)=> setTo(e.target.value)} />
         </div>

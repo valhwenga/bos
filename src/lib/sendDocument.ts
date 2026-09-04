@@ -17,7 +17,7 @@ import {
   type DocumentKind,
 } from "./documentPdf";
 
-export type SendResult = { sent: true; to: string[] };
+export type SendResult = { sent: true; to: string[]; from?: string };
 
 export async function sendEmail(params: {
   to: string | string[];
@@ -25,6 +25,8 @@ export async function sendEmail(params: {
   body: string;
   attachments?: { filename: string; contentBase64: string; contentType?: string }[];
   module?: string;
+  /** One of the company's configured addresses. The function refuses others. */
+  fromIdentity?: string;
 }): Promise<SendResult> {
   const { data, error } = await supabase.functions.invoke("send-email", { body: params });
 

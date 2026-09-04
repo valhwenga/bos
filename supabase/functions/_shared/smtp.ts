@@ -88,6 +88,12 @@ export async function sendMail(
     subject: string;
     body: string;
     attachments?: OutgoingAttachment[];
+    /**
+     * Which address to send as. Already validated by the caller against the
+     * identities the company has configured — this does no checking of its own,
+     * and must never be handed something a client supplied.
+     */
+    from?: { address: string; name: string };
   },
 ): Promise<void> {
   const authenticate = Boolean(config.username && config.password);
@@ -109,7 +115,11 @@ export async function sendMail(
 
   try {
     await client.send({
-      from: config.fromName ? `${config.fromName} <${config.fromAddress}>` : config.fromAddress,
+      from: (() => {
+        const address = message.from?.address ?? config.fromAddress;
+        const name = message.from?.name ?? config.fromName;
+        return name ? `${name} <${address}>` : address;
+      })(),
       to: message.to,
       subject: message.subject,
       content: message.body,

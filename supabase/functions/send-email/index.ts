@@ -33,12 +33,60 @@ const cors = {
  * A failure to log must not turn a delivered email into a reported failure, so
  * this never throws.
  */
+/**
+ * Resolves the address to send as.
+ *
+ * The caller names an address; this decides whether they may use it. A raw From
+ * header from the client would let any signed-in user send as the managing
+ * director, or as a customer, from inside the company's own relay — a far more
+ * convincing forgery than anything an outsider can produce.
+ *
+ * With no identity asked for, or none configured, the answer is SMTP_FROM,
+ * which is what happened before identities existed.
+ */
+async function resolveIdentity(
+  asCaller: ReturnType<typeof createClient>,
+  requested: string | undefined,
+  fallbackAddress: string,
+  fallbackName: string,
+): Promise<{ address: string; name: string } | { error: string }> {
+  if (!requested) return { address: fallbackAddress, name: fallbackName };
+
+  const wanted = requested.trim().toLowerCase();
+  const { data } = await asCaller
+    .from("send_identities")
+    .select("address, display_name, module, active")
+    .eq("address", wanted)
+    .maybeSingle();
+
+  // Row level security also hides identities from a caller who may not send at
+  // all, so "not found" covers both cases and says the same thing either way.
+  if (!data || !data.active) {
+    return { error: `${wanted} is not an address this system may send as.` };
+  }
+
+  // An identity tied to a module is usable only by somebody who can edit it,
+  // so a support agent cannot send as accounts@.
+  if (data.module) {
+    const { data: allowed } = await asCaller.rpc("has_access", {
+      target_module: data.module,
+      required: "edit",
+    });
+    if (allowed !== true) {
+      return { error: `You need edit access to ${data.module} to send as ${wanted}.` };
+    }
+  }
+
+  return { address: wanted, name: (data.display_name as string) ?? "" };
+}
+
 async function record(
   asCaller: ReturnType<typeof createClient>,
   payload: Payload,
   recipients: string[],
   status: "sent" | "failed",
   error?: string,
+  fromAddress?: string,
 ): Promise<void> {
   try {
     await asCaller.from("email_messages").insert({
@@ -48,6 +96,7 @@ async function record(
       body: payload.body ?? "",
       attachment_names: (payload.attachments ?? []).map((a) => a.filename),
       module: payload.module ?? null,
+      from_address: fromAddress ?? null,
       status,
       error: error ?? null,
     });
@@ -72,6 +121,12 @@ type Payload = {
   attachments?: Attachment[];
   /** Module the caller must have edit rights on, e.g. "accounting". */
   module?: string;
+  /**
+   * Which of the company's addresses to send as. An address, not a display
+   * name and not a raw From header: it is looked up in send_identities and
+   * refused if it is not there.
+   */
+  fromIdentity?: string;
 };
 
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
@@ -133,19 +188,28 @@ Deno.serve(async (req) => {
   const settings = smtpConfig();
   if ("error" in settings) return json({ error: settings.error }, 503);
 
+  const identity = await resolveIdentity(
+    asCaller,
+    payload.fromIdentity,
+    settings.config.fromAddress,
+    settings.config.fromName,
+  );
+  if ("error" in identity) return json({ error: identity.error }, 403);
+
   try {
     await sendMail(settings.config, {
       to: recipients,
       subject: payload.subject,
       body: payload.body ?? "",
       attachments: payload.attachments,
+      from: identity,
     });
   } catch (err) {
     const message = `The mail server rejected the message: ${String(err)}`;
-    await record(asCaller, payload, recipients, "failed", message);
+    await record(asCaller, payload, recipients, "failed", message, identity.address);
     return json({ error: message }, 502);
   }
 
-  await record(asCaller, payload, recipients, "sent");
-  return json({ sent: true, to: recipients });
+  await record(asCaller, payload, recipients, "sent", undefined, identity.address);
+  return json({ sent: true, to: recipients, from: identity.address });
 });

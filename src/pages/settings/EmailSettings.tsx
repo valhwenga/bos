@@ -1,5 +1,6 @@
 import { Mail, ShieldAlert } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SendIdentitiesPanel } from "@/components/SendIdentitiesPanel";
 import { PageHeader } from "@/components/ui/page-header";
 
 /**
@@ -34,8 +35,8 @@ const EmailSettings = () => (
         <p>
           Invoices, quotations and notifications are sent by the{" "}
           <code className="rounded bg-surface-raised px-1 py-0.5 text-xs">send-email</code>{" "}
-          function using the company's mail account. There is nothing to set up per machine, and
-          everyone sends from the same address.
+          function using the company's mail account. There is nothing to set up per machine.
+          Which address a message goes out from is set below.
         </p>
 
         <div className="flex items-start gap-3 rounded-md border border-warning/30 bg-warning-soft px-3 py-3">
@@ -59,11 +60,14 @@ const EmailSettings = () => (
             <li>SMTP_HOST</li>
             <li>SMTP_PORT — 465 for TLS, or 587</li>
             <li>SMTP_USER and SMTP_PASSWORD — omit both for a relay that needs no login</li>
-            <li>SMTP_FROM and SMTP_FROM_NAME — the address customers will see</li>
+            <li>SMTP_FROM and SMTP_FROM_NAME — the fallback address, used when no
+                identity below applies</li>
           </ul>
         </div>
       </CardContent>
     </Card>
+
+    <SendIdentitiesPanel />
   </div>
 );
 
