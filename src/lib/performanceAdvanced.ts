@@ -1,6 +1,19 @@
 /**
  * Advanced performance: OKRs/SMART goals, 360° reviews, calibration.
+ *
+ * These were the last localStorage store. Three working screens sat on top of
+ * it and none of them did what it looked like: a 360° review exists so that
+ * several people assess one person and a manager reads them together, and each
+ * assessment was held in whichever browser its author happened to use.
+ *
+ * Who may read what is set out in the migration rather than left to the module
+ * gate. Two rules are worth repeating here because the screens depend on them:
+ * a peer's review reaches HR and the reviewer, never the person reviewed; and
+ * an employee may move the progress on their own goal but not reword it.
  */
+
+import { createCache } from "./collectionCache";
+import { GoalRepo, Review360Repo, CalibrationRepo } from "./performanceAdvancedRepo";
 export type Goal = {
   id: string;
   employeeId: string;
@@ -36,66 +49,65 @@ export type CalibrationSession = {
   notes: Record<string, string>; // employeeId -> calibration notes
 };
 
-const K = { goals: "perf.goals", reviews360: "perf.reviews360", calibrations: "perf.calibrations" };
-const r = <T,>(k: string, f: T): T => { try { const v = localStorage.getItem(k); return v ? (JSON.parse(v) as T) : f; } catch { return f; } };
-const w = (k: string, v: unknown) => localStorage.setItem(k, JSON.stringify(v));
-const emit = (name: string) => {
-  try { window.dispatchEvent(new Event(name)); } catch { void 0; }
-};
+
+export const goalsCache = createCache<Goal>(() => GoalRepo.list());
+export const reviews360Cache = createCache<Review360>(() => Review360Repo.list());
+export const calibrationsCache = createCache<CalibrationSession>(() => CalibrationRepo.list());
 
 export const PerformanceAdvancedStore = {
   // Goals
   listGoals(): Goal[] {
-    return r<Goal[]>(K.goals, []);
+    return goalsCache.list();
   },
-  upsertGoal(goal: Goal) {
-    const all = this.listGoals();
-    const i = all.findIndex(g => g.id === goal.id);
-    if (i >= 0) all[i] = goal; else all.push(goal);
-    w(K.goals, all);
-    emit("perf.goals-changed");
-    return goal;
-  },
-  removeGoal(id: string) {
-    const all = this.listGoals();
-    w(K.goals, all.filter(g => g.id !== id));
-    emit("perf.goals-changed");
+  loadGoals(): Promise<Goal[]> {
+    return goalsCache.ensureLoaded();
   },
   goalsForEmployee(employeeId: string): Goal[] {
-    return this.listGoals().filter(g => g.employeeId === employeeId);
+    return this.listGoals().filter((g) => g.employeeId === employeeId);
+  },
+  async upsertGoal(goal: Goal): Promise<Goal> {
+    await goalsCache.mutate(() => GoalRepo.upsert(goal));
+    return goal;
+  },
+  async removeGoal(id: string): Promise<void> {
+    await goalsCache.mutate(() => GoalRepo.remove(id));
   },
 
-  // 360 Reviews
+  // 360 reviews
   list360(): Review360[] {
-    return r<Review360[]>(K.reviews360, []);
+    return reviews360Cache.list();
   },
-  upsert360(review: Review360) {
-    const all = this.list360();
-    const i = all.findIndex(r => r.id === review.id);
-    if (i >= 0) all[i] = review; else all.push(review);
-    w(K.reviews360, all);
-    emit("perf.reviews360-changed");
-    return review;
+  load360(): Promise<Review360[]> {
+    return reviews360Cache.ensureLoaded();
   },
+  /**
+   * Reviews of one person that the caller is allowed to see.
+   *
+   * For most people that is only their own submission. That is the design, not
+   * a gap: candid feedback stops being candid the moment the subject can read
+   * it, so what the subject is told is the manager's job rather than this
+   * screen's.
+   */
   reviewsForEmployee(employeeId: string): Review360[] {
-    return this.list360().filter(r => r.employeeId === employeeId);
+    return this.list360().filter((r) => r.employeeId === employeeId);
+  },
+  async submit360(review: Review360): Promise<Review360> {
+    await reviews360Cache.mutate(() => Review360Repo.submit(review));
+    return review;
   },
 
   // Calibration
   listCalibrations(): CalibrationSession[] {
-    return r<CalibrationSession[]>(K.calibrations, []);
+    return calibrationsCache.list();
   },
-  upsertCalibration(session: CalibrationSession) {
-    const all = this.listCalibrations();
-    const i = all.findIndex(s => s.id === session.id);
-    if (i >= 0) all[i] = session; else all.push(session);
-    w(K.calibrations, all);
-    emit("perf.calibrations-changed");
+  loadCalibrations(): Promise<CalibrationSession[]> {
+    return calibrationsCache.ensureLoaded();
+  },
+  async upsertCalibration(session: CalibrationSession): Promise<CalibrationSession> {
+    await calibrationsCache.mutate(() => CalibrationRepo.upsert(session));
     return session;
   },
-  removeCalibration(id: string) {
-    const all = this.listCalibrations();
-    w(K.calibrations, all.filter(s => s.id !== id));
-    emit("perf.calibrations-changed");
+  async removeCalibration(id: string): Promise<void> {
+    await calibrationsCache.mutate(() => CalibrationRepo.remove(id));
   },
 };

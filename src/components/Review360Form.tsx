@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/use-toast";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -77,7 +78,7 @@ export function Review360Form({ employeeId, employeeName }: Props) {
     setForm({ ...form, improvements: form.improvements.filter((_, i) => i !== idx) });
   };
 
-  const submit = () => {
+  const submit = async () => {
     const review: Review360 = {
       id: `R360${Date.now()}`,
       employeeId,
@@ -88,7 +89,19 @@ export function Review360Form({ employeeId, employeeName }: Props) {
       improvements: form.improvements,
       submittedAt: new Date().toISOString(),
     };
-    PerformanceAdvancedStore.upsert360(review);
+    // A review is submitted once and cannot be edited afterwards — a review
+    // changed after somebody has read it is not the review they read. If the
+    // submission fails, say so rather than closing the form and losing it.
+    try {
+      await PerformanceAdvancedStore.submit360(review);
+    } catch (err: unknown) {
+      toast({
+        title: "Review not submitted",
+        description: err instanceof Error ? err.message : "The server refused it.",
+        variant: "destructive",
+      });
+      return;
+    }
     setOpen(false);
     setStep("select");
     setSelectedReviewers([]);

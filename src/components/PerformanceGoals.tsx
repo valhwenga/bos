@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useCache } from "@/lib/collectionCache";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,7 +9,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Plus, Target, CheckCircle, Clock, XCircle } from "lucide-react";
-import { PerformanceAdvancedStore, type Goal } from "@/lib/performanceAdvanced";
+import { PerformanceAdvancedStore, goalsCache, type Goal } from "@/lib/performanceAdvanced";
 import { UserStore } from "@/lib/userStore";
 
 type Props = {
@@ -16,7 +17,11 @@ type Props = {
 };
 
 export function PerformanceGoals({ employeeId }: Props) {
-  const [goals, setGoals] = useState(PerformanceAdvancedStore.goalsForEmployee(employeeId));
+  // From the cache rather than copied into state. The events these listened
+  // for were dispatched by the localStorage writer that no longer exists, and
+  // a server read is not there on the first render anyway.
+  useCache(goalsCache);
+  const goals = PerformanceAdvancedStore.goalsForEmployee(employeeId);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Goal | null>(null);
   const user = UserStore.get();
@@ -29,12 +34,6 @@ export function PerformanceGoals({ employeeId }: Props) {
     progress: 0,
     status: "not_started" as Goal["status"],
   });
-
-  useEffect(() => {
-    const refresh = () => setGoals(PerformanceAdvancedStore.goalsForEmployee(employeeId));
-    window.addEventListener("perf.goals-changed", refresh);
-    return () => window.removeEventListener("perf.goals-changed", refresh);
-  }, [employeeId]);
 
   const save = () => {
     if (!form.title.trim() || !form.dueDate) return;
@@ -49,8 +48,7 @@ export function PerformanceGoals({ employeeId }: Props) {
       status: form.status,
       reviewerId: user.id,
     };
-    PerformanceAdvancedStore.upsertGoal(goal);
-    setGoals(PerformanceAdvancedStore.goalsForEmployee(employeeId));
+    void PerformanceAdvancedStore.upsertGoal(goal);
     setOpen(false);
     setEditing(null);
     setForm({ title: "", description: "", category: "smart", dueDate: "", progress: 0, status: "not_started" });
@@ -70,8 +68,7 @@ export function PerformanceGoals({ employeeId }: Props) {
   };
 
   const remove = (id: string) => {
-    PerformanceAdvancedStore.removeGoal(id);
-    setGoals(PerformanceAdvancedStore.goalsForEmployee(employeeId));
+    void PerformanceAdvancedStore.removeGoal(id);
   };
 
   const statusIcons = {

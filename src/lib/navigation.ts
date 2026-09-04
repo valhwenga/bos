@@ -3,10 +3,7 @@ import {
   Users,
   Calculator,
   FolderKanban,
-  ShoppingCart,
-  CreditCard,
   Headphones,
-  Video,
   MessagesSquare,
   Mail,
   Settings as SettingsIcon,
@@ -57,7 +54,6 @@ export const NAV_ITEMS: NavItem[] = [
       { name: "Invoices", path: "/accounting/invoices" },
       { name: "Customers", path: "/accounting/customers" },
       { name: "Products", path: "/accounting/products" },
-      { name: "Taxes", path: "/accounting/taxes" },
       { name: "Payments", path: "/accounting/payments" },
       { name: "Expenses", path: "/accounting/expenses" },
       { name: "Reports", path: "/accounting/reports" },
@@ -115,9 +111,6 @@ export const NAV_ITEMS: NavItem[] = [
     ],
   },
   { name: "Messenger", path: "/messenger", icon: MessagesSquare, module: "messenger" },
-  { name: "Products", path: "/products", icon: ShoppingCart, module: "inventory" },
-  { name: "Point of Sale", path: "/pos", icon: CreditCard, module: "inventory" },
-  { name: "Meetings", path: "/zoom", icon: Video, module: "dashboard" },
   {
     name: "Users",
     path: "/users",
@@ -146,8 +139,7 @@ export const NAV_ITEMS: NavItem[] = [
 
 /** Which permission module a route belongs to. */
 export function moduleForPath(path: string): ModuleKey | undefined {
-  if (path === "/" || path.startsWith("/zoom")) return "dashboard";
-
+  if (path === "/") return "dashboard";
   if (path.startsWith("/hrm/employees")) return "hrm.employees";
   if (path.startsWith("/hrm/departments")) return "hrm.departments";
   if (path.startsWith("/hrm/attendance")) return "hrm.attendance";
@@ -158,7 +150,6 @@ export function moduleForPath(path: string): ModuleKey | undefined {
   if (path.startsWith("/projects")) return "projects";
   if (path.startsWith("/crm")) return "crm";
   if (path.startsWith("/support") || path.startsWith("/portal/support")) return "support";
-  if (path.startsWith("/products") || path.startsWith("/pos")) return "inventory";
   if (path.startsWith("/users") || path.startsWith("/settings")) return "settings";
   if (path.startsWith("/email")) return "email";
   if (path.startsWith("/messenger")) return "messenger";

@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useCache } from "@/lib/collectionCache";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Users, Star } from "lucide-react";
-import { PerformanceAdvancedStore, type CalibrationSession } from "@/lib/performanceAdvanced";
+import { PerformanceAdvancedStore, calibrationsCache, type CalibrationSession } from "@/lib/performanceAdvanced";
 import { HRMStore } from "@/lib/hrmStore";
 import { HRMDepartmentsStore } from "@/lib/hrmDepartmentsStore";
 
@@ -16,7 +17,11 @@ import { HRMDepartmentsStore } from "@/lib/hrmDepartmentsStore";
 const ALL_DEPARTMENTS = "__all_departments__";
 
 export function PerformanceCalibration() {
-  const [sessions, setSessions] = useState(PerformanceAdvancedStore.listCalibrations());
+  // From the cache rather than copied into state. The events these listened
+  // for were dispatched by the localStorage writer that no longer exists, and
+  // a server read is not there on the first render anyway.
+  useCache(calibrationsCache);
+  const sessions = PerformanceAdvancedStore.listCalibrations();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<CalibrationSession | null>(null);
 
@@ -30,12 +35,6 @@ export function PerformanceCalibration() {
   const employees = HRMStore.list();
   const departments = HRMDepartmentsStore.list();
 
-  useEffect(() => {
-    const refresh = () => setSessions(PerformanceAdvancedStore.listCalibrations());
-    window.addEventListener("perf.calibrations-changed", refresh);
-    return () => window.removeEventListener("perf.calibrations-changed", refresh);
-  }, []);
-
   const save = () => {
     if (!form.name.trim() || !form.startDate || !form.endDate) return;
     const session: CalibrationSession = {
@@ -48,8 +47,7 @@ export function PerformanceCalibration() {
       finalRatings: editing ? editing.finalRatings : {},
       notes: editing ? editing.notes : {},
     };
-    PerformanceAdvancedStore.upsertCalibration(session);
-    setSessions(PerformanceAdvancedStore.listCalibrations());
+    void PerformanceAdvancedStore.upsertCalibration(session);
     setOpen(false);
     setEditing(null);
     setForm({ name: "", departmentId: "", startDate: "", endDate: "" });
@@ -67,9 +65,8 @@ export function PerformanceCalibration() {
   };
 
   const remove = (id: string) => {
-    PerformanceAdvancedStore.removeCalibration(id);
-    setSessions(PerformanceAdvancedStore.listCalibrations());
-  };
+    void PerformanceAdvancedStore.removeCalibration(id);
+    };
 
   const addParticipant = (sessionId: string, employeeId: string) => {
     const s = sessions.find(x => x.id === sessionId);
@@ -78,9 +75,8 @@ export function PerformanceCalibration() {
       ...s,
       participants: [...s.participants, employeeId],
     };
-    PerformanceAdvancedStore.upsertCalibration(updated);
-    setSessions(PerformanceAdvancedStore.listCalibrations());
-  };
+    void PerformanceAdvancedStore.upsertCalibration(updated);
+    };
 
   const removeParticipant = (sessionId: string, employeeId: string) => {
     const s = sessions.find(x => x.id === sessionId);
@@ -91,9 +87,8 @@ export function PerformanceCalibration() {
       finalRatings: { ...s.finalRatings, [employeeId]: undefined },
       notes: { ...s.notes, [employeeId]: undefined },
     };
-    PerformanceAdvancedStore.upsertCalibration(updated);
-    setSessions(PerformanceAdvancedStore.listCalibrations());
-  };
+    void PerformanceAdvancedStore.upsertCalibration(updated);
+    };
 
   const setFinalRating = (sessionId: string, employeeId: string, rating: number) => {
     const s = sessions.find(x => x.id === sessionId);
@@ -102,9 +97,8 @@ export function PerformanceCalibration() {
       ...s,
       finalRatings: { ...s.finalRatings, [employeeId]: rating },
     };
-    PerformanceAdvancedStore.upsertCalibration(updated);
-    setSessions(PerformanceAdvancedStore.listCalibrations());
-  };
+    void PerformanceAdvancedStore.upsertCalibration(updated);
+    };
 
   const setNotes = (sessionId: string, employeeId: string, notes: string) => {
     const s = sessions.find(x => x.id === sessionId);
@@ -113,9 +107,8 @@ export function PerformanceCalibration() {
       ...s,
       notes: { ...s.notes, [employeeId]: notes },
     };
-    PerformanceAdvancedStore.upsertCalibration(updated);
-    setSessions(PerformanceAdvancedStore.listCalibrations());
-  };
+    void PerformanceAdvancedStore.upsertCalibration(updated);
+    };
 
   return (
     <Card className="p-4 mt-4">

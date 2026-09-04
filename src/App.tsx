@@ -27,12 +27,10 @@ import HRMPayroll from "./pages/HRMPayroll";
 import HRMPayrollManage from "./pages/HRMPayrollManage";
 import HRMPerformance from "./pages/HRMPerformance";
 import NotFound from "./pages/NotFound";
-import Placeholder from "./pages/Placeholder";
 import Quotations from "./pages/accounting/Quotations";
 import Invoices from "./pages/accounting/Invoices";
 import Customers from "./pages/accounting/Customers";
 import Products from "./pages/accounting/Products";
-import Taxes from "./pages/accounting/Taxes";
 import Payments from "./pages/accounting/Payments";
 import Expenses from "./pages/accounting/Expenses";
 import Reports from "./pages/accounting/Reports";
@@ -449,7 +447,6 @@ const App = () => {
             {/* More accounting */}
             <Route path="accounting/customers" element={<AccessGuard module="accounting"><Customers /></AccessGuard>} />
             <Route path="accounting/products" element={<AccessGuard module="accounting"><Products /></AccessGuard>} />
-            <Route path="accounting/taxes" element={<AccessGuard module="accounting"><Taxes /></AccessGuard>} />
             <Route path="accounting/payments" element={<AccessGuard module="accounting"><Payments /></AccessGuard>} />
             <Route path="accounting/sales" element={<AccessGuard module="accounting"><Sales /></AccessGuard>} />
             <Route path="accounting/credits" element={<AccessGuard module="accounting"><CreditNotes /></AccessGuard>} />
@@ -464,14 +461,13 @@ const App = () => {
             <Route path="users/client" element={<AccessGuard module="settings"><Clients /></AccessGuard>} />
             <Route path="users/pending" element={<AccessGuard module="settings"><PendingApprovals /></AccessGuard>} />
             <Route path="users/audit" element={<AccessGuard module="settings"><AuditLogs /></AccessGuard>} />
-            <Route path="products" element={<AccessGuard module="inventory"><Placeholder /></AccessGuard>} />
-            <Route path="pos" element={<AccessGuard module="inventory"><Placeholder /></AccessGuard>} />
+            {/* A real products screen already exists under accounting. */}
+            <Route path="products" element={<Navigate to="/accounting/products" replace />} />
             <Route path="support" element={<AccessGuard module="support"><SupportDashboard /></AccessGuard>} />
             <Route path="support/tickets" element={<AccessGuard module="support"><SupportTickets /></AccessGuard>} />
             <Route path="support/tickets/:id" element={<AccessGuard module="support"><SupportTicketDetail /></AccessGuard>} />
             <Route path="support/settings" element={<AccessGuard module="support"><SupportSettings /></AccessGuard>} />
             <Route path="portal/support" element={<AccessGuard module="support"><ClientPortalSupport /></AccessGuard>} />
-            <Route path="zoom" element={<AccessGuard module="dashboard"><Placeholder /></AccessGuard>} />
             <Route path="messenger" element={<AccessGuard module="messenger"><MessengerConversations /></AccessGuard>} />
             <Route path="messenger/:id" element={<AccessGuard module="messenger"><MessengerChat /></AccessGuard>} />
             <Route path="email" element={<Navigate to="/email/inbox" replace />} />

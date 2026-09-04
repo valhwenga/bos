@@ -63,22 +63,37 @@ Set these once after deploying, before anyone sends a document.
 
 ### 4. Configure SMTP — the last blocker
 
-Email confirmation is **on** in `supabase/config.toml`, along with
-`secure_password_change` and a 60-second limit between reset emails. Verified
-locally: a new signup gets no session, sign-in is refused with
-`email_not_confirmed`, and the confirmation email is sent.
+**There are two separate SMTP configurations and the system needs both.** They
+are set in different places, they fail differently, and doing one and assuming
+the other is the mistake this section exists to prevent.
 
-What is left is delivery. Locally, mail is caught by Mailpit
-(http://127.0.0.1:54424), which is why this works in development with nothing
-configured. **A hosted project has no such catcher.** Without a real SMTP
-provider, confirmation and reset emails are never delivered, and since
-confirmation is now required, nobody can complete a signup or recover an
-account.
+Locally neither is needed: mail is caught by Mailpit
+(http://127.0.0.1:54424), which is why development works with nothing
+configured. **A hosted project has no such catcher.**
 
-Set it in the hosted project's dashboard under **Authentication → SMTP
-Settings**, not in `config.toml` — that file is committed and the password must
-not be. Then send yourself a test signup and confirm the mail arrives before
-letting anyone else register.
+| | Set where | Sends | If it is missing |
+|---|---|---|---|
+| **Supabase Auth** | Dashboard → Authentication → SMTP Settings | Confirmation and password-reset emails | **Nobody can sign up or recover an account.** Confirmation is required, so a new user gets no session and is refused at sign-in with `email_not_confirmed` |
+| **Function secrets** | `supabase secrets set` (step 8) | Invoices, quotations, ticket replies, Compose | Documents are not sent. The app says so plainly rather than pretending — "Email is not configured on the server" |
+
+Neither goes in `config.toml`. That file is committed and a password must not
+be.
+
+**Verify both before letting anyone else in**, because each fails silently in
+its own way:
+
+1. **Auth** — register a new account with an address you can read. The
+   confirmation mail should arrive within a minute. Until you click it, that
+   account cannot sign in; that is correct.
+2. **Functions** — sign in and email yourself an invoice from Accounting →
+   Invoices. Then open Email → Sent: the message should be listed as sent. A
+   refusal is recorded there too, with the mail server's own words.
+
+Two things worth knowing about the provider you choose. It must be willing to
+send as whatever `SMTP_FROM` is, and as any address added under Settings →
+Email; and the domain's SPF and DKIM records must cover them, or the mail is
+delivered to spam or refused outright. That is a DNS matter, not an application
+one, and it is the usual reason "the system does not send email".
 
 ### 5. Dependency vulnerabilities — done
 
@@ -86,13 +101,13 @@ The three high-severity advisories were patched in place; the two moderate
 React Router ones needed the major upgrade to v7, which was taken and verified
 across 24 routes.
 
-**One moderate has appeared since:** `fflate`, pulled in by `jspdf@4.2.1`,
-which generates invoice and payslip PDFs. Not exploitable by anything a user
-can do here — the app only ever hands it its own generated content — but it
-should be cleared before launch by upgrading jspdf when a fixed version lands.
+A moderate one appeared later in `fflate`, a transitive dependency of `jspdf`,
+and was cleared by taking 0.8.3 — inside the range jspdf already allows, so no
+upgrade and no behaviour change. `npm audit --omit=dev` reports **0
+vulnerabilities**.
 
-Re-run `npm audit --omit=dev` before each deploy. This section was accurate
-when written and was already out of date a day later, which is the point.
+Re-run it before each deploy. That figure was accurate when first written and
+was out of date a day later, which is the point.
 
 ---
 
@@ -296,13 +311,13 @@ them:
   inbox is empty and says so; sending works regardless.
 - **"System lockdown" ends only the current session.** Revoking everyone else's
   needs an admin API call the browser cannot make.
-- **Products, Point of Sale and Meetings are placeholder pages.** They appear
-  in the navigation and say "not implemented yet" when opened. Either build
-  them, or take them out of `NAV_ITEMS` before anyone is shown around.
-- **360 reviews, performance goals and calibration sessions are still
-  per-browser.** They are the last localStorage store (`performanceAdvanced`),
-  reached from HRM → Performance. What one person records there, nobody else
-  sees. Everything else is in Postgres.
+- **360° reviews are not shown to the person reviewed.** A reviewer sees what
+  they wrote and HR sees everything; the subject sees none of it in the app.
+  That is deliberate — feedback stops being candid the moment the subject can
+  read it — but somebody will ask, so say it first. What the subject is told is
+  the manager's job.
+- **An employee can move the progress on their own goal** and nothing else. The
+  wording and the reviewer's notes are refused by the database, not just hidden.
 - **75 lint errors**, mostly `no-explicit-any`. Not user-visible, but they are
   where type errors hide.
 - **Typecheck with `npx tsc -p tsconfig.app.json --noEmit`.** The bare
