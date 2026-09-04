@@ -82,12 +82,17 @@ letting anyone else register.
 
 ### 5. Dependency vulnerabilities — done
 
-`npm audit --omit=dev` reports **0 vulnerabilities**. The three high-severity
-ones were patched in place; the two moderate React Router advisories needed the
-major upgrade to v7, which was taken and verified across 24 routes.
+The three high-severity advisories were patched in place; the two moderate
+React Router ones needed the major upgrade to v7, which was taken and verified
+across 24 routes.
 
-Re-run `npm audit --omit=dev` before each deploy — this only stays true if
-somebody keeps checking.
+**One moderate has appeared since:** `fflate`, pulled in by `jspdf@4.2.1`,
+which generates invoice and payslip PDFs. Not exploitable by anything a user
+can do here — the app only ever hands it its own generated content — but it
+should be cleared before launch by upgrading jspdf when a fixed version lands.
+
+Re-run `npm audit --omit=dev` before each deploy. This section was accurate
+when written and was already out of date a day later, which is the point.
 
 ---
 
@@ -291,7 +296,14 @@ them:
   inbox is empty and says so; sending works regardless.
 - **"System lockdown" ends only the current session.** Revoking everyone else's
   needs an admin API call the browser cannot make.
-- **108 lint errors**, mostly `no-explicit-any`. Not user-visible, but they are
+- **Products, Point of Sale and Meetings are placeholder pages.** They appear
+  in the navigation and say "not implemented yet" when opened. Either build
+  them, or take them out of `NAV_ITEMS` before anyone is shown around.
+- **360 reviews, performance goals and calibration sessions are still
+  per-browser.** They are the last localStorage store (`performanceAdvanced`),
+  reached from HRM → Performance. What one person records there, nobody else
+  sees. Everything else is in Postgres.
+- **75 lint errors**, mostly `no-explicit-any`. Not user-visible, but they are
   where type errors hide.
 - **Typecheck with `npx tsc -p tsconfig.app.json --noEmit`.** The bare
   `npx tsc --noEmit` compiles nothing: the root config has `"files": []` and
