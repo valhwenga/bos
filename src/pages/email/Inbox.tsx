@@ -1,58 +1,222 @@
-import { useEffect, useMemo, useState } from "react";
-import { EmailStore, type MailMessage } from "@/lib/emailStore";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+/**
+ * The shared inbox.
+ *
+ * Mail arriving for the company's addresses. Everything shown here was written
+ * by somebody outside the system, so the sender is presented with what the mail
+ * provider made of their claim to be who they say — an address alone is not
+ * evidence of anything.
+ */
+
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { ShieldCheck, ShieldAlert, ShieldQuestion, Paperclip, Archive, LifeBuoy } from "lucide-react";
+import { InboxStore, inboxCache, senderCheck, subscribeToInbox, type InboundEmail } from "@/lib/inboxStore";
+import { useCache } from "@/lib/collectionCache";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { PageHeader } from "@/components/ui/page-header";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+
+const formatWhen = (iso: string) => {
+  const date = new Date(iso);
+  const sameDay = new Date().toDateString() === date.toDateString();
+  return sameDay
+    ? date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    : date.toLocaleDateString();
+};
+
+/** A small, honest indicator rather than a green tick on everything. */
+export const SenderBadge = ({ email }: { email: InboundEmail }) => {
+  const check = senderCheck(email);
+  if (check === "passed") {
+    return <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-success" aria-label="Sender checks passed" />;
+  }
+  if (check === "failed") {
+    return <ShieldAlert className="h-3.5 w-3.5 shrink-0 text-danger" aria-label="Sender checks failed" />;
+  }
+  return (
+    <ShieldQuestion className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label="Sender not verified" />
+  );
+};
 
 const Inbox = () => {
-  const [list, setList] = useState<MailMessage[]>(EmailStore.byFolder("inbox"));
-  const [q, setQ] = useState("");
-  const refresh = () => setList(EmailStore.byFolder("inbox"));
-  useEffect(()=>{ refresh(); }, []);
-
-  const filtered = useMemo(() => list.filter(m => {
-    const hay = `${m.subject} ${m.body}`.toLowerCase();
-    return hay.includes(q.toLowerCase());
-  }), [list, q]);
-
+  const { loading, error } = useCache(inboxCache);
+  const [showArchived, setShowArchived] = useState(false);
+  // Empty means every address. Kept as the address itself rather than an index
+  // so it survives the list changing underneath as mail arrives.
+  const [address, setAddress] = useState("");
   const navigate = useNavigate();
 
-  return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold mb-1">Inbox</h1>
-          <p className="text-sm text-muted-foreground">Your received emails</p>
-        </div>
-        <div className="flex gap-2">
-          <Input placeholder="Search mail..." value={q} onChange={(e)=> setQ(e.target.value)} className="w-64" />
-          <Button onClick={()=> navigate('/email/compose')}>Compose</Button>
-        </div>
-      </div>
+  useEffect(() => {
+    const unsubscribe = subscribeToInbox();
+    const onFocus = () => void inboxCache.refresh();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      unsubscribe();
+      window.removeEventListener("focus", onFocus);
+    };
+  }, []);
 
-      <div className="bg-card rounded-lg border overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-secondary/50">
-              <tr>
-                <th className="text-left p-3 text-sm">FROM</th>
-                <th className="text-left p-3 text-sm">SUBJECT</th>
-                <th className="text-left p-3 text-sm">DATE</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(m => (
-                <tr key={m.id} className="border-t hover:bg-secondary/30 cursor-pointer" onClick={()=> navigate(`/email/${m.id}`)}>
-                  <td className="p-3 text-sm">{m.from.name || m.from.email}</td>
-                  <td className="p-3 text-sm">{m.subject}</td>
-                  <td className="p-3 text-sm">{new Date(m.date).toLocaleString()}</td>
-                </tr>
-              ))}
-              {filtered.length===0 && (<tr><td className="p-6 text-sm text-muted-foreground" colSpan={3}>No emails</td></tr>)}
-            </tbody>
-          </table>
+  const addresses = InboxStore.addresses();
+  const base = showArchived ? InboxStore.list().filter((m) => m.archived) : InboxStore.active();
+  const messages = address ? base.filter((m) => m.to.includes(address)) : base;
+  const suspicious = messages.filter((m) => senderCheck(m) === "failed").length;
+  // The fetch takes the most recent 500. Saying so beats letting somebody
+  // conclude that older mail was never received.
+  const atLimit = InboxStore.list().length >= 500;
+
+  const columns: Column<InboundEmail>[] = [
+    {
+      id: "from",
+      header: "From",
+      sortValue: (m) => m.fromName || m.fromAddress,
+      cell: (m) => (
+        <span className={cn("flex items-center gap-1.5", !m.read && "font-semibold")}>
+          <SenderBadge email={m} />
+          <span className="truncate">{m.fromName || m.fromAddress}</span>
+        </span>
+      ),
+    },
+    {
+      id: "subject",
+      header: "Subject",
+      sortValue: (m) => m.subject,
+      cell: (m) => (
+        <span className={cn("flex items-center gap-1.5", !m.read && "font-semibold")}>
+          <span className="truncate">{m.subject || "(no subject)"}</span>
+          {m.attachments.length > 0 && (
+            <Paperclip className="h-3 w-3 shrink-0 text-muted-foreground" aria-label="Has attachments" />
+          )}
+          {m.ticket && (
+            <span
+              className="inline-flex shrink-0 items-center gap-1 rounded-sm bg-info-soft px-1.5 py-0.5 text-xs font-medium text-info"
+              title={`Opened ticket ${m.ticket.reference}`}
+            >
+              <LifeBuoy className="h-3 w-3" aria-hidden="true" />
+              {m.ticket.reference}
+            </span>
+          )}
+        </span>
+      ),
+    },
+    {
+      id: "to",
+      header: "To",
+      hideOnMobile: true,
+      sortValue: (m) => m.to.join(", "),
+      cell: (m) => (
+        <span className="truncate text-xs text-muted-foreground">{m.to.join(", ") || "—"}</span>
+      ),
+    },
+    {
+      id: "received",
+      header: "Received",
+      align: "right",
+      sortValue: (m) => m.receivedAt,
+      cell: (m) => (
+        <span className="whitespace-nowrap text-muted-foreground">{formatWhen(m.receivedAt)}</span>
+      ),
+    },
+  ];
+
+  return (
+    <div className="flex flex-col gap-6 p-6">
+      <PageHeader
+        title={showArchived ? "Archived mail" : "Inbox"}
+        description="Mail received at the company's addresses."
+        breadcrumbs={[{ label: "Email", to: "/email" }, { label: showArchived ? "Archived" : "Inbox" }]}
+        actions={
+          <Button variant="outline" onClick={() => setShowArchived((v) => !v)}>
+            <Archive className="mr-2 h-4 w-4" aria-hidden="true" />
+            {showArchived ? "Back to inbox" : "Archived"}
+          </Button>
+        }
+      />
+
+      {error && (
+        <div className="rounded-md border border-danger/40 bg-danger-soft px-4 py-3 text-sm text-danger">
+          Could not load the inbox: {error.message}
         </div>
-      </div>
+      )}
+
+      {suspicious > 0 && !showArchived && (
+        <div className="rounded-md border border-danger/40 bg-danger-soft px-4 py-3 text-sm text-danger">
+          {suspicious} {suspicious === 1 ? "message failed" : "messages failed"} the sender checks. The
+          address they claim to be from is probably not where they came from — treat any request in them
+          with suspicion.
+        </div>
+      )}
+
+      {addresses.length > 1 && !showArchived && (
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by address">
+          <button
+            type="button"
+            onClick={() => setAddress("")}
+            aria-pressed={address === ""}
+            className={cn(
+              "rounded-md border px-3 py-1.5 text-sm transition-colors",
+              address === "" ? "border-primary bg-primary-soft text-primary" : "hover:bg-surface-raised",
+            )}
+          >
+            All addresses
+            <span className="ml-1.5 text-xs text-muted-foreground">
+              {addresses.reduce((n, a) => n + a.unread, 0) || ""}
+            </span>
+          </button>
+          {addresses.map((a) => (
+            <button
+              key={a.address}
+              type="button"
+              onClick={() => setAddress(a.address)}
+              aria-pressed={address === a.address}
+              className={cn(
+                "rounded-md border px-3 py-1.5 text-sm transition-colors",
+                address === a.address
+                  ? "border-primary bg-primary-soft text-primary"
+                  : "hover:bg-surface-raised",
+              )}
+            >
+              <span className="font-mono text-xs">{a.address}</span>
+              {a.unread > 0 && (
+                <span className="ml-1.5 rounded-full bg-primary px-1.5 text-xs text-primary-foreground">
+                  {a.unread}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {atLimit && (
+        <p className="text-xs text-muted-foreground">
+          Showing the most recent 500 messages. Older mail is in the database but is not loaded here.
+        </p>
+      )}
+
+      <DataTable
+        rows={messages}
+        columns={columns}
+        rowKey={(m) => m.id}
+        onRowClick={(m) => navigate(`/email/inbox/${m.id}`)}
+        searchAccessor={(m) => `${m.fromAddress} ${m.fromName ?? ""} ${m.subject} ${m.body}`}
+        searchPlaceholder="Search by sender, subject or contents…"
+        empty={{
+          title: loading
+            ? "Loading…"
+            : showArchived
+              ? "Nothing archived"
+              : address
+                ? `Nothing for ${address}`
+                : "No mail yet",
+          description: loading
+            ? "Reading the mailbox."
+            : showArchived
+              ? "Messages you archive are kept here."
+              : address
+                ? "Other addresses may still have mail — clear the filter to see everything."
+                : "Mail sent to the company's addresses appears here once inbound delivery is configured. See DEPLOYMENT.md.",
+        }}
+      />
     </div>
   );
 };

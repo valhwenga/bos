@@ -1,8 +1,17 @@
+/**
+ * Leave requests. Rows in Postgres now.
+ */
+
+import { createCache } from "./collectionCache";
+import { LeaveRepo } from "./hrmRepo";
+
 export type LeaveStatus = "Pending" | "Approved" | "Rejected";
 export type Leave = {
   id: string;
   employee: string;
   employeeId: string;
+  createdByUserId?: string;
+  departmentId?: string;
   type: string;
   startDate: string;
   endDate: string;
@@ -13,17 +22,37 @@ export type Leave = {
   managerNote?: string;
 };
 
-const K = { leaves: "hrm.leaves" };
-const r = <T,>(k: string, f: T): T => { try { const v = localStorage.getItem(k); return v ? (JSON.parse(v) as T) : f; } catch { return f; } };
-const w = (k: string, v: unknown) => localStorage.setItem(k, JSON.stringify(v));
+export const leavesCache = createCache<Leave>(() => LeaveRepo.list());
 
-const SEED: Leave[] = [
-  { id: "L1", employee: "John Anderson", employeeId: "EMP001", type: "Sick Leave", startDate: "2025-10-25", endDate: "2025-10-27", days: 3, reason: "Medical checkup and recovery", status: "Pending", appliedOn: "2025-10-22" },
-  { id: "L2", employee: "Sarah Williams", employeeId: "EMP002", type: "Vacation", startDate: "2025-11-01", endDate: "2025-11-10", days: 10, reason: "Family vacation", status: "Approved", appliedOn: "2025-10-15" },
-];
+const announce = () => {
+  try {
+    window.dispatchEvent(new Event("hrm.leave-changed"));
+  } catch {
+    void 0;
+  }
+};
 
 export const HRMLeaveStore = {
-  list(): Leave[] { return r<Leave[]>(K.leaves, SEED); },
-  upsert(l: Leave) { const all = this.list(); const i = all.findIndex(x=>x.id===l.id); if(i>=0) all[i]=l; else all.push(l); w(K.leaves, all); return l; },
-  setStatus(id: string, status: LeaveStatus, managerNote?: string) { const all = this.list(); const i = all.findIndex(x=>x.id===id); if(i>=0) { all[i].status = status; if (managerNote) all[i].managerNote = managerNote; w(K.leaves, all); return all[i]; } },
+  list(): Leave[] {
+    return leavesCache.list();
+  },
+  load(): Promise<Leave[]> {
+    return leavesCache.ensureLoaded();
+  },
+  async upsert(l: Leave): Promise<Leave> {
+    await leavesCache.mutate(() => LeaveRepo.upsert(l));
+    announce();
+    return l;
+  },
+  async remove(id: string): Promise<void> {
+    await leavesCache.mutate(() => LeaveRepo.remove(id));
+    announce();
+  },
+  async setStatus(id: string, status: LeaveStatus, managerNote?: string): Promise<Leave | undefined> {
+    const existing = this.list().find((l) => l.id === id);
+    if (!existing) return undefined;
+    const next = { ...existing, status, managerNote: managerNote ?? existing.managerNote };
+    await this.upsert(next);
+    return next;
+  },
 };

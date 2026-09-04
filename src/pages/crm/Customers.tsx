@@ -1,4 +1,13 @@
 import { useMemo, useState } from "react";
+import { useCache } from "@/lib/collectionCache";
+import { leadsCache } from "@/lib/crmLeadsStore";
+import { dealsCache } from "@/lib/crmDealsStore";
+import { crmCustomersCache } from "@/lib/crmCustomersStore";
+import { crmTasksCache } from "@/lib/crmTasksStore";
+import { Building2, Users } from "lucide-react";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatCard } from "@/components/ui/stat-card";
 import { CrmCustomersStore, type CrmCustomer } from "@/lib/crmCustomersStore";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,7 +16,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useNavigate } from "react-router-dom";
 
 const Customers = () => {
-  const [list, setList] = useState(CrmCustomersStore.list());
+  // Rows come from Postgres via caches, so this re-renders when they arrive.
+  useCache(leadsCache);
+  useCache(dealsCache);
+  const { rows: customerRows } = useCache(crmCustomersCache);
+  useCache(crmTasksCache);
+  // Read from the cache rather than copied into state on mount: for a server
+  // read there is nothing there yet on the first render, and useCache's
+  // re-render does not recompute state that was seeded once.
+  const list = customerRows;
   const [q, setQ] = useState("");
   const navigate = useNavigate();
 
@@ -18,46 +35,63 @@ const Customers = () => {
 
   const add = () => {
     const c: CrmCustomer = { id: `C_${Date.now()}`, name: "New Customer", contacts: [], createdAt: new Date().toISOString() };
-    CrmCustomersStore.upsert(c); setList(CrmCustomersStore.list());
+    void CrmCustomersStore.upsert(c);
   };
 
+  const columns: Column<CrmCustomer>[] = [
+    { id: "name", header: "Name", sortValue: (c) => c.name, cell: (c) => <span className="font-medium">{c.name}</span> },
+    {
+      id: "address",
+      header: "Address",
+      hideOnMobile: true,
+      cell: (c) => <span className="block max-w-xs truncate text-muted-foreground">{c.address || "—"}</span>,
+    },
+    {
+      id: "contacts",
+      header: "Contacts",
+      cell: (c) => {
+        const names = (c.contacts || []).map((x) => x.name).filter(Boolean);
+        return names.length ? (
+          <span className="text-muted-foreground">{names.join(", ")}</span>
+        ) : (
+          <span className="text-subtle">No contacts</span>
+        );
+      },
+    },
+  ];
+
   return (
-    <div className="p-6 space-y-4">
-      <Card className="shadow-[0_10px_0_rgba(0,0,0,0.08)]">
-        <CardHeader className="flex-row items-center justify-between">
-          <CardTitle>Customers</CardTitle>
-          <div className="flex items-center gap-2">
-            <Input placeholder="Search" value={q} onChange={(e)=> setQ(e.target.value)} />
-            <Button onClick={add}>New Customer</Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-lg overflow-hidden border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Address</TableHead>
-                  <TableHead>Contacts</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map(c => (
-                  <TableRow key={c.id}>
-                    <TableCell>{c.name}</TableCell>
-                    <TableCell>{c.address||'-'}</TableCell>
-                    <TableCell>{(c.contacts||[]).map(x=>x.name).join(', ')||'-'}</TableCell>
-                    <TableCell className="text-right">
-                      <Button size="sm" variant="outline" onClick={()=> navigate(`/crm/customers/${c.id}`)}>Open</Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+    <div className="flex flex-col gap-6 p-6">
+      <PageHeader
+        title="Customers"
+        description="Accounts you're actively working with in CRM."
+        breadcrumbs={[{ label: "CRM", to: "/crm/leads" }, { label: "Customers" }]}
+        actions={<Button onClick={add}>New customer</Button>}
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <StatCard label="Customers" value={filtered.length} hint="In your CRM" icon={Building2} />
+          <StatCard
+            label="With contacts"
+            value={filtered.filter((c) => (c.contacts || []).length > 0).length}
+            hint="Have at least one named contact"
+            icon={Users}
+          />
+        </div>
+      </PageHeader>
+
+      <DataTable
+        rows={filtered}
+        columns={columns}
+        rowKey={(c) => c.id}
+        searchAccessor={(c) => `${c.name} ${c.address ?? ""} ${(c.contacts || []).map((x) => x.name).join(" ")}`}
+        searchPlaceholder="Search by name, address or contact…"
+        onRowClick={(c) => navigate(`/crm/customers/${c.id}`)}
+        empty={{
+          title: "No customers yet",
+          description: "Convert a won lead, or add a customer directly.",
+          action: <Button onClick={add}>New customer</Button>,
+        }}
+      />
     </div>
   );
 };

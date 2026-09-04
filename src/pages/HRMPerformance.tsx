@@ -1,63 +1,129 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useCache } from "@/lib/collectionCache";
+import { performanceCache } from "@/lib/hrmPerformanceStore";
 import { Button } from "@/components/ui/button";
-import { Plus, TrendingUp, Target, Award } from "lucide-react";
+import { Plus, TrendingUp, Target, Award, Calculator } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { HRMPerformanceStore, type Performance, type PerformanceStatus } from "@/lib/hrmPerformanceStore";
+import { computeAttendancePercent } from "@/lib/performanceUtils";
+import { PerformanceGoals } from "@/components/PerformanceGoals";
+import { PerformanceCalibration } from "@/components/PerformanceCalibration";
+import { Review360Form } from "@/components/Review360Form";
 
 const performanceDataSeed = HRMPerformanceStore.list();
 
-const performanceStats = [
-  {
-    title: "Average Rating",
-    value: "4.25",
-    subtitle: "Out of 5.0",
-    icon: Award,
-    color: "bg-blue-500",
-  },
-  {
-    title: "Goals Completed",
-    value: "45/60",
-    subtitle: "75% completion",
-    icon: Target,
-    color: "bg-green-500",
-  },
-  {
-    title: "Avg Productivity",
-    value: "85%",
-    subtitle: "+3% from last month",
-    icon: TrendingUp,
-    color: "bg-purple-500",
-  },
-  {
-    title: "Top Performers",
-    value: "3",
-    subtitle: "Excellent rating",
-    icon: Award,
-    color: "bg-orange-500",
-  },
-];
+/** Derives the summary tiles from actual review records rather than fixed copy. */
+function buildPerformanceStats(records: Performance[]) {
+  const count = records.length;
+  const avg = (pick: (r: Performance) => number) =>
+    count ? records.reduce((sum, r) => sum + (pick(r) || 0), 0) / count : 0;
+
+  const goalsCompleted = records.reduce((sum, r) => sum + (r.goalsCompleted || 0), 0);
+  const totalGoals = records.reduce((sum, r) => sum + (r.totalGoals || 0), 0);
+  const topPerformers = records.filter((r) => r.status === "Excellent").length;
+
+  return [
+    {
+      title: "Average Rating",
+      value: count ? avg((r) => r.rating).toFixed(2) : "—",
+      subtitle: count ? `Across ${count} review${count === 1 ? "" : "s"}` : "No reviews yet",
+      icon: Award,
+      color: "bg-info",
+    },
+    {
+      title: "Goals Completed",
+      value: totalGoals ? `${goalsCompleted}/${totalGoals}` : "—",
+      subtitle: totalGoals ? `${Math.round((goalsCompleted / totalGoals) * 100)}% completion` : "No goals set",
+      icon: Target,
+      color: "bg-success",
+    },
+    {
+      title: "Avg Productivity",
+      value: count ? `${Math.round(avg((r) => r.productivity))}%` : "—",
+      subtitle: count ? "Current review cycle" : "No reviews yet",
+      icon: TrendingUp,
+      color: "bg-primary",
+    },
+    {
+      title: "Top Performers",
+      value: String(topPerformers),
+      subtitle: "Excellent rating",
+      icon: Award,
+      color: "bg-warning",
+    },
+  ];
+}
 
 const statusColors = {
-  Excellent: "bg-green-500 text-white",
-  Good: "bg-blue-500 text-white",
-  Average: "bg-orange-500 text-white",
-  "Needs Improvement": "bg-red-500 text-white",
+  Excellent: "bg-success text-success-foreground",
+  Good: "bg-info text-info-foreground",
+  Average: "bg-warning text-warning-foreground",
+  "Needs Improvement": "bg-danger text-danger-foreground",
 };
 
 const HRMPerformance = () => {
-  const [data, setData] = useState<Performance[]>(HRMPerformanceStore.list());
+  // Rows come from Postgres via a cache.
+  const { rows: performanceRows } = useCache(performanceCache);
+  // Read from the cache rather than copied into state on mount: for a server
+  // read there is nothing there yet on the first render, and useCache's
+  // re-render does not recompute state that was seeded once.
+  const data = performanceRows;
+  const performanceStats = useMemo(() => buildPerformanceStats(data), [data]);
   const [open, setOpen] = useState(false);
   const [detail, setDetail] = useState<Performance | null>(null);
+  const [showCalculation, setShowCalculation] = useState<{ breakdown: string[] } | null>(null);
   const [form, setForm] = useState<Performance>({ id: `PR${Math.floor(Math.random()*900+100)}`, employee: "", employeeId: "", department: "", rating: 0, goalsCompleted: 0, totalGoals: 10, attendance: 0, productivity: 0, status: "Good", reviewDate: new Date().toISOString().slice(0,10) });
+
+  // Auto-calculate attendance when employeeId or reviewDate changes
+  useEffect(() => {
+    if (form.employeeId && form.reviewDate) {
+      const calc = computeAttendancePercent(form.employeeId, form.reviewDate);
+      setForm(prev => ({ ...prev, attendance: calc.attendancePercent }));
+    }
+  }, [form.employeeId, form.reviewDate]);
+
+  const employeeOptions = Array.from(
+    new Map(
+      data
+        .filter((r) => r.employee && r.employeeId)
+        .map((r) => [r.employee, { employee: r.employee, employeeId: r.employeeId, department: r.department }])
+    ).values()
+  ).sort((a, b) => a.employee.localeCompare(b.employee));
+
+  const handleEmployeeSelect = (employeeName: string) => {
+    const found = employeeOptions.find((e) => e.employee === employeeName);
+    setForm({
+      ...form,
+      employee: employeeName,
+      employeeId: found?.employeeId ?? "",
+      department: found?.department ?? "",
+    });
+  };
+
+  const handleShowCalculation = () => {
+    if (!form.employeeId || !form.reviewDate) {
+      setShowCalculation({ breakdown: ["Select an employee and review date to see calculation."] });
+      return;
+    }
+    const calc = computeAttendancePercent(form.employeeId, form.reviewDate);
+    setShowCalculation({ breakdown: calc.breakdown });
+  };
   const add = () => {
     if (!form.employee.trim() || !form.employeeId.trim()) return;
-    HRMPerformanceStore.upsert(form);
-    setData(HRMPerformanceStore.list());
+    void HRMPerformanceStore.upsert(form);
+    void performanceCache.refresh();
     setOpen(false);
     setForm({ id: `PR${Math.floor(Math.random()*900+100)}`, employee: "", employeeId: "", department: "", rating: 0, goalsCompleted: 0, totalGoals: 10, attendance: 0, productivity: 0, status: "Good", reviewDate: new Date().toISOString().slice(0,10) });
   };
@@ -65,13 +131,13 @@ const HRMPerformance = () => {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-3xl font-bold mb-2">Performance Management</h1>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <h1 className="text-2xl font-semibold text-foreground">Performance Management</h1>
+          <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
             <span>Dashboard</span>
             <span>›</span>
             <span>HRM System</span>
             <span>›</span>
-            <span className="text-primary">Performance</span>
+            <span className="text-foreground">Performance</span>
           </div>
         </div>
 
@@ -86,7 +152,7 @@ const HRMPerformance = () => {
           <Card key={index} className="p-5">
             <div className="flex items-center justify-between mb-3">
               <div className={`w-12 h-12 rounded-lg ${stat.color} flex items-center justify-center`}>
-                <stat.icon className="w-6 h-6 text-white" />
+                <stat.icon className="w-6 h-6 text-primary-foreground" />
               </div>
             </div>
             <p className="text-sm text-muted-foreground mb-1">{stat.title}</p>
@@ -169,11 +235,22 @@ const HRMPerformance = () => {
           <div className="grid md:grid-cols-2 gap-3">
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">Employee</label>
-              <Input value={form.employee} onChange={(e)=> setForm({ ...form, employee: e.target.value })} />
+              <Select value={form.employee} onValueChange={handleEmployeeSelect}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select employee" />
+                </SelectTrigger>
+                <SelectContent>
+                  {employeeOptions.map((emp) => (
+                    <SelectItem key={emp.employeeId} value={emp.employee}>
+                      {emp.employee}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">Employee ID</label>
-              <Input value={form.employeeId} onChange={(e)=> setForm({ ...form, employeeId: e.target.value })} />
+              <Input value={form.employeeId} readOnly />
             </div>
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">Department</label>
@@ -193,7 +270,19 @@ const HRMPerformance = () => {
             </div>
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">Attendance %</label>
-              <Input type="number" value={form.attendance} onChange={(e)=> setForm({ ...form, attendance: parseInt(e.target.value||"0") })} />
+              <div className="flex gap-1">
+                <Input type="number" value={form.attendance} onChange={(e)=> setForm({ ...form, attendance: parseInt(e.target.value||"0") })} />
+                <Button type="button" variant="outline" size="sm" onClick={handleShowCalculation} title="Show calculation breakdown">
+                  <Calculator className="w-4 h-4" />
+                </Button>
+              </div>
+              {showCalculation && (
+                <div className="text-xs text-muted-foreground bg-secondary/30 rounded p-2 mt-1">
+                  {showCalculation.breakdown.map((line, i) => (
+                    <div key={i}>{line}</div>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">Productivity %</label>
@@ -242,6 +331,15 @@ const HRMPerformance = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Advanced Performance Features */}
+      {detail && (
+        <>
+          <PerformanceGoals employeeId={detail.employeeId} />
+          <PerformanceCalibration />
+          <Review360Form employeeId={detail.employeeId} employeeName={detail.employee} />
+        </>
+      )}
     </div>
   );
 };

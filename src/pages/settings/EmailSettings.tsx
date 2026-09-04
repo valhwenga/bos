@@ -1,72 +1,74 @@
-import { useEffect, useState } from "react";
-import { EmailStore, type SMTPSettings } from "@/lib/emailStore";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
+import { Mail, ShieldAlert } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SendIdentitiesPanel } from "@/components/SendIdentitiesPanel";
+import { PageHeader } from "@/components/ui/page-header";
 
-const EmailSettings = () => {
-  const [s, setS] = useState<SMTPSettings>(EmailStore.smtp());
-  useEffect(()=> setS(EmailStore.smtp()), []);
+/**
+ * Email is configured on the server, not here.
+ *
+ * This page used to collect SMTP host, username and password and keep them in
+ * localStorage — in plain text, readable by anything running in the page, and
+ * different on every machine. It also did nothing: nothing ever read those
+ * settings to send a message, because sending was a `mailto:` link.
+ *
+ * The credentials now live as secrets on the send-email edge function, where
+ * the browser never sees them. Removing the form rather than leaving it is the
+ * point: a settings screen that appears to configure something it does not is
+ * how the SMTP password ended up in localStorage in the first place.
+ */
+const EmailSettings = () => (
+  <div className="flex flex-col gap-6 p-6">
+    <PageHeader
+      title="Email"
+      description="How documents and notifications are sent."
+      breadcrumbs={[{ label: "Settings", to: "/settings" }, { label: "Email" }]}
+    />
 
-  const save = () => { EmailStore.setSmtp(s); };
-  const test = async () => {
-    alert("Test email would be sent here using your SMTP settings. Implement actual sending via backend.");
-  };
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Mail className="h-4 w-4" aria-hidden="true" />
+          Sending is configured on the server
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4 text-sm text-muted-foreground">
+        <p>
+          Invoices, quotations and notifications are sent by the{" "}
+          <code className="rounded bg-surface-raised px-1 py-0.5 text-xs">send-email</code>{" "}
+          function using the company's mail account. There is nothing to set up per machine.
+          Which address a message goes out from is set below.
+        </p>
 
-  return (
-    <div className="p-6 space-y-4">
-      <div>
-        <h1 className="text-3xl font-bold mb-2">Email (SMTP) Settings</h1>
-        <div className="text-sm text-muted-foreground">Configure SMTP credentials used by the Email module.</div>
-      </div>
-
-      <div className="grid md:grid-cols-2 gap-3">
-        <div className="flex items-center justify-between border rounded p-3">
-          <div>
-            <div className="font-medium">Enable SMTP</div>
-            <div className="text-xs text-muted-foreground">Toggle email module connectivity</div>
+        <div className="flex items-start gap-3 rounded-md border border-warning/30 bg-warning-soft px-3 py-3">
+          <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+          <div className="text-xs">
+            <p className="font-medium text-foreground">Why this is not a form</p>
+            <p className="mt-1">
+              A mail password entered here would be stored in this browser, in plain text, where
+              any script on the page could read it — and it would differ from machine to machine.
+              It belongs on the server.
+            </p>
           </div>
-          <Switch checked={!!s.enabled} onCheckedChange={(v)=> setS({ ...s, enabled: v })} />
         </div>
-        <div className="grid gap-1">
-          <label className="text-xs text-muted-foreground">Host</label>
-          <Input value={s.host} onChange={(e)=> setS({ ...s, host: e.target.value })} />
-        </div>
-        <div className="grid gap-1">
-          <label className="text-xs text-muted-foreground">Port</label>
-          <Input type="number" value={s.port} onChange={(e)=> setS({ ...s, port: parseInt(e.target.value||"0") })} />
-        </div>
-        <div className="flex items-center justify-between border rounded p-3">
-          <div>
-            <div className="font-medium">Use TLS (secure)</div>
-            <div className="text-xs text-muted-foreground">Enable STARTTLS/SSL</div>
-          </div>
-          <Switch checked={!!s.secure} onCheckedChange={(v)=> setS({ ...s, secure: v })} />
-        </div>
-        <div className="grid gap-1">
-          <label className="text-xs text-muted-foreground">Username</label>
-          <Input value={s.username} onChange={(e)=> setS({ ...s, username: e.target.value })} />
-        </div>
-        <div className="grid gap-1">
-          <label className="text-xs text-muted-foreground">Password</label>
-          <Input type="password" value={s.password} onChange={(e)=> setS({ ...s, password: e.target.value })} />
-        </div>
-        <div className="grid gap-1">
-          <label className="text-xs text-muted-foreground">From Name</label>
-          <Input value={s.fromName||''} onChange={(e)=> setS({ ...s, fromName: e.target.value })} />
-        </div>
-        <div className="grid gap-1">
-          <label className="text-xs text-muted-foreground">From Email</label>
-          <Input value={s.fromEmail||''} onChange={(e)=> setS({ ...s, fromEmail: e.target.value })} />
-        </div>
-      </div>
 
-      <div className="flex gap-2">
-        <Button variant="secondary" onClick={test}>Send Test Email</Button>
-        <Button onClick={save}>Save</Button>
-      </div>
-    </div>
-  );
-};
+        <div>
+          <p className="font-medium text-foreground">To change the mail account</p>
+          <p className="mt-1">
+            Set these as function secrets on the Supabase project, then redeploy the function:
+          </p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 font-mono text-xs">
+            <li>SMTP_HOST</li>
+            <li>SMTP_PORT — 465 for TLS, or 587</li>
+            <li>SMTP_USER and SMTP_PASSWORD — omit both for a relay that needs no login</li>
+            <li>SMTP_FROM and SMTP_FROM_NAME — the fallback address, used when no
+                identity below applies</li>
+          </ul>
+        </div>
+      </CardContent>
+    </Card>
+
+    <SendIdentitiesPanel />
+  </div>
+);
 
 export default EmailSettings;

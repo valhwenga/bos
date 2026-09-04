@@ -1,11 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
+import { useCache } from "@/lib/collectionCache";
+import { ticketsCache } from "@/lib/supportStore";
+import { clientsCache } from "@/lib/clientsStore";
 import { SupportStore, type Ticket } from "@/lib/supportStore";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 
 const Dashboard = () => {
-  const [list, setList] = useState<Ticket[]>(SupportStore.list());
-  const refresh = () => setList(SupportStore.list());
+  // Rows come from Postgres via caches, so this re-renders when they arrive.
+  const { rows: ticketRows } = useCache(ticketsCache);
+  useCache(clientsCache);
+  // Read from the cache rather than copied into state on mount: for a server
+  // read there is nothing there yet on the first render, and useCache's
+  // re-render does not recompute state that was seeded once.
+  const list = ticketRows;
+  const refresh = () => void ticketsCache.refresh();
   useEffect(()=>{ refresh(); }, []);
 
   const counts = useMemo(() => {

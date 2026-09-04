@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { AccountingStore, Invoice } from "@/lib/accountingStore";
 import { CompanySettingsStore } from "@/lib/companySettings";
+import { a4PrintCss } from "@/lib/printStyles";
+import { useFitToPage } from "@/lib/useFitToPage";
 import { Button } from "@/components/ui/button";
 import { PaymentStore } from "@/lib/paymentStore";
 import { CreditNotesStore } from "@/lib/creditNotesStore";
+import { PDF_COLORS, PDF_CONFIG } from "@/lib/pdfGenerator";
 
 const currency = (v: number, sym: string) => `${sym}${v.toFixed(2)}`;
 
@@ -12,11 +15,21 @@ const InvoicePrint = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [tick, setTick] = useState(0);
+  const [isGenerating, setIsGenerating] = useState(false);
   useEffect(() => {
-    const onPayments = () => setTick((t)=> t+1);
+    const onPayments = () => {
+      // Only update if this invoice is affected
+      const currentInvoice = AccountingStore.listInvoices().find(i => i.id === id);
+      if (currentInvoice) {
+        setTick((t)=> t+1);
+      }
+    };
     const onStorage = (e: StorageEvent) => {
       if (!e.key) return;
-      if (e.key.startsWith("acct.payments") || e.key.startsWith("acct.invoices")) setTick((t)=> t+1);
+      // Only update for relevant storage changes
+      if ((e.key.startsWith("acct.payments") || e.key.startsWith("acct.invoices")) && e.key.includes(id)) {
+        setTick((t)=> t+1);
+      }
     };
     window.addEventListener('payments-changed', onPayments as any);
     window.addEventListener('storage', onStorage);
@@ -24,10 +37,12 @@ const InvoicePrint = () => {
       window.removeEventListener('payments-changed', onPayments as any);
       window.removeEventListener('storage', onStorage);
     };
-  }, []);
+  }, [id]);
 
   const inv = AccountingStore.listInvoices().find(i => i.id === id);
   const c = CompanySettingsStore.get();
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const fitScale = useFitToPage(sheetRef, [inv]);
   const billTo = useMemo(() => {
     const cust = inv?.customer;
     if (!cust) return undefined;
@@ -37,11 +52,13 @@ const InvoicePrint = () => {
   }, [inv]);
 
   const totals = useMemo(() => {
-    if (!inv) return { subtotal: 0, tax: 0, grand: 0 };
+    if (!inv) return { subtotal: 0, discount: 0, shipping: 0, tax: 0, grand: 0 };
     const subtotal = inv.items.reduce((s, it) => s + it.qty * it.price, 0);
+    const discount = inv.discountPct ? (subtotal * inv.discountPct) / 100 : 0;
+    const shipping = inv.shipping || 0;
     const tax = 0; // customize if you add tax support later
-    const grand = subtotal + tax;
-    return { subtotal, tax, grand };
+    const grand = subtotal - discount + shipping + tax;
+    return { subtotal, discount, shipping, tax, grand };
   }, [inv, tick]);
 
   const paid = useMemo(() => inv ? PaymentStore.sumAmount(PaymentStore.byInvoice(inv.id)) : 0, [inv, tick]);
@@ -51,37 +68,392 @@ const InvoicePrint = () => {
   if (!inv) return (
     <div className="p-6">
       <Button variant="secondary" onClick={()=> navigate(-1)}>Back</Button>
-      <div className="mt-4">Invoice not found.</div>
+      <div className="mt-3">Invoice not found.</div>
     </div>
   );
 
   const downloadPdf = async () => {
-    const ensureScript = (src: string) => new Promise<void>((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = src; s.async = true; s.onload = () => resolve(); s.onerror = () => reject(new Error('Failed to load ' + src));
-      document.head.appendChild(s);
-    });
-    const w = window as any;
-    if (!w.html2canvas) await ensureScript('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js');
-    if (!w.jspdf) await ensureScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js');
-    const el = document.getElementById('print-root');
-    if (!el) return;
-    const canvas = await w.html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
-    const imgData = canvas.toDataURL('image/png');
-    const { jsPDF } = (w.jspdf || w.jspdf_esm || w.jspdfjs) as any;
-    const pdf = new jsPDF('p', 'mm', 'a4');
-    const pdfWidth = 210; const pdfHeight = 297;
-    const imgWidth = pdfWidth; const imgHeight = canvas.height * imgWidth / canvas.width;
-    let position = 0; let heightLeft = imgHeight;
-    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-    heightLeft -= pdfHeight;
-    while (heightLeft > 0) {
-      position = heightLeft - imgHeight;
-      pdf.addPage();
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-      heightLeft -= pdfHeight;
+    setIsGenerating(true);
+    try {
+      if (!inv) {
+        console.error('No invoice data found');
+        return;
+      }
+    
+      // Create a new window for printing
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        console.error('Could not open print window');
+        return;
+      }
+    
+    // Generate proper HTML with inline styles
+    const currency = (v: number, sym: string) => `${sym}${v.toFixed(2)}`;
+    const subtotal = inv.items.reduce((s, it) => s + it.qty * it.price, 0);
+    const discount = inv.discountPct ? (subtotal * inv.discountPct) / 100 : 0;
+    const shipping = inv.shipping || 0;
+    const grand = subtotal - discount + shipping;
+    
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>${inv.number || 'invoice'}.pdf</title>
+          <style>
+            ${a4PrintCss(c.primaryColor || '#128768', c.secondaryColor || '#1BA37E')}
+            body { font-family: system-ui, -apple-system, sans-serif; }
+            /* The container is the A4 sheet; .doc supplies its sizing and the
+               flex column that keeps the footer on the bottom edge. */
+            .invoice-container { position: relative; }
+            .top-edge, .bottom-edge {
+              height: 6px;
+              background: var(--brand);
+              flex: 0 0 auto;
+            }
+            .border-container {
+              border-left: 4px solid var(--brand);
+              border-right: 4px solid var(--brand);
+            }
+            .header {
+              background: white;
+              border-bottom: 1px solid #e5e7eb;
+              padding: 30px;
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-start;
+            }
+            .header-left {
+              flex: 1;
+            }
+            .header-right {
+              margin-left: 24px;
+              text-align: right;
+            }
+            .invoice-title {
+              font-size: 28px;
+              font-weight: bold;
+              color: #111827;
+              margin-bottom: 3px;
+            }
+            .company-name {
+              font-size: 18px;
+              font-weight: 600;
+              color: #111827;
+              margin-bottom: 6px;
+            }
+            .company-details {
+              font-size: 12px;
+              color: #6b7280;
+              line-height: 1.3;
+            }
+            .invoice-details {
+              font-size: 12px;
+              color: #6b7280;
+              margin-top: 6px;
+            }
+            .invoice-number {
+              font-weight: bold;
+              font-size: 14px;
+            }
+            .logo-container {
+              margin-bottom: 12px;
+              background: white;
+              padding: 16px;
+              border-radius: 6px;
+              display: inline-block;
+            }
+            .logo {
+              height: 100px;
+              width: auto;
+              max-width: 280px;
+              object-fit: contain;
+            }
+            .bill-to-section {
+              padding: 30px;
+            }
+            .bill-to-container {
+              background: #faf5ff;
+              border: 1px solid #e9d5ff;
+              border-radius: 6px;
+              padding: 18px;
+            }
+            .section-title {
+              font-size: 12px;
+              font-weight: 600;
+              color: #6d28d9;
+              text-transform: uppercase;
+              letter-spacing: 0.05em;
+              margin-bottom: 8px;
+            }
+            .customer-name {
+              font-size: 16px;
+              font-weight: 600;
+              color: #111827;
+              margin-bottom: 3px;
+            }
+            .customer-contact {
+              color: #6b7280;
+              margin-bottom: 1px;
+              font-size: 12px;
+            }
+            .items-table {
+              padding: 0 30px;
+            }
+            .table-container {
+              border: 1px solid #e5e7eb;
+              border-radius: 6px;
+              overflow: hidden;
+            }
+            table {
+              width: 100%;
+              font-size: 12px;
+              border-collapse: collapse;
+            }
+            th {
+              background: var(--brand);
+              color: white;
+              padding: 12px;
+              text-align: left;
+              font-weight: 600;
+              font-size: 11px;
+            }
+            td {
+              padding: 12px;
+              border-bottom: 1px solid #f3f4f6;
+              vertical-align: top;
+              font-size: 12px;
+            }
+            .text-right {
+              text-align: right;
+            }
+            .total-row {
+              background: var(--brand);
+              color: white;
+              font-weight: bold;
+            }
+            .summary-section {
+              padding: 30px;
+            }
+            .summary-grid {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 24px;
+            }
+            .banking-details {
+              background: #faf5ff;
+              border: 1px solid #e9d5ff;
+              border-radius: 6px;
+              padding: 18px;
+            }
+            .balance-due {
+              background: #faf5ff;
+              border: 1px solid #e9d5ff;
+              border-radius: 6px;
+              padding: 18px;
+            }
+            .footer {
+              padding: 30px;
+              font-size: 12px;
+              color: #6b7280;
+            }
+            .watermark {
+              position: absolute;
+              right: -16px;
+              bottom: -10px;
+              width: 300mm;
+              max-width: none;
+              opacity: 0.035;
+              pointer-events: none;
+              z-index: -10;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="invoice-container doc">
+            ${c.logoDataUrl ? `<img src="${c.logoDataUrl}" class="watermark" alt="Watermark">` : ''}
+            <div class="top-edge"></div>
+            <div class="border-container doc__body" style="display:flex;flex-direction:column">
+              <div class="header">
+                <div class="header-left">
+                  ${c.logoDataUrl ? `
+                    <div class="logo-container">
+                      <img src="${c.logoDataUrl}" class="logo" alt="Company Logo">
+                    </div>
+                  ` : ''}
+                  <div class="invoice-details">
+                    <div class="invoice-number">Invoice No: ${inv.number}</div>
+                    <div>Date: ${new Date(inv.createdAt).toLocaleDateString('en-GB')}</div>
+                  </div>
+                </div>
+                <div class="header-right">
+                  <div class="invoice-title">INVOICE</div>
+                  <div class="company-name">Spike Technologies</div>
+                  <div class="company-details">
+                    <div><strong>Company registration:</strong> 2021/847783/07</div>
+                    <div><strong>Website:</strong> www.spiketech.co.za</div>
+                    <div><strong>Email:</strong> accounts@spiketech.co.za</div>
+                    ${c.phone ? `<div><strong>Phone:</strong> ${c.phone}</div>` : ''}
+                  </div>
+                </div>
+              </div>
+              
+              <div class="bill-to-section">
+                <div class="bill-to-container">
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div>
+                      <div class="section-title">Bill To</div>
+                      <div class="customer-name">${inv.customer.companyName || inv.customer.name}</div>
+                      <div class="customer-contact">${inv.customer.name}</div>
+                      ${inv.customer.email ? `<div class="customer-contact">${inv.customer.email}</div>` : ''}
+                      ${inv.customer.responsible?.name ? `<div class="customer-contact">Attn: ${inv.customer.responsible.name}${inv.customer.responsible.title ? `, ${inv.customer.responsible.title}` : ""}</div>` : ''}
+                    </div>
+                    ${billTo?.addr ? `
+                      <div>
+                        <div class="section-title">Address</div>
+                        <div class="customer-contact">
+                          ${billTo.addr.line1 || ""}${billTo.addr.line2 ? `<br>${billTo.addr.line2}` : ""}
+                          ${[billTo.addr.city, billTo.addr.state, billTo.addr.postalCode].filter(Boolean).join(', ') ? `<br>${[billTo.addr.city, billTo.addr.state, billTo.addr.postalCode].filter(Boolean).join(', ')}` : ""}
+                          ${billTo.addr.country ? `<br>${billTo.addr.country}` : ""}
+                        </div>
+                      </div>
+                    ` : ''}
+                  </div>
+                </div>
+              </div>
+              
+              <div class="items-table">
+                <div class="table-container">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th colspan="2">Description</th>
+                        <th class="text-right">Unit Price</th>
+                        <th class="text-right">Quantity</th>
+                        <th class="text-right">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${inv.items.map(item => `
+                        <tr>
+                          <td colspan="2">
+                            <div style="font-weight: 500; color: #111827;">${item.name}</div>
+                            ${item.description ? `<div style="font-size: 10px; color: #6b7280; margin-top: 3px;">${item.description}</div>` : ''}
+                          </td>
+                          <td class="text-right">${currency(item.price, c.currencySymbol)}</td>
+                          <td class="text-right">${item.qty}</td>
+                          <td class="text-right">${currency(item.qty * item.price, c.currencySymbol)}</td>
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                    <tfoot>
+                      <tr class="total-row">
+                        <td colspan="3"></td>
+                        <td class="text-right">GRAND TOTAL</td>
+                        <td class="text-right">${currency(grand, c.currencySymbol)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+              
+              <div class="summary-section">
+                <div class="summary-grid">
+                  <div class="banking-details">
+                    <div style="font-weight: 500; margin-bottom: 6px; font-size: 11px;">Banking Details</div>
+                    <div style="font-size: 10px; color: #374151; line-height: 1.3;">
+                      ${c.bankName ? `<div>Bank: ${c.bankName}</div>` : ''}
+                      ${c.bankAccount ? `<div>Account: ${c.bankAccount}</div>` : ''}
+                      ${c.branchCode ? `<div>Branch Code: ${c.branchCode}</div>` : ''}
+                      ${c.branchName ? `<div>Branch: ${c.branchName}</div>` : ''}
+                      ${c.bankSwift ? `<div>SWIFT: ${c.bankSwift}</div>` : ''}
+                      ${c.bankIban ? `<div>IBAN: ${c.bankIban}</div>` : ''}
+                      <div>Reference: ${inv.number}</div>
+                    </div>
+                  </div>
+                  <div class="balance-due">
+                    <div style="font-weight: 500; margin-bottom: 6px; font-size: 11px;">Balance Due</div>
+                    <div style="font-size: 10px; color: #374151; line-height: 1.3;">
+                      <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+                        <span>Sub Total</span>
+                        <span>${currency(subtotal, c.currencySymbol)}</span>
+                      </div>
+                      ${discount > 0 ? `
+                      <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+                        <span>Discount (${inv.discountPct}%)</span>
+                        <span>-${currency(discount, c.currencySymbol)}</span>
+                      </div>
+                      ` : ''}
+                      ${shipping > 0 ? `
+                      <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+                        <span>Shipping</span>
+                        <span>${currency(shipping, c.currencySymbol)}</span>
+                      </div>
+                      ` : ''}
+                      <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+                        <span>Tax (VAT)</span>
+                        <span>${currency(0, c.currencySymbol)}</span>
+                      </div>
+                      <div style="border-top: 1px solid #e9d5ff; padding-top: 6px; margin-top: 6px;">
+                        <div style="display: flex; justify-content: space-between; font-weight: 600;">
+                          <span>TOTAL</span>
+                          <span>${currency(grand, c.currencySymbol)}</span>
+                        </div>
+                      </div>
+                      <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+                        <span>Deposits</span>
+                        <span>${currency(paid, c.currencySymbol)}</span>
+                      </div>
+                      <div style="border-top: 1px solid #e9d5ff; padding-top: 6px; margin-top: 6px;">
+                        <div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 16px;">
+                          <span>BALANCE DUE</span>
+                          <span>${currency(balance, c.currencySymbol)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="footer doc__footer avoid-break">
+                <div style="margin-bottom: 12px; font-weight: 500;">Thank You For Your Business!</div>
+                ${c.footerNote ? `
+                  <div>
+                    <div style="font-weight: 500; margin-bottom: 6px; font-size: 11px;">Terms & Conditions</div>
+                    <div style="font-size: 10px; color: #6b7280; white-space: pre-wrap;">${c.footerNote}</div>
+                  </div>
+                ` : ''}
+                <div style="margin-top: 12px;">Payment via bank transfer. Please include the invoice number as reference.</div>
+              </div>
+
+              <div class="doc__spacer"></div>
+            </div>
+            <div class="bottom-edge"></div>
+          </div>
+        </body>
+      </html>
+    `;
+    
+      // Write the content to the new window
+      printWindow.document.write(htmlContent);
+      printWindow.document.close();
+      
+      // Wait for content to load, then trigger print
+      setTimeout(() => {
+        printWindow.focus();
+        printWindow.print();
+        
+        // Close the window after printing (with delay to allow print dialog)
+        setTimeout(() => {
+          printWindow.close();
+        }, 1000);
+      }, 500);
+    } catch (error) {
+      console.error('PDF generation failed:', error);
+      // Could add user notification here
+      alert('Failed to generate PDF. Please try again.');
+    } finally {
+      setIsGenerating(false);
     }
-    pdf.save(`${inv?.number || 'invoice'}.pdf`);
   };
 
   return (
@@ -89,151 +461,226 @@ const InvoicePrint = () => {
       <div className="p-4 flex items-center justify-between print:hidden">
         <Button variant="secondary" onClick={()=> navigate(-1)}>Back</Button>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={downloadPdf}>Download PDF</Button>
+          <Button variant="outline" onClick={downloadPdf} disabled={isGenerating}>
+            {isGenerating ? 'Generating...' : 'Download PDF'}
+          </Button>
           <Button onClick={()=> window.print()}>Print</Button>
         </div>
       </div>
 
-      <div id="print-root" className="relative mx-auto bg-white shadow print:shadow-none border print:border-0 overflow-hidden" style={{ width: '210mm', minHeight: '297mm' }}>
+      <div
+        id="print-root"
+        ref={sheetRef}
+        className="doc relative mx-auto bg-white shadow print:shadow-none"
+        style={{
+          // Set by useFitToPage; 1 unless the document only just overflows.
+          transform: `scale(${fitScale})`,
+          transformOrigin: 'top center',
+          width: '210mm',
+          minHeight: '297mm',
+          // The document's brand colour comes from Company Settings; this used
+          // to be a hardcoded purple, so the setting had no visible effect.
+          ['--brand' as string]: c.primaryColor || '#128768',
+          ['--brand-2' as string]: c.secondaryColor || '#1BA37E',
+        }}
+      >
         {/* Watermark */}
         {c.logoDataUrl && (
           <img src={c.logoDataUrl} aria-hidden className="pointer-events-none select-none opacity-[0.035] absolute -right-16 -bottom-10 w-[300mm] max-w-none -z-10" />
         )}
-        <div className="relative z-10 pb-10">
-          {/* Header */}
-          <div className="bg-gradient-to-r from-[#5F33FF] to-[#7A60D9] text-white">
-            <div className="p-10 flex items-start justify-between">
-              {c.logoDataUrl && (
-                <img src={c.logoDataUrl} className="h-16 w-auto object-contain drop-shadow" />
-              )}
-              <div className="text-sm text-right">
-                <div className="text-xl font-semibold tracking-wide">{c.name}</div>
-                {c.address && <div className="mt-1 opacity-90 whitespace-pre-wrap">{c.address}</div>}
-                <div className="mt-1 opacity-90">{c.email}{c.email && (c.phone ? ' • ' : '')}{c.phone}</div>
+        {/* Document padding wrapper */}
+        <div className="doc__body relative z-10 m-2 flex flex-col border-2 border-[color:var(--brand)]">
+          {/* Top colored edge */}
+          <div className="h-1.5 shrink-0 bg-gradient-to-r from-[color:var(--brand)] to-[color:var(--brand-2)]"></div>
+          
+          {/* Header and customer details, at their natural height. This used to
+              carry flex-1, which made it absorb all the sheet's spare height and
+              open a gap between the customer's details and the items table. */}
+          <div className="flex flex-col">
+            {/* Clean Header with Logo */}
+            <div className="bg-white border-b border-gray-200">
+              <div className="px-7 py-3 flex items-start justify-between">
+                <div className="flex-1">
+                  {c.logoDataUrl && (
+                    <div className="mb-2 inline-block rounded bg-white p-1">
+                      <img src={c.logoDataUrl} className="h-14 w-auto max-w-[200px] object-contain" />
+                    </div>
+                  )}
+                  <div className="text-sm text-gray-600">
+                    <div className="mt-1 flex gap-1.5 text-xs">
+                      <span className="font-bold">Invoice No:</span>
+                      <span className="font-semibold">{inv.number}</span>
+                    </div>
+                    <div className="mt-0.5 flex gap-1.5 text-xs">
+                      <span className="font-bold">Date:</span>
+                      <span className="font-semibold">{new Date(inv.createdAt).toLocaleDateString('en-GB')}</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="ml-6 text-right">
+                  <div className="text-2xl font-bold leading-none text-gray-900">INVOICE</div>
+                  {/* Sourced from Company Settings. These were hardcoded to one
+                      company's name, registration, website and email, so every
+                      customer's invoice carried the wrong details. */}
+                  <div className="mt-1.5 text-[11px] leading-snug text-gray-600">
+                    <div className="text-base font-semibold text-gray-900">{c.name}</div>
+                    {c.taxId && <div>Reg/Tax: {c.taxId}</div>}
+                    {c.address && <div className="whitespace-pre-line">{c.address}</div>}
+                    {c.email && <div>{c.email}</div>}
+                    {c.phone && <div>{c.phone}</div>}
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Title */}
-          <div className="px-10 pt-8">
-            <div className="text-3xl tracking-[0.3em] font-semibold text-slate-900">INVOICE</div>
-            <div className="mt-2 h-1 rounded bg-gradient-to-r from-[#5F33FF] to-[#7A60D9] w-40" />
-          </div>
-
-          {/* Meta */}
-          <div className="px-10 grid grid-cols-1 md:grid-cols-2 gap-6 mb-6 mt-4">
-            <div className="text-sm">
-              <div className="uppercase text-[11px] tracking-wide text-slate-700">Bill To</div>
-              <div className="mt-1 font-medium text-slate-900">{inv.customer.companyName || inv.customer.name}</div>
-              <div className="text-slate-900">{inv.customer.name}</div>
-              {inv.customer.email && <div className="text-slate-800">{inv.customer.email}</div>}
-              {billTo?.addr && (
-                <div className="text-slate-800 mt-1 whitespace-pre-line">
-                  {(billTo.addr.line1||"")}
-                  {billTo.addr.line2 ? `\n${billTo.addr.line2}`: ""}
-                  {billTo.addr.city || billTo.addr.state || billTo.addr.postalCode ? `\n${[billTo.addr.city, billTo.addr.state, billTo.addr.postalCode].filter(Boolean).join(', ')}`: ""}
-                  {billTo.addr.country ? `\n${billTo.addr.country}`: ""}
+          {/* Bill To Section */}
+            <div className="px-7 mt-1.5">
+              <div className="bg-gradient-to-r from-[color:var(--brand)]/[0.06] to-[color:var(--brand-2)]/[0.06] rounded-md p-3 border border-[color:var(--brand)]/20">
+                <div className="grid grid-cols-1 gap-3 text-xs md:grid-cols-2">
+                  {/* Left Column - Bill To */}
+                  <div>
+                    <div className="text-[11px] font-semibold text-[color:var(--brand)] uppercase tracking-wide mb-1">Bill To</div>
+                    <div className="text-gray-900">
+                      <div className="font-semibold text-lg">{inv.customer.companyName || inv.customer.name}</div>
+                      <div className="text-gray-700">{inv.customer.name}</div>
+                      {inv.customer.email && <div className="text-gray-600">{inv.customer.email}</div>}
+                      {inv.customer.responsible?.name && (
+                        <div className="mt-1 text-gray-600">Attn: {inv.customer.responsible.name}{inv.customer.responsible.title ? `, ${inv.customer.responsible.title}`: ""}</div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Right Column - Address */}
+                  {billTo?.addr && (
+                    <div>
+                      <div className="text-[11px] font-semibold text-[color:var(--brand)] uppercase tracking-wide mb-1">Address</div>
+                      <div className="text-gray-600 whitespace-pre-line">
+                        {(billTo.addr.line1||"")}
+                        {billTo.addr.line2 ? `\n${billTo.addr.line2}`: ""}
+                        {billTo.addr.city || billTo.addr.state || billTo.addr.postalCode ? `\n${[billTo.addr.city, billTo.addr.state, billTo.addr.postalCode].filter(Boolean).join(', ')}`: ""}
+                        {billTo.addr.country ? `\n${billTo.addr.country}`: ""}
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
-              {inv.customer.responsible?.name && (
-                <div className="mt-1 text-slate-800">Attn: {inv.customer.responsible.name}{inv.customer.responsible.title ? `, ${inv.customer.responsible.title}`: ""}</div>
-              )}
+              </div>
             </div>
-            <div className="text-sm">
-              <div className="uppercase text-[11px] tracking-wide text-slate-700">Invoice Details</div>
-              <div className="mt-1 text-slate-900">Invoice No: <span className="font-medium">{inv.number}</span></div>
-              <div className="text-slate-900">Date: {new Date(inv.createdAt).toLocaleDateString()}</div>
-              {c.taxId && <div className="text-slate-900">Tax ID: {c.taxId}</div>}
-              <div className="mt-2 text-slate-900">Total: <span className="font-semibold">{currency(totals.grand, c.currencySymbol)}</span></div>
-              <div className="text-slate-900">Payments: <span className="font-semibold">-{currency(paid, c.currencySymbol)}</span></div>
-              <div className="text-slate-900">Credits: <span className="font-semibold">-{currency(credits, c.currencySymbol)}</span></div>
-              <div className="text-slate-900">Balance Due: <span className="font-semibold">{currency(balance, c.currencySymbol)}</span></div>
-            </div>
-          </div>
 
           {/* Items table */}
-          <div className="px-10">
-            <div className="rounded border overflow-hidden">
-              <table className="w-full text-sm leading-tight">
-                <thead className="text-white bg-gradient-to-r from-[#5F33FF] to-[#7A60D9]">
+          <div className="px-7">
+            <div className="rounded border border-gray-200 overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gradient-to-r from-[color:var(--brand)] to-[color:var(--brand-2)] text-white">
                   <tr>
-                    <th className="text-left p-2 font-semibold">Descriptions</th>
-                    <th className="text-right p-2 font-semibold">Unit Price</th>
-                    <th className="text-right p-2 font-semibold">Quantity</th>
-                    <th className="text-right p-2 font-semibold">Total</th>
+                    <th className="text-left px-3 py-1.5 font-semibold" colSpan={2}>Description</th>
+                    <th className="text-right px-3 py-1.5 font-semibold">Unit Price</th>
+                    <th className="text-right px-3 py-1.5 font-semibold">Quantity</th>
+                    <th className="text-right px-3 py-1.5 font-semibold">Total</th>
                   </tr>
                 </thead>
                 <tbody>
                   {inv.items.map((it) => (
-                    <tr key={it.id} className="border-t text-slate-900">
-                      <td className="p-2 align-top">
-                        <div className="font-medium text-slate-900">{it.name}</div>
-                        {it.description && <div className="text-xs text-slate-800 mt-1">{it.description}</div>}
+                    <tr key={it.id} className="border-b border-gray-100">
+                      <td className="px-3 py-1 align-top" colSpan={2}>
+                        <div className="text-xs font-medium text-gray-900">{it.name}</div>
+                        {it.description && <div className="mt-0.5 text-[11px] leading-snug text-gray-600">{it.description}</div>}
                       </td>
-                      <td className="p-2 text-right align-top">{currency(it.price, c.currencySymbol)}</td>
-                      <td className="p-2 text-right align-top">{it.qty}</td>
-                      <td className="p-2 text-right align-top">{currency(it.qty * it.price, c.currencySymbol)}</td>
+                      <td className="px-3 py-1 text-right align-top text-gray-900">{currency(it.price, c.currencySymbol)}</td>
+                      <td className="px-3 py-1 text-right align-top text-gray-900">{it.qty}</td>
+                      <td className="px-3 py-1 text-right align-top text-gray-900">{currency(it.qty * it.price, c.currencySymbol)}</td>
                     </tr>
                   ))}
                 </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-[color:var(--brand)] bg-gradient-to-r from-[color:var(--brand)] to-[color:var(--brand-2)]">
+                    <td className="px-3 py-1.5" colSpan={3}></td>
+                    <td className="px-3 py-1.5 text-right text-sm font-extrabold text-white whitespace-nowrap">GRAND TOTAL</td>
+                    <td className="px-3 py-1.5 text-right text-sm font-extrabold text-white">{currency(totals.grand, c.currencySymbol)}</td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
           </div>
 
-          {/* Notes and Totals */}
-          <div className="px-10 mt-4 grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="text-sm text-slate-600">
-              <div className="mb-4">Thank You For Your Business!</div>
-              {c.footerNote && (
+          {/* Summary Section */}
+            <div className="px-7 mt-1.5">
+              <div className="text-xs text-gray-600">
+                <div className="mb-1.5 font-medium">Thank You For Your Business!</div>
+                {c.footerNote && (
+                  <div>
+                    <div className="mb-1 font-medium">Terms &amp; Conditions</div>
+                    <div className="text-xs text-gray-500 whitespace-pre-wrap">{c.footerNote}</div>
+                  </div>
+                )}
+              </div>
+              
+              {/* Side by side boxes */}
+              <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-5">
+                {/* Banking Details Box */}
                 <div>
-                  <div className="font-medium mb-1">Terms & Conditions</div>
-                  <div className="text-xs text-slate-500 whitespace-pre-wrap">{c.footerNote}</div>
+                  <div className="bg-gradient-to-r from-[color:var(--brand)]/[0.06] to-[color:var(--brand-2)]/[0.06] rounded-md px-4 py-3 border border-[color:var(--brand)]/20">
+                    <div className="mb-1 text-xs font-medium">Banking Details</div>
+                    <div className="space-y-0.5 text-[11px] text-gray-700">
+                      {c.bankName && <div><span className="font-semibold">Bank:</span> {c.bankName}</div>}
+                      {c.bankAccount && <div><span className="font-semibold">Account:</span> {c.bankAccount}</div>}
+                      {c.branchCode && <div><span className="font-semibold">Branch Code:</span> {c.branchCode}</div>}
+                      {c.branchName && <div><span className="font-semibold">Branch:</span> {c.branchName}</div>}
+                      {c.bankSwift && <div><span className="font-semibold">SWIFT:</span> {c.bankSwift}</div>}
+                      {c.bankIban && <div><span className="font-semibold">IBAN:</span> {c.bankIban}</div>}
+                      <div><span className="font-semibold">Reference:</span> {inv.number}</div>
+                    </div>
+                  </div>
                 </div>
-              )}
-              {/* Banking details */}
-              <div className="mt-6 text-xs text-slate-900">
-                <div className="uppercase text-[11px] tracking-wide text-slate-700">Banking Details</div>
-                {c.bankName && <div className="mt-1"><span className="font-semibold">Bank Name:</span> {c.bankName}</div>}
-                {c.bankAccount && <div><span className="font-semibold">Account Number:</span> {c.bankAccount}</div>}
-                {c.branchCode && <div><span className="font-semibold">Branch Code:</span> {c.branchCode}</div>}
-                {c.branchName && <div><span className="font-semibold">Branch Name:</span> {c.branchName}</div>}
-                <div><span className="font-semibold">Reference:</span> {inv.number}</div>
+                
+                {/* Balance Due Box */}
+                <div>
+                  <div className="bg-gradient-to-r from-[color:var(--brand)]/[0.06] to-[color:var(--brand-2)]/[0.06] rounded-md px-4 py-3 border border-[color:var(--brand)]/20">
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-gray-600 whitespace-nowrap">Sub Total</span>
+                        <span className="font-medium">{currency(totals.subtotal, c.currencySymbol)}</span>
+                      </div>
+                      {totals.discount > 0 && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-gray-600 whitespace-nowrap">Discount ({inv.discountPct}%)</span>
+                          <span className="font-medium">-{currency(totals.discount, c.currencySymbol)}</span>
+                        </div>
+                      )}
+                      {totals.shipping > 0 && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-gray-600 whitespace-nowrap">Shipping</span>
+                          <span className="font-medium">{currency(totals.shipping, c.currencySymbol)}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between text-xs">
+                        <span className="text-gray-600 whitespace-nowrap">Tax (VAT)</span>
+                        <span className="font-medium">{currency(totals.tax, c.currencySymbol)}</span>
+                      </div>
+                      <div className="border-t border-[color:var(--brand)]/20 pt-2 mt-2">
+                        <div className="flex justify-between font-semibold text-gray-900">
+                          <span className="whitespace-nowrap">TOTAL</span>
+                          <span>{currency(totals.grand, c.currencySymbol)}</span>
+                        </div>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-gray-600 whitespace-nowrap">Deposits</span>
+                        <span className="font-medium">{currency(paid, c.currencySymbol)}</span>
+                      </div>
+                      <div className="border-t border-[color:var(--brand)]/20 pt-2 mt-2">
+                        <div className="flex justify-between font-bold text-lg text-gray-900">
+                          <span className="whitespace-nowrap">BALANCE DUE</span>
+                          <span>{currency(balance, c.currencySymbol)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
-            <div className="">
-              <div className="ml-auto w-64">
-                <div className="flex items-center justify-between py-1 text-sm font-semibold text-slate-900">
-                  <div>Sub Total</div>
-                  <div>{currency(totals.subtotal, c.currencySymbol)}</div>
-                </div>
-                <div className="flex items-center justify-between py-1 text-sm">
-                  <div>Tax (VAT)</div>
-                  <div>{currency(totals.tax, c.currencySymbol)}</div>
-                </div>
-                <div className="h-px bg-slate-300 my-2" />
-                <div className="flex items-center justify-between py-1 font-semibold text-slate-900">
-                  <div>TOTAL</div>
-                  <div>{currency(totals.grand, c.currencySymbol)}</div>
-                </div>
-                <div className="flex items-center justify-between py-1 text-sm">
-                  <div>Payments</div>
-                  <div>-{currency(paid, c.currencySymbol)}</div>
-                </div>
-                <div className="flex items-center justify-between py-1 text-sm">
-                  <div>Credits</div>
-                  <div>-{currency(credits, c.currencySymbol)}</div>
-                </div>
-                <div className="h-px bg-slate-300 my-2" />
-                <div className="flex items-center justify-between py-1 font-extrabold text-slate-900">
-                  <div>BALANCE DUE</div>
-                  <div>{currency(balance, c.currencySymbol)}</div>
-                </div>
-              </div>
-            </div>
-          </div>
 
-          {/* Footer */}
-          <div className="px-10 mt-10 flex items-center justify-between">
+          {/* Footer — follows the content directly; the spacer below takes up
+              the sheet's remaining height. */}
+          <div className="doc__footer avoid-break flex items-center justify-between px-7 pb-2 pt-2 text-xs">
             <div className="text-sm text-slate-500">Payment via bank transfer. Please include the invoice number as reference.</div>
             <div className="text-right">
               {c.signatureDataUrl ? (
@@ -249,12 +696,18 @@ const InvoicePrint = () => {
               )}
             </div>
           </div>
-          {/* Bottom gradient bar */}
-          <div className="mt-8 h-1 w-full bg-gradient-to-r from-[#5F33FF] to-[#7A60D9]" />
+          </div>
+
+          {/* Takes up whatever height is left, so a short invoice still fills an
+              A4 sheet and the blank space falls below the document. */}
+          <div className="doc__spacer" aria-hidden="true" />
+
+          {/* Bottom colored edge */}
+          <div className="h-1.5 shrink-0 bg-gradient-to-r from-[color:var(--brand)] to-[color:var(--brand-2)]"></div>
         </div>
       </div>
 
-      <style>{`@page { size: A4; margin: 12mm; } @media print { body { -webkit-print-color-adjust: exact; } .print\:hidden{display:none;} .print\:shadow-none{box-shadow:none} .print\:border-0{border:0} html, body { height: auto; } }`}</style>
+      <style>{a4PrintCss(c.primaryColor || '#128768', c.secondaryColor || '#1BA37E')}</style>
     </div>
   );
 };

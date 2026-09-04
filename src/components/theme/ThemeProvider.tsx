@@ -1,135 +1,125 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 export type ThemeMode = "light" | "dark";
-export type ThemePalette =
-  | "emerald"
-  | "blue"
-  | "violet"
-  | "rose"
-  | "amber"
-  | "teal"
-  | "cyan"
-  | "indigo"
-  | "orange"
-  | "lime"
-  | "fuchsia"
-  | "slate";
-export type ThemeFont = "Inter" | "Poppins" | "Rubik" | "Montserrat" | "Nunito" | "Source Sans 3";
+
+/**
+ * A deliberately small accent set. Each entry ships a matched pair for light
+ * and dark grounds — a single hue can't serve both, which is why the previous
+ * free-form hue slider produced unreadable combinations.
+ *
+ * Accents only ever drive --primary/--accent/--ring. Semantic status colours
+ * (success, warning, danger, info) are fixed, so state never changes meaning
+ * when someone picks a different accent.
+ */
+export type ThemePalette = "emerald" | "blue" | "violet" | "amber" | "slate";
+
+type PaletteTokens = { primary: string; hover: string; soft: string; onPrimary: string };
+
+const PALETTES: Record<ThemePalette, { light: PaletteTokens; dark: PaletteTokens }> = {
+  emerald: {
+    light: { primary: "164 76% 30%", hover: "164 76% 26%", soft: "164 44% 94%", onPrimary: "0 0% 100%" },
+    dark: { primary: "162 62% 46%", hover: "162 62% 52%", soft: "164 40% 16%", onPrimary: "200 30% 8%" },
+  },
+  blue: {
+    light: { primary: "217 78% 42%", hover: "217 78% 36%", soft: "217 70% 95%", onPrimary: "0 0% 100%" },
+    dark: { primary: "213 82% 62%", hover: "213 82% 68%", soft: "215 44% 18%", onPrimary: "215 60% 10%" },
+  },
+  violet: {
+    light: { primary: "262 62% 48%", hover: "262 62% 42%", soft: "262 62% 96%", onPrimary: "0 0% 100%" },
+    dark: { primary: "262 72% 68%", hover: "262 72% 74%", soft: "262 38% 20%", onPrimary: "262 50% 10%" },
+  },
+  amber: {
+    light: { primary: "28 78% 40%", hover: "28 78% 34%", soft: "36 78% 94%", onPrimary: "0 0% 100%" },
+    dark: { primary: "38 78% 58%", hover: "38 78% 64%", soft: "36 36% 18%", onPrimary: "32 70% 10%" },
+  },
+  slate: {
+    light: { primary: "205 28% 28%", hover: "205 28% 22%", soft: "205 24% 94%", onPrimary: "0 0% 100%" },
+    dark: { primary: "205 18% 68%", hover: "205 18% 76%", soft: "205 14% 20%", onPrimary: "205 30% 10%" },
+  },
+};
+
+export const PALETTE_LABELS: Record<ThemePalette, string> = {
+  emerald: "Emerald",
+  blue: "Blue",
+  violet: "Violet",
+  amber: "Amber",
+  slate: "Graphite",
+};
 
 interface ThemeContextValue {
   mode: ThemeMode;
   palette: ThemePalette;
-  font: ThemeFont;
-  hue: number; // 0-360 overrides palette if set
   setMode: (m: ThemeMode) => void;
   setPalette: (p: ThemePalette) => void;
-  setFont: (f: ThemeFont) => void;
-  setHue: (h: number) => void;
   toggleMode: () => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
-const PALETTES: Record<ThemePalette, { primary: string; accent: string; ring: string }>= {
-  emerald: { primary: "165 100% 36%", accent: "165 100% 36%", ring: "165 100% 36%" },
-  blue: { primary: "217 91% 60%", accent: "217 91% 60%", ring: "217 91% 60%" },
-  violet: { primary: "262 83% 58%", accent: "262 83% 58%", ring: "262 83% 58%" },
-  rose: { primary: "347 77% 50%", accent: "347 77% 50%", ring: "347 77% 50%" },
-  amber: { primary: "38 92% 50%", accent: "38 92% 50%", ring: "38 92% 50%" },
-  teal: { primary: "173 73% 39%", accent: "173 73% 39%", ring: "173 73% 39%" },
-  cyan: { primary: "191 94% 43%", accent: "191 94% 43%", ring: "191 94% 43%" },
-  indigo: { primary: "239 84% 67%", accent: "239 84% 67%", ring: "239 84% 67%" },
-  orange: { primary: "21 90% 54%", accent: "21 90% 54%", ring: "21 90% 54%" },
-  lime: { primary: "84 81% 45%", accent: "84 81% 45%", ring: "84 81% 45%" },
-  fuchsia: { primary: "292 86% 59%", accent: "292 86% 59%", ring: "292 86% 59%" },
-  slate: { primary: "215 20% 50%", accent: "215 20% 50%", ring: "215 20% 50%" },
+const STORAGE_KEYS = { mode: "ui.theme.mode", palette: "ui.theme.palette" };
+
+const readStored = <T,>(key: string, fallback: T): T => {
+  try {
+    return (localStorage.getItem(key) as T | null) ?? fallback;
+  } catch {
+    return fallback;
+  }
 };
 
-const STORAGE_KEYS = {
-  mode: "ui.theme.mode",
-  palette: "ui.theme.palette",
-  font: "ui.theme.font",
-  hue: "ui.theme.hue",
-};
-
-export const ThemeProvider: React.FC<{ children: React.ReactNode }>= ({ children }) => {
-  const [mode, setModeState] = useState<ThemeMode>(() => (localStorage.getItem(STORAGE_KEYS.mode) as ThemeMode) || "light");
-  const [palette, setPaletteState] = useState<ThemePalette>(() => (localStorage.getItem(STORAGE_KEYS.palette) as ThemePalette) || "emerald");
-  const [font, setFontState] = useState<ThemeFont>(() => (localStorage.getItem(STORAGE_KEYS.font) as ThemeFont) || "Inter");
-  const [hue, setHueState] = useState<number>(() => {
-    const v = localStorage.getItem(STORAGE_KEYS.hue);
-    return v ? Number(v) : 0;
+export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [mode, setModeState] = useState<ThemeMode>(() => {
+    const stored = readStored<ThemeMode | null>(STORAGE_KEYS.mode, null);
+    if (stored === "light" || stored === "dark") return stored;
+    return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  });
+  const [palette, setPaletteState] = useState<ThemePalette>(() => {
+    const stored = readStored<ThemePalette>(STORAGE_KEYS.palette, "emerald");
+    return stored in PALETTES ? stored : "emerald";
   });
 
-  const applyMode = useCallback((m: ThemeMode) => {
+  // One effect owns the DOM so mode and palette can never disagree — the
+  // accent depends on which ground it lands on.
+  useEffect(() => {
     const root = document.documentElement;
-    root.classList.toggle("dark", m === "dark");
-  }, []);
+    root.classList.toggle("dark", mode === "dark");
 
-  const applyPalette = useCallback((p: ThemePalette) => {
-    const root = document.documentElement;
-    const { primary, accent, ring } = PALETTES[p];
-    root.style.setProperty("--primary", primary);
-    root.style.setProperty("--accent", accent);
-    root.style.setProperty("--ring", ring);
-  }, []);
+    const tokens = PALETTES[palette][mode];
+    root.style.setProperty("--primary", tokens.primary);
+    root.style.setProperty("--primary-hover", tokens.hover);
+    root.style.setProperty("--primary-soft", tokens.soft);
+    root.style.setProperty("--primary-foreground", tokens.onPrimary);
+    root.style.setProperty("--accent", tokens.primary);
+    root.style.setProperty("--accent-foreground", tokens.onPrimary);
+    root.style.setProperty("--ring", tokens.primary);
+    root.style.setProperty("--sidebar-primary", tokens.primary);
+    root.style.setProperty("--sidebar-primary-foreground", tokens.onPrimary);
+    root.style.setProperty("--sidebar-ring", tokens.primary);
 
-  const applyHue = useCallback((h: number) => {
-    if (!h) return; // 0 means disabled, keep palette
-    const root = document.documentElement;
-    const primary = `${h} 86% 52%`;
-    const accent = `${h} 86% 52%`;
-    const ring = `${h} 86% 52%`;
-    root.style.setProperty("--primary", primary);
-    root.style.setProperty("--accent", accent);
-    root.style.setProperty("--ring", ring);
-  }, []);
+    try {
+      localStorage.setItem(STORAGE_KEYS.mode, mode);
+      localStorage.setItem(STORAGE_KEYS.palette, palette);
+    } catch { /* storage unavailable; theme still applies for this session */ }
+  }, [mode, palette]);
 
-  const applyFont = useCallback((f: ThemeFont) => {
-    const root = document.documentElement;
-    const fontValue = f.includes(" ") ? `"${f}"` : f;
-    root.style.setProperty("--font-sans", fontValue);
-  }, []);
-
+  // Follow the OS only while the user hasn't chosen for themselves.
   useEffect(() => {
-    applyMode(mode);
-    localStorage.setItem(STORAGE_KEYS.mode, mode);
-  }, [mode, applyMode]);
-
-  useEffect(() => {
-    applyPalette(palette);
-    localStorage.setItem(STORAGE_KEYS.palette, palette);
-  }, [palette, applyPalette]);
-
-  useEffect(() => {
-    if (hue) {
-      applyHue(hue);
-    } else {
-      applyPalette(palette);
-    }
-    localStorage.setItem(STORAGE_KEYS.hue, String(hue));
-  }, [hue, palette, applyHue, applyPalette]);
-
-  useEffect(() => {
-    applyFont(font);
-    localStorage.setItem(STORAGE_KEYS.font, font);
-  }, [font, applyFont]);
-
-  useEffect(() => {
-    // initial sync on mount
-    applyMode(mode);
-    applyPalette(palette);
-    if (hue) applyHue(hue);
-    applyFont(font);
+    const mq = window.matchMedia?.("(prefers-color-scheme: dark)");
+    if (!mq) return;
+    const onChange = (e: MediaQueryListEvent) => {
+      if (!localStorage.getItem(STORAGE_KEYS.mode)) setModeState(e.matches ? "dark" : "light");
+    };
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
   }, []);
 
   const setMode = useCallback((m: ThemeMode) => setModeState(m), []);
   const setPalette = useCallback((p: ThemePalette) => setPaletteState(p), []);
-  const setFont = useCallback((f: ThemeFont) => setFontState(f), []);
-  const setHue = useCallback((h: number) => setHueState(h), []);
   const toggleMode = useCallback(() => setModeState((prev) => (prev === "light" ? "dark" : "light")), []);
 
-  const value = useMemo(() => ({ mode, palette, font, hue, setMode, setPalette, setFont, setHue, toggleMode }), [mode, palette, font, hue, setMode, setPalette, setFont, setHue, toggleMode]);
+  const value = useMemo(
+    () => ({ mode, palette, setMode, setPalette, toggleMode }),
+    [mode, palette, setMode, setPalette, toggleMode],
+  );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 };

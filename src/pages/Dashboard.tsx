@@ -1,80 +1,438 @@
-import { Card } from "@/components/ui/card";
-import { BarChart3, Users, DollarSign, TrendingUp } from "lucide-react";
-import { useDashboardMetrics } from "@/lib/metrics";
+import React, { useEffect, useState, useMemo } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatCard } from "@/components/ui/stat-card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { CompanySettingsStore, companySettingsCache } from "@/lib/companySettings";
+import { useCache } from "@/lib/collectionCache";
+import { invoicesCache } from "@/lib/accountingStore";
+import { paymentsCache } from "@/lib/paymentStore";
+import { departmentsCache } from "@/lib/hrmDepartmentsStore";
+import { projectsCache } from "@/lib/projectStore";
+import { ticketsCache } from "@/lib/supportStore";
+import { crmTasksCache } from "@/lib/crmTasksStore";
+import { dealsCache } from "@/lib/crmDealsStore";
+import { leadsCache } from "@/lib/crmLeadsStore";
+import { AccountingStore } from "@/lib/accountingStore";
+import { PaymentStore } from "@/lib/paymentStore";
+import { useAccounts } from "@/lib/useAccounts";
+import { HRMDepartmentsStore } from "@/lib/hrmDepartmentsStore";
+import { ProjectStore } from "@/lib/projectStore";
+import { SupportStore } from "@/lib/supportStore";
+import { AuthStore } from "@/lib/authStore";
+import { CrmTasksStore } from "@/lib/crmTasksStore";
+import { CrmDealsStore } from "@/lib/crmDealsStore";
+import { CrmLeadsStore } from "@/lib/crmLeadsStore";
+import {
+  Users, BarChart3, TrendingUp, DollarSign, Building, Calendar,
+  FileText, Package, HeadphonesIcon, Clock, Bell, Plus, Database, Shield,
+  MessageCircle, CheckCircle, AlertCircle
+} from "lucide-react";
 
-function fmt(n: number): string { return n.toLocaleString(); }
+/**
+ * Ticks when the signed-in account may have changed.
+ *
+ * It used to invalidate the summaries too, back when they read the stores
+ * directly. They read the caches now, which update themselves, so this is left
+ * with the one job the caches do not cover.
+ */
+const DATA_CHANGE_EVENTS = [
+  "storage",
+  "auth-changed",
+  "acct.recurring-changed",
+  "proj.events-changed",
+  // The store dispatches this with a dot. It was spelled with a hyphen
+  // here and in the sidebar, so neither ever heard it.
+  "company.settings-changed",
+];
+
+function useDataVersion() {
+  const [version, setVersion] = useState(0);
+  useEffect(() => {
+    const bump = () => setVersion((v) => v + 1);
+    DATA_CHANGE_EVENTS.forEach((e) => window.addEventListener(e, bump));
+    window.addEventListener("focus", bump);
+    return () => {
+      DATA_CHANGE_EVENTS.forEach((e) => window.removeEventListener(e, bump));
+      window.removeEventListener("focus", bump);
+    };
+  }, []);
+  return version;
+}
+
+/** Isolated so the 1Hz clock doesn't re-render the whole dashboard. */
+const HeaderClock = () => {
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  return (
+    <>
+      <div className="text-lg font-bold">{now.toLocaleTimeString('en-US', { hour12: false })}</div>
+      <div className="text-xs text-muted-foreground">{now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</div>
+    </>
+  );
+};
 
 const Dashboard = () => {
-  const m = useDashboardMetrics();
-  const stats = [
-    { title: "Employees", value: fmt(m.employees), change: "", icon: Users, color: "bg-green-500" },
-    { title: "Departments", value: fmt(m.departments), change: "", icon: BarChart3, color: "bg-blue-500" },
-    { title: "Open Tickets", value: fmt(m.ticketsOpen), change: "", icon: TrendingUp, color: "bg-orange-500" },
-    { title: "SLA Hit Rate", value: `${m.ticketsSlaRate}%`, change: "", icon: DollarSign, color: "bg-purple-500" },
-    { title: "Projects", value: fmt(m.projects), change: "", icon: BarChart3, color: "bg-blue-500" },
-    { title: "Deals", value: fmt(m.deals), change: "", icon: TrendingUp, color: "bg-orange-500" },
-    { title: "Invoices", value: fmt(m.invoices), change: "", icon: DollarSign, color: "bg-purple-500" },
-    { title: "Overdue Tickets", value: fmt(m.ticketsOverdue), change: "", icon: TrendingUp, color: "bg-red-500" },
+  const navigate = useNavigate();
+  // Every figure below is read from a cache. Without these the page rendered
+  // whatever had loaded by the first paint — nothing — and stayed at zero until
+  // the window lost and regained focus.
+  const { rows: invoiceRows } = useCache(invoicesCache);
+  const { rows: paymentRows } = useCache(paymentsCache);
+  const { rows: projectRows } = useCache(projectsCache);
+  const { rows: ticketRows } = useCache(ticketsCache);
+  const { rows: departmentRows } = useCache(departmentsCache);
+  const { rows: crmTaskRows } = useCache(crmTasksCache);
+  const { rows: dealRows } = useCache(dealsCache);
+  const { rows: leadRows } = useCache(leadsCache);
+  useCache(companySettingsCache);
+  const dataVersion = useDataVersion();
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const users = useAccounts();
+
+  // Calculate live stats
+  const liveStats = useMemo(() => {
+    // The cache rows themselves, so the dependency list below is the real
+    // thing the figures depend on rather than a proxy the linter cannot see.
+    const accounting = invoiceRows;
+    const payments = paymentRows;
+    const departments = departmentRows;
+    const projects = projectRows;
+    const support = ticketRows;
+
+    // Calculate metrics
+    const totalRevenue = accounting
+      .filter(inv => inv.status === 'paid')
+      .reduce((sum, inv) => {
+        const total = inv.items.reduce((itemSum, item) => itemSum + (item.qty * item.price), 0);
+        return sum + total;
+      }, 0);
+
+    const pendingPayments = payments
+      .reduce((sum, pay) => sum + pay.amount, 0);
+
+    const activeUsers = users.filter(user => user.status === 'active').length;
+    const totalEmployees = users.length;
+
+    const activeProjects = projects.filter(proj => proj.status === 'open' || proj.status === 'in_progress').length;
+    const completedProjects = projects.filter(proj => proj.status === 'closed').length;
+
+    const openTickets = support.filter(ticket => ticket.status === 'open').length;
+    const urgentTickets = support.filter(ticket => ticket.priority === 'urgent').length;
+
+    // Upcoming deadlines (next 7 days)
+    const now = new Date();
+    const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    const upcomingDeadlines = {
+      invoices: accounting.filter(inv =>
+        inv.dueDate &&
+        new Date(inv.dueDate) <= nextWeek &&
+        inv.status !== 'paid'
+      ),
+      projects: [], // Projects don't have deadline field in current type
+      overdue: accounting.filter(inv =>
+        inv.dueDate &&
+        new Date(inv.dueDate) < now &&
+        inv.status !== 'paid'
+      )
+    };
+
+    return {
+      totalRevenue,
+      pendingPayments,
+      activeUsers,
+      totalEmployees,
+      activeProjects,
+      completedProjects,
+      openTickets,
+      urgentTickets,
+      upcomingDeadlines
+    };
+    // Each of these is a server read that arrives after the first render, so
+    // the figures have to recompute as they land.
+  }, [users, invoiceRows, paymentRows, projectRows, ticketRows, departmentRows]);
+
+  // Get recent activities from all system stores
+  const recentActivities = useMemo(() => {
+    const activities: Array<{
+      id: string;
+      type: string;
+      title: string;
+      time: string;
+      timestamp: number;
+      icon: any;
+      color: string;
+    }> = [];
+
+    const now = Date.now();
+    const formatTime = (timestamp: string | number) => {
+      const date = new Date(timestamp);
+      const diff = now - date.getTime();
+      const minutes = Math.floor(diff / 60000);
+      const hours = Math.floor(diff / 3600000);
+      const days = Math.floor(diff / 86400000);
+
+      if (minutes < 1) return 'Just now';
+      if (minutes < 60) return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
+      if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+      return `${days} day${days > 1 ? 's' : ''} ago`;
+    };
+
+    // Invoices
+    invoiceRows.forEach(inv => {
+      if (inv.createdAt) {
+        activities.push({
+          id: `inv-${inv.id}`,
+          type: 'invoice',
+          title: `Invoice ${inv.number || inv.id} ${inv.status === 'paid' ? 'paid' : 'created'}`,
+          time: formatTime(inv.createdAt),
+          timestamp: new Date(inv.createdAt).getTime(),
+          icon: FileText,
+          color: inv.status === 'paid' ? 'green' : 'blue'
+        });
+      }
+    });
+
+    // CRM Tasks
+    crmTaskRows.forEach(task => {
+      if (task.createdAt) {
+        activities.push({
+          id: `task-${task.id}`,
+          type: 'task',
+          title: task.completed ? `Task completed: ${task.title}` : `Task created: ${task.title}`,
+          time: formatTime(task.createdAt),
+          timestamp: new Date(task.createdAt).getTime(),
+          icon: CheckCircle,
+          color: task.completed ? 'green' : 'orange'
+        });
+      }
+    });
+
+    // CRM Deals
+    dealRows.forEach(deal => {
+      if (deal.createdAt) {
+        activities.push({
+          id: `deal-${deal.id}`,
+          type: 'deal',
+          title: `Deal "${deal.title}" in ${deal.stage}`,
+          time: formatTime(deal.createdAt),
+          timestamp: new Date(deal.createdAt).getTime(),
+          icon: DollarSign,
+          color: 'blue'
+        });
+      }
+    });
+
+    // CRM Leads
+    leadRows.forEach(lead => {
+      if (lead.createdAt) {
+        activities.push({
+          id: `lead-${lead.id}`,
+          type: 'lead',
+          title: `Lead "${lead.name}" - ${lead.stage}`,
+          time: formatTime(lead.createdAt),
+          timestamp: new Date(lead.createdAt).getTime(),
+          icon: Users,
+          color: 'indigo'
+        });
+      }
+    });
+
+    // Support Tickets
+    ticketRows.forEach(ticket => {
+      if (ticket.createdAt) {
+        activities.push({
+          id: `ticket-${ticket.id}`,
+          type: 'ticket',
+          title: ticket.status === 'open' ? `Ticket opened: ${ticket.title}` : `Ticket resolved: ${ticket.title}`,
+          time: formatTime(ticket.createdAt),
+          timestamp: new Date(ticket.createdAt).getTime(),
+          icon: HeadphonesIcon,
+          color: ticket.priority === 'urgent' ? 'red' : 'orange'
+        });
+      }
+    });
+
+    // Projects
+    projectRows.forEach(proj => {
+      if (proj.createdAt) {
+        activities.push({
+          id: `proj-${proj.id}`,
+          type: 'project',
+          title: `Project "${proj.name}" ${proj.status === 'closed' ? 'completed' : 'updated'}`,
+          time: formatTime(proj.createdAt),
+          timestamp: new Date(proj.createdAt).getTime(),
+          icon: Building,
+          color: proj.status === 'closed' ? 'green' : 'blue'
+        });
+      }
+    });
+
+    // Sort by timestamp (most recent first) and take top 10
+    return activities
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, 10);
+  }, [invoiceRows, crmTaskRows, dealRows, leadRows, ticketRows, projectRows]);
+
+  // Identity comes from the signed-in account. SecurityStore is a separate,
+  // parallel user system and returns null for accounts created via AuthStore,
+  // which is why this greeted everyone anonymously.
+  useEffect(() => {
+    setCurrentUser(AuthStore.currentUser());
+  }, [dataVersion]);
+
+  const company = CompanySettingsStore.get();
+  const currency = company.currencySymbol || "$";
+  const overdueCount = liveStats.upcomingDeadlines.overdue.length;
+  const dueSoonCount = liveStats.upcomingDeadlines.invoices.length;
+
+  // Every one of these is checked against App.tsx. Two of them pointed at
+  // /workflow and /documents, which were removed with the modules behind them,
+  // so they had been landing on the 404 page.
+  const quickActions = [
+    { label: "Inbox", icon: MessageCircle, to: "/email/inbox" },
+    { label: "Support", icon: HeadphonesIcon, to: "/support" },
+    { label: "Projects", icon: Calendar, to: "/projects" },
+    { label: "Invoices", icon: DollarSign, to: "/accounting/invoices" },
+    { label: "Leads", icon: TrendingUp, to: "/crm/leads" },
+    { label: "Export data", icon: Database, to: "/settings/export" },
   ];
+
+  const ACTIVITY_TONE: Record<string, string> = {
+    green: "bg-success",
+    blue: "bg-info",
+    indigo: "bg-info",
+    orange: "bg-warning",
+    red: "bg-danger",
+    purple: "bg-primary",
+  };
+
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold">Dashboard</h1>
-        <p className="text-muted-foreground">Live overview scoped to your role and departments.</p>
+    <div className="flex flex-col gap-6 p-6">
+      <PageHeader
+        title={`Good to see you, ${(currentUser?.name || "there").split(" ")[0]}`}
+        description={`Here's where ${company.name || "the business"} stands today.`}
+      />
+
+      {/* Only surfaces when something genuinely needs attention. */}
+      {(overdueCount > 0 || liveStats.urgentTickets > 0) && (
+        <div className="flex flex-col gap-2 rounded-md border border-danger/30 bg-danger-soft p-4">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 text-danger" aria-hidden="true" />
+            <h2 className="text-sm font-semibold text-foreground">Needs attention</h2>
+          </div>
+          <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted-foreground">
+            {overdueCount > 0 && (
+              <Link to="/accounting/invoices" className="hover:text-foreground hover:underline">
+                {overdueCount} overdue invoice{overdueCount === 1 ? "" : "s"}
+              </Link>
+            )}
+            {liveStats.urgentTickets > 0 && (
+              <Link to="/support/tickets" className="hover:text-foreground hover:underline">
+                {liveStats.urgentTickets} urgent ticket{liveStats.urgentTickets === 1 ? "" : "s"}
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Revenue"
+          value={`${currency}${liveStats.totalRevenue.toLocaleString()}`}
+          hint="From paid invoices"
+          icon={DollarSign}
+          tone="success"
+          onClick={() => navigate("/accounting/invoices")}
+        />
+        <StatCard
+          label="Active people"
+          value={liveStats.activeUsers}
+          hint={`of ${liveStats.totalEmployees} on the team`}
+          icon={Users}
+          onClick={() => navigate("/hrm/employees")}
+        />
+        <StatCard
+          label="Open projects"
+          value={liveStats.activeProjects}
+          hint={`${liveStats.completedProjects} completed`}
+          icon={Package}
+          tone="info"
+          onClick={() => navigate("/projects")}
+        />
+        <StatCard
+          label="Open tickets"
+          value={liveStats.openTickets}
+          hint={liveStats.urgentTickets ? `${liveStats.urgentTickets} urgent` : "None urgent"}
+          icon={HeadphonesIcon}
+          tone={liveStats.urgentTickets ? "danger" : "neutral"}
+          onClick={() => navigate("/support/tickets")}
+        />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        {stats.map((stat, index) => (
-          <Card key={index} className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className={`w-12 h-12 rounded-lg ${stat.color} flex items-center justify-center`}>
-                <stat.icon className="w-6 h-6 text-white" />
-              </div>
-              {stat.change && <span className="text-sm font-medium text-green-600">{stat.change}</span>}
-            </div>
-            <p className="text-sm text-muted-foreground mb-1">{stat.title}</p>
-            <p className="text-3xl font-bold">{stat.value}</p>
-          </Card>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="p-6">
-          <h3 className="text-lg font-semibold mb-4">Recent Activity</h3>
-          <div className="space-y-4">
-            {[1, 2, 3, 4].map((item) => (
-              <div key={item} className="flex items-start gap-3 pb-4 border-b border-border last:border-0">
-                <div className="w-2 h-2 rounded-full bg-primary mt-2" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">Project Update</p>
-                  <p className="text-xs text-muted-foreground">New milestone completed in Website Launch</p>
-                  <p className="text-xs text-muted-foreground mt-1">2 hours ago</p>
-                </div>
-              </div>
+      <div className="grid gap-4 lg:grid-cols-[1fr_1.1fr]">
+        <section className="flex flex-col gap-3 rounded-md border border-border bg-card p-4">
+          <div className="flex flex-col gap-0.5">
+            <h2 className="text-sm font-semibold text-foreground">Jump to</h2>
+            <p className="text-xs text-muted-foreground">Press ⌘K to search everything.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {quickActions.map(({ label, icon: Icon, to }) => (
+              <Link
+                key={to}
+                to={to}
+                className="flex flex-col items-center gap-2 rounded-md border border-border bg-surface-raised px-3 py-4 text-center text-sm text-foreground transition-colors duration-fast ease-standard hover:border-border-strong hover:bg-muted"
+              >
+                <Icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                {label}
+              </Link>
             ))}
           </div>
-        </Card>
+        </section>
 
-        <Card className="p-6">
-          <h3 className="text-lg font-semibold mb-4">Upcoming Deadlines</h3>
-          <div className="space-y-4">
-            {[1, 2, 3, 4].map((item) => (
-              <div key={item} className="flex items-center justify-between pb-4 border-b border-border last:border-0">
-                <div>
-                  <p className="text-sm font-medium">Website Redesign</p>
-                  <p className="text-xs text-muted-foreground">Due in 3 days</p>
-                </div>
-                <div className="w-16 h-1.5 bg-secondary rounded-full overflow-hidden">
-                  <div className="h-full bg-primary" style={{ width: "75%" }} />
-                </div>
-              </div>
-            ))}
+        <section className="flex flex-col gap-3 rounded-md border border-border bg-card p-4">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-foreground">Recent activity</h2>
+            {dueSoonCount > 0 && (
+              <span className="rounded-sm bg-warning-soft px-1.5 py-0.5 text-xs font-medium text-warning">
+                {dueSoonCount} due this week
+              </span>
+            )}
           </div>
-        </Card>
+
+          {recentActivities.length === 0 ? (
+            <EmptyState
+              icon={Clock}
+              title="No activity yet"
+              description="Invoices, deals, tasks and tickets will appear here as your team works."
+            />
+          ) : (
+            <ul className="flex flex-col">
+              {recentActivities.map((activity) => (
+                <li
+                  key={activity.id}
+                  className="flex items-start gap-3 border-b border-border py-2.5 last:border-0"
+                >
+                  <span
+                    className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${ACTIVITY_TONE[activity.color] ?? "bg-muted-foreground"}`}
+                    aria-hidden="true"
+                  />
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <p className="truncate text-sm text-foreground">{activity.title}</p>
+                    <p className="text-xs text-muted-foreground">{activity.time}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </div>
     </div>
   );
 };
 
 export default Dashboard;
-

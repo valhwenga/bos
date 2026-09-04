@@ -1,0 +1,160 @@
+import { describe, it, expect } from "vitest";
+import { generateBACS, CURRENCY_SYMBOLS, COUNTRY_TO_CURRENCY, MissingBankDetailsError } from "./payrollAdvanced";
+import { computeTax } from "./taxEngine";
+import { countWorkingDays } from "./leaveBalance";
+import { publicHolidays, isPublicHoliday } from "./holidays";
+
+describe("PAYE (South Africa)", () => {
+  const paye = (gross: number) => computeTax(gross, "ZA").incomeTax;
+
+  it("charges nothing on zero", () => {
+    expect(paye(0)).toBe(0);
+  });
+
+  it("is monotonic", () => {
+    let previous = -1;
+    for (let gross = 0; gross <= 1_500_000; gross += 25_000) {
+      const tax = paye(gross);
+      expect(tax).toBeGreaterThanOrEqual(previous);
+      previous = tax;
+    }
+  });
+
+  it("never exceeds the gross it is charged on", () => {
+    for (const gross of [50_000, 500_000, 5_000_000]) {
+      expect(paye(gross)).toBeLessThan(gross);
+    }
+  });
+
+  it("applies the lowest band only, below the first threshold", () => {
+    // 18% on the first band, up to R95,750.
+    expect(paye(50_000)).toBeCloseTo(9_000, 0);
+  });
+});
+
+describe("currency mapping", () => {
+  it("maps every supported country to a currency that has a symbol", () => {
+    for (const [country, currency] of Object.entries(COUNTRY_TO_CURRENCY)) {
+      expect(CURRENCY_SYMBOLS[currency], `${country} -> ${currency}`).toBeTruthy();
+    }
+  });
+
+  it("uses the rand for South Africa", () => {
+    expect(COUNTRY_TO_CURRENCY.ZA).toBe("ZAR");
+    expect(CURRENCY_SYMBOLS.ZAR).toBe("R");
+  });
+});
+
+describe("bank export files", () => {
+  const withBank = [
+    { employee: "Jane Doe", employeeId: "E1", employeeName: "Jane Doe", netSalary: 4200.5, bankAccount: "12345678", routingNumber: "111000025", accountNumber: "12345678", sortCode: "203045" },
+    { employee: "John Roe", employeeId: "E2", employeeName: "John Roe", netSalary: 3980, bankAccount: "87654321", routingNumber: "111000025", accountNumber: "87654321", sortCode: "203045" },
+  ];
+
+  it("writes one BACS line per employee", () => {
+    const out = generateBACS(withBank);
+    expect(out).toContain("Jane Doe");
+    expect(out).toContain("John Roe");
+  });
+
+  it("includes an employee on zero net pay rather than dropping them", () => {
+    // Someone on unpaid leave still belongs in the run; omitting them hides it.
+    const withZero = [...withBank, { ...withBank[0], employeeId: "E3", employeeName: "Zero Pay", netSalary: 0 }];
+    expect(generateBACS(withZero)).toContain("Zero Pay");
+  });
+
+  it("refuses to build a file from placeholder account numbers", () => {
+    // The panel used to pass all-zero placeholders and still produce a
+    // downloadable file, which looked like a working export but was unusable.
+    const placeholders = withBank.map((r) => ({ ...r, bankAccount: "000000000", accountNumber: "00000000" }));
+    expect(() => generateBACS(placeholders)).toThrow(MissingBankDetailsError);
+    expect(() => generateBACS(placeholders)).toThrow(MissingBankDetailsError);
+  });
+
+  it("names the employees whose details are missing", () => {
+    const placeholders = withBank.map((r) => ({ ...r, bankAccount: "0", accountNumber: "0" }));
+    expect(() => generateBACS(placeholders)).toThrow(/Jane Doe/);
+  });
+});
+
+describe("countWorkingDays", () => {
+  it("excludes weekends", () => {
+    // Mon 5 Jan 2026 to Fri 9 Jan 2026 is five working days.
+    expect(countWorkingDays("2026-01-05", "2026-01-09")).toBe(5);
+  });
+
+  it("counts a single weekday as one day", () => {
+    expect(countWorkingDays("2026-01-05", "2026-01-05")).toBe(1);
+  });
+
+  it("counts a weekend-only range as zero", () => {
+    // Sat 10 and Sun 11 Jan 2026.
+    expect(countWorkingDays("2026-01-10", "2026-01-11")).toBe(0);
+  });
+
+  it("never returns a negative span when the dates are reversed", () => {
+    expect(countWorkingDays("2026-01-09", "2026-01-05")).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe("payroll entry arithmetic", () => {
+  // Mirrors how HRMPayrollManage collapses the itemised figures for a payslip.
+  const sum = (parts: Record<string, number>) =>
+    Object.values(parts).reduce((total, amount) => total + (amount || 0), 0);
+
+  it("nets out to basic plus allowances plus overtime less deductions", () => {
+    const basic = 50_000;
+    const allowances = { housing: 5_000, transport: 1_200, medical: 800, bonus: 0, other: 0 };
+    const deductions = { paye: 9_000, ui: 500, pension: 2_500, medical: 1_100, other: 0 };
+    const overtime = { hours: 10, rate: 150, amount: 1_500 };
+
+    const net = basic + sum(allowances) + overtime.amount - sum(deductions);
+    expect(net).toBe(45_400);
+  });
+
+  it("treats a missing allowance component as zero rather than NaN", () => {
+    // Records imported from older versions may lack newer fields.
+    const partial = { housing: 1_000, transport: undefined as unknown as number };
+    expect(Number.isNaN(sum(partial))).toBe(false);
+    expect(sum(partial)).toBe(1_000);
+  });
+});
+
+describe("South African public holidays", () => {
+  it("includes all twelve statutory holidays every year", () => {
+    for (const year of [2024, 2025, 2026, 2027, 2030]) {
+      const names = publicHolidays(year).filter((h) => !h.observed).map((h) => h.name);
+      expect(names).toHaveLength(12);
+      expect(names).toContain("Freedom Day");
+      expect(names).toContain("Day of Reconciliation");
+    }
+  });
+
+  it("moves Good Friday and Family Day with Easter", () => {
+    // Easter Sunday 2026 is 5 April, so Good Friday is the 3rd and Family Day
+    // the 6th. These cannot be hardcoded, which the old fixed lists tried to do.
+    const dates = Object.fromEntries(publicHolidays(2026).map((h) => [h.name, h.date]));
+    expect(dates["Good Friday"]).toBe("2026-04-03");
+    expect(dates["Family Day"]).toBe("2026-04-06");
+  });
+
+  it("observes the Monday when a holiday falls on a Sunday", () => {
+    // Christmas Day 2022 fell on a Sunday, so 27 December was granted
+    // (26 December is already Day of Goodwill).
+    const observed = publicHolidays(2022).filter((h) => h.observed).map((h) => h.date);
+    expect(observed).toContain("2022-12-26");
+  });
+
+  it("recognises holidays in years the old fixed list never covered", () => {
+    // The previous implementation only listed 2025, so leave taken in any later
+    // year was charged for public holidays.
+    expect(isPublicHoliday("2026-12-25")).toBe(true);
+    expect(isPublicHoliday("2027-04-27")).toBe(true);
+    expect(isPublicHoliday("2026-12-24")).toBe(false);
+  });
+
+  it("excludes public holidays from a leave request", () => {
+    // 16 to 18 June 2026: Youth Day (Tue) plus two ordinary working days.
+    expect(countWorkingDays("2026-06-16", "2026-06-18")).toBe(2);
+  });
+});

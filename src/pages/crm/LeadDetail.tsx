@@ -1,7 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCache } from "@/lib/collectionCache";
+import { leadsCache } from "@/lib/crmLeadsStore";
+import { dealsCache } from "@/lib/crmDealsStore";
+import { crmCustomersCache } from "@/lib/crmCustomersStore";
+import { crmTasksCache } from "@/lib/crmTasksStore";
+import { FileVault } from "@/lib/fileVault";
+import { leadUuid } from "@/lib/crmRepo";
+import { toast } from "@/components/ui/use-toast";
 import { useNavigate, useParams } from "react-router-dom";
 import { CrmLeadsStore, type Lead, type LeadActivity, type LeadAttachment, type LeadStage } from "@/lib/crmLeadsStore";
-import { UsersStore } from "@/lib/usersStore";
+import { useAccounts, useStaffAccounts } from "@/lib/useAccounts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -20,15 +28,23 @@ const stageOptions: { key: LeadStage; label: string }[] = [
 ];
 
 const LeadDetail = () => {
+  // Rows come from Postgres via caches, so this re-renders when they arrive.
+  useCache(leadsCache);
+  useCache(dealsCache);
+  useCache(crmCustomersCache);
+  useCache(crmTasksCache);
   const { id } = useParams();
   const navigate = useNavigate();
   const [lead, setLead] = useState<Lead | undefined>(undefined);
   const [activity, setActivity] = useState("");
-  const users = UsersStore.list();
+  const users = useAccounts();
+  const staff = useStaffAccounts();
   const me = users[0]?.id;
 
-  const refresh = () => setLead(id ? CrmLeadsStore.get(id) : undefined);
-  useEffect(()=>{ refresh(); }, [id]);
+  const refresh = useCallback(() => {
+    setLead(id ? CrmLeadsStore.get(id) : undefined);
+  }, [id]);
+  useEffect(()=>{ refresh(); }, [refresh]);
   if (!lead) return (
     <div className="p-6">
       <Button variant="secondary" onClick={()=> navigate(-1)}>Back</Button>
@@ -36,36 +52,63 @@ const LeadDetail = () => {
     </div>
   );
 
-  const update = (patch: Partial<Lead>) => {
+  const update = async (patch: Partial<Lead>) => {
     const before = lead;
     const next = { ...lead, ...patch } as Lead;
-    CrmLeadsStore.upsert(next);
+    void CrmLeadsStore.upsert(next);
     setLead(next);
     // Automation: when moved to won, auto-create customer and deal (if not already)
     if (before?.stage !== 'won' && next.stage === 'won') {
       try {
         // Create customer if not exists by email/company name
         const existing = CustomersStore.list().find(c => (next.email && c.email && c.email.toLowerCase()===next.email.toLowerCase()) || (next.company && c.name.toLowerCase()===next.company.toLowerCase()));
-        const cust = existing || CustomersStore.upsert({ id: existing?.id || `c_${Date.now()}`, name: next.company || next.name, email: next.email, address: next.address, phone: next.phone });
+        const cust = existing ?? (await CustomersStore.upsert({ id: `c_${Date.now()}`, name: next.company || next.name, email: next.email, billingAddress: next.address ? { line1: next.address } : undefined, phone: next.phone }));
         // Create a deal as Closed Won for traceability
-        CrmDealsStore.upsert({ id: `D_${Date.now()}`, title: `${next.company || next.name} - Won`, customerId: cust.id, leadId: next.id, value: 0, probability: 100, expectedClose: new Date().toISOString(), stage: 'closed_won', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
-      } catch {}
+        void CrmDealsStore.upsert({ id: `D_${Date.now()}`, title: `${next.company || next.name} - Won`, customerId: cust.id, leadId: next.id, value: 0, probability: 100, expectedClose: new Date().toISOString(), stage: 'closed_won', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+      } catch {
+      // ignore errors
+    }
     }
   };
 
   const addActivity = (type: LeadActivity['type']) => {
     if (!activity.trim() || !me) return;
-    CrmLeadsStore.addActivity(lead.id, { id: Math.random().toString(36).slice(2), ts: new Date().toISOString(), type, text: activity, authorId: me });
+    void CrmLeadsStore.addActivity(lead.id, { id: Math.random().toString(36).slice(2), ts: new Date().toISOString(), type, text: activity, authorId: me });
     setActivity(""); refresh();
   };
 
+  // Files go to the lead-attachments bucket. They used to be read into base64
+  // and stored on the lead record, which put whole documents into a row that is
+  // loaded every time the pipeline is opened.
   const onFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const fs = Array.from(e.target.files||[]);
-    const toDataUrl = (file: File): Promise<LeadAttachment> => new Promise((resolve)=>{
-      const reader = new FileReader(); reader.onload = ()=> resolve({ id: Math.random().toString(36).slice(2), name: file.name, type: file.type, size: file.size, dataUrl: String(reader.result) }); reader.readAsDataURL(file);
-    });
-    const atts = await Promise.all(fs.map(toDataUrl));
-    for (const a of atts) CrmLeadsStore.addAttachment(lead.id, a);
+    const files = Array.from(e.target.files || []);
+    // attachments.owner_id is a uuid, and a lead created before the move has a
+    // text id, so it has to be resolved rather than passed through.
+    const ownerId = await leadUuid(lead.id);
+    if (!ownerId) {
+      toast({
+        title: "Could not attach the files",
+        description: "This lead has not been saved yet.",
+        variant: "destructive",
+      });
+      return;
+    }
+    for (const file of files) {
+      try {
+        await FileVault.upload({
+          bucketId: "lead-attachments",
+          file,
+          ownerTable: "leads",
+          ownerId,
+        });
+      } catch (err) {
+        toast({
+          title: `Could not attach ${file.name}`,
+          description: err instanceof Error ? err.message : "It was not uploaded.",
+          variant: "destructive",
+        });
+      }
+    }
     refresh();
   };
 
@@ -76,13 +119,23 @@ const LeadDetail = () => {
           <CardTitle>Lead Detail</CardTitle>
           <div className="flex items-center gap-2">
             {canAccess('crm','full') && (
-              <Button variant="destructive" onClick={()=> { CrmLeadsStore.remove(lead.id); navigate(-1); }}>Delete</Button>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  const ok = window.confirm("Delete this lead? This action cannot be undone.");
+                  if (!ok) return;
+                  void CrmLeadsStore.remove(lead.id);
+                  navigate(-1);
+                }}
+              >
+                Delete
+              </Button>
             )}
             <Button variant="secondary" onClick={()=> navigate(-1)}>Back</Button>
           </div>
           <div className="flex items-center justify-end gap-2">
             <Button variant="outline" onClick={()=> navigate(-1)}>Close</Button>
-            <Button onClick={()=> { const c = CustomersStore.upsert({ id: `c_${Date.now()}`, name: lead.company || lead.name, email: lead.email, address: lead.address, phone: lead.phone }); update({ stage: 'won' }); }}>Convert to Customer</Button>
+            <Button onClick={()=> { void update({ stage: 'won' }); }}>Convert to Customer</Button>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -109,7 +162,7 @@ const LeadDetail = () => {
             </div>
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">Stage</label>
-              <Select value={lead.stage} onValueChange={(v)=> update({ stage: v as LeadStage })}>
+              <Select value={lead.stage} onValueChange={(v)=> void update({ stage: v as LeadStage })}>
                 <SelectTrigger><SelectValue placeholder="Stage" /></SelectTrigger>
                 <SelectContent>
                   {stageOptions.map(s=> <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>)}
@@ -118,11 +171,11 @@ const LeadDetail = () => {
             </div>
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground">Owner</label>
-              <Select value={lead.ownerId ?? 'unassigned'} onValueChange={(v)=> update({ ownerId: v === 'unassigned' ? undefined : v })}>
+              <Select value={lead.ownerId ?? 'unassigned'} onValueChange={(v)=> void update({ ownerId: v === 'unassigned' ? undefined : v })}>
                 <SelectTrigger><SelectValue placeholder="Assign owner" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="unassigned">Unassigned</SelectItem>
-                  {users.map(u=> <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+                  {staff.map(u=> <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

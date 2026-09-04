@@ -1,141 +1,291 @@
-export type PendingSignup = {
-  id: string;
-  name: string;
-  email: string;
-  password: string; // demo only; not for production
-  requestedAt: string;
-};
+/**
+ * Authentication, backed by Supabase.
+ *
+ * This used to hold accounts in localStorage with their passwords in plain
+ * text, and sign in by comparing `account.password === password` in the
+ * browser. Anyone with devtools could read every password in the company, and
+ * `auth.roleId` sat beside them in localStorage, so granting yourself Super
+ * Admin took one line in the console.
+ *
+ * Credentials now live in auth.users, hashed and server-side; the browser never
+ * sees them. Roles come from profiles.role_id and are enforced by row level
+ * security, so editing anything locally changes what the UI draws but not what
+ * the database will return.
+ *
+ * Reads of the *current* user stay synchronous, served from the session
+ * snapshot, because the components that call them are synchronous. Anything
+ * that touches other users' records is a server call and is async.
+ */
+
+import { supabase } from "./supabase";
+import { getSession, refreshSession, type Profile } from "./session";
 
 export type Account = {
   id: string;
   name: string;
   email: string;
-  password: string; // demo only; not for production
-  roleId: string;
+  roleId: string | null;
+  status: "pending" | "active" | "inactive";
+  /** Set on client portal logins; identifies the customer they represent. */
+  clientId?: string | null;
   createdAt: string;
+  /** Retained so existing callers that branch on `active` keep working. */
   active: boolean;
 };
 
-export type Invite = {
+export type PendingSignup = {
+  id: string;
+  name: string;
+  email: string;
+  requestedAt: string;
+};
+
+export type Session = { userId: string; createdAt: string };
+
+type ProfileRow = {
   id: string;
   email: string;
-  roleId: string;
-  token: string;
-  invitedBy?: string;
-  createdAt: string;
-  acceptedAt?: string;
+  name: string;
+  role_id: string | null;
+  status: "pending" | "active" | "inactive";
+  client_id: string | null;
+  created_at: string;
 };
 
-export type Session = {
-  userId: string;
-  createdAt: string;
-};
+const toAccount = (row: ProfileRow): Account => ({
+  id: row.id,
+  name: row.name,
+  email: row.email,
+  roleId: row.role_id,
+  status: row.status,
+  clientId: row.client_id,
+  createdAt: row.created_at,
+  active: row.status === "active",
+});
 
-export type ResetToken = {
-  token: string;
-  email: string;
-  createdAt: string;
-  used?: boolean;
-};
-
-const K = {
-  accounts: "auth.accounts",
-  pending: "auth.pending",
-  invites: "auth.invites",
-  session: "auth.session",
-  resets: "auth.reset_tokens",
-};
-
-const r = <T,>(k: string, f: T): T => { try { const v = localStorage.getItem(k); return v ? (JSON.parse(v) as T) : f; } catch { return f; } };
-const w = (k: string, v: unknown) => localStorage.setItem(k, JSON.stringify(v));
-const emit = (name: string) => { try { window.dispatchEvent(new Event(name)); } catch {}
-};
-
-function seedAdmin() {
-  const accs = r<Account[]>(K.accounts, []);
-  if (accs.length === 0) {
-    const admin: Account = { id: 'u_admin', name: 'Administrator', email: 'admin@example.com', password: 'admin', roleId: 'role_super_admin', createdAt: new Date().toISOString(), active: true };
-    w(K.accounts, [admin]);
-  }
-}
-seedAdmin();
+const profileToAccount = (p: Profile): Account => ({
+  id: p.id,
+  name: p.name,
+  email: p.email,
+  roleId: p.roleId,
+  status: p.status,
+  clientId: p.clientId,
+  createdAt: "",
+  active: p.status === "active",
+});
 
 export const AuthStore = {
-  listAccounts(): Account[] { return r<Account[]>(K.accounts, []); },
-  listPending(): PendingSignup[] { return r<PendingSignup[]>(K.pending, []); },
-  listInvites(): Invite[] { return r<Invite[]>(K.invites, []); },
-  listResets(): ResetToken[] { return r<ResetToken[]>(K.resets, []); },
+  // --- Current user: synchronous, from the session snapshot ----------------
 
-  signUpRequest(name: string, email: string, password: string) {
-    const pending = this.listPending();
-    const exists = this.listAccounts().find(a=> a.email.toLowerCase()===email.toLowerCase());
-    if (exists) throw new Error('Email already registered.');
-    const req: PendingSignup = { id: `ps_${Date.now()}`, name, email, password, requestedAt: new Date().toISOString() };
-    pending.push(req); w(K.pending, pending); emit('auth-changed'); return req;
+  currentUser(): Account | undefined {
+    const p = getSession().profile;
+    return p ? profileToAccount(p) : undefined;
   },
 
-  requestPasswordReset(email: string) {
-    const acc = this.listAccounts().find(a=> a.email.toLowerCase()===email.toLowerCase());
-    if (!acc) throw new Error('No account found for that email');
-    const toks = this.listResets();
-    const token = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
-    const rec: ResetToken = { token, email: acc.email, createdAt: new Date().toISOString() };
-    toks.push(rec); w(K.resets, toks);
-    try {
-      // Lazy import to avoid cycles
-      const mod = (window as any).EmailStore || null;
-      // If EmailStore is globally not exposed, fallback to dynamic import via eval-like require is not available; we will attempt window dispatch
-    } catch {}
-    return rec;
+  isAuthed(): boolean {
+    return getSession().status === "signed-in";
   },
 
-  resetPassword(token: string, newPassword: string) {
-    const toks = this.listResets();
-    const rec = toks.find(t=> t.token===token && !t.used);
-    if (!rec) throw new Error('Invalid or used reset token');
-    const accs = this.listAccounts();
-    const acc = accs.find(a=> a.email.toLowerCase()===rec.email.toLowerCase());
-    if (!acc) throw new Error('Account not found for token');
-    acc.password = newPassword;
-    w(K.accounts, accs);
-    rec.used = true; w(K.resets, toks);
-    return acc;
+  currentSession(): Session | null {
+    const s = getSession();
+    if (s.status !== "signed-in" || !s.user) return null;
+    return { userId: s.user.id, createdAt: s.user.created_at ?? "" };
   },
 
-  adminApprove(pendingId: string, roleId: string) {
-    const pending = this.listPending();
-    const idx = pending.findIndex(p=> p.id===pendingId);
-    if (idx<0) throw new Error('Pending request not found');
-    const p = pending[idx]; pending.splice(idx,1); w(K.pending, pending);
-    const accs = this.listAccounts();
-    const acc: Account = { id: `u_${Date.now()}`, name: p.name, email: p.email, password: p.password, roleId, createdAt: new Date().toISOString(), active: true };
-    accs.push(acc); w(K.accounts, accs); emit('auth-changed'); return acc;
+  /** True once the persisted session has been restored, or found absent. */
+  isReady(): boolean {
+    return getSession().status !== "loading";
   },
 
-  invite(email: string, roleId: string, invitedBy?: string) {
-    const invs = this.listInvites();
-    const inv: Invite = { id: `inv_${Date.now()}`, email, roleId, token: Math.random().toString(36).slice(2), invitedBy, createdAt: new Date().toISOString() };
-    invs.push(inv); w(K.invites, invs); emit('auth-changed'); return inv;
+  // --- Credentials ---------------------------------------------------------
+
+  async signIn(email: string, password: string): Promise<Account> {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      // An unconfirmed address is only reported once the password is correct,
+      // so saying so reveals nothing the caller does not already know — and
+      // "invalid email or password" would send someone off resetting a
+      // password that was never the problem.
+      if (error.code === "email_not_confirmed" || /not confirmed/i.test(error.message)) {
+        throw new Error(
+          "Confirm your email address first — open the link we sent you when you signed up.",
+        );
+      }
+      // Otherwise Supabase deliberately returns the same message whether the
+      // address is unknown or the password is wrong, so the form cannot be used
+      // to discover who has an account. Keep it that way.
+      throw new Error("Invalid email or password.");
+    }
+
+    await refreshSession();
+
+    const snap = getSession();
+    if (!snap.profile) throw new Error("Your account has no profile. Ask an administrator to set one up.");
+    if (snap.profile.status === "pending") {
+      await supabase.auth.signOut();
+      throw new Error("Your account is waiting for approval.");
+    }
+    if (snap.profile.status === "inactive") {
+      await supabase.auth.signOut();
+      throw new Error("Your account has been deactivated.");
+    }
+    if (!data.session) throw new Error("Sign in did not return a session.");
+    return profileToAccount(snap.profile);
   },
 
-  acceptInvite(token: string, name: string, password: string) {
-    const invs = this.listInvites();
-    const idx = invs.findIndex(i=> i.token===token);
-    if (idx<0) throw new Error('Invite not found');
-    const inv = invs[idx]; inv.acceptedAt = new Date().toISOString(); w(K.invites, invs);
-    const accs = this.listAccounts();
-    const acc: Account = { id: `u_${Date.now()}`, name, email: inv.email, password, roleId: inv.roleId, createdAt: new Date().toISOString(), active: true };
-    accs.push(acc); w(K.accounts, accs); emit('auth-changed'); return acc;
+  async signOut(): Promise<void> {
+    await supabase.auth.signOut();
   },
 
-  signIn(email: string, password: string) {
-    const acc = this.listAccounts().find(a=> a.email.toLowerCase()===email.toLowerCase() && a.password===password && a.active);
-    if (!acc) throw new Error('Invalid credentials or not approved.');
-    const sess: Session = { userId: acc.id, createdAt: new Date().toISOString() };
-    w(K.session, sess); localStorage.setItem('auth.roleId', acc.roleId); emit('auth-changed'); return acc;
+  /**
+   * Registers an account, which then waits for an administrator to approve it
+   * and assign a role. The database trigger creates the profile as 'pending',
+   * and a pending profile resolves to no access.
+   */
+  async signUpRequest(name: string, email: string, password: string): Promise<void> {
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { name } },
+    });
+    if (error) throw new Error(error.message);
   },
-  signOut() { localStorage.removeItem(K.session); emit('auth-changed'); },
-  currentSession(): Session | null { return r<Session | null>(K.session, null); },
-  currentUser(): Account | undefined { const s = this.currentSession(); if (!s) return undefined; return this.listAccounts().find(a=> a.id===s.userId); },
-  isAuthed(): boolean { return !!this.currentSession(); }
+
+  async requestPasswordReset(email: string): Promise<void> {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/auth/reset`,
+    });
+    // Do not reveal whether the address exists.
+    if (error && !/not found/i.test(error.message)) throw new Error(error.message);
+  },
+
+  /**
+   * Sets a new password. The user arrives here from the emailed link, which
+   * Supabase exchanges for a recovery session, so there is no token to pass.
+   */
+  async resetPassword(newPassword: string): Promise<void> {
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw new Error(error.message);
+  },
+
+  /**
+   * True when the emailed reset or invite link produced a usable session.
+   * Guards the reset form so it cannot be submitted into nothing.
+   */
+  async hasRecoverySession(): Promise<boolean> {
+    const { data } = await supabase.auth.getSession();
+    return !!data.session;
+  },
+
+  /** Sets the display name on the signed-in user's own profile. */
+  async setOwnName(name: string): Promise<void> {
+    const { data } = await supabase.auth.getSession();
+    const id = data.session?.user.id;
+    if (!id) throw new Error("Not signed in.");
+    const { error } = await supabase.from("profiles").update({ name }).eq("id", id);
+    if (error) throw new Error(error.message);
+  },
+
+  async changePassword(newPassword: string): Promise<void> {
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw new Error(error.message);
+  },
+
+  // --- Administration ------------------------------------------------------
+  //
+  // These are ordinary table writes. RLS allows them only for a user with
+  // 'full' access to settings, so a non-admin calling them gets nothing back
+  // rather than a client-side check they could skip.
+
+  async listAccounts(): Promise<Account[]> {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id, email, name, role_id, status, client_id, created_at")
+      .order("created_at", { ascending: true });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(toAccount);
+  },
+
+  async listPending(): Promise<PendingSignup[]> {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id, email, name, role_id, status, client_id, created_at")
+      .eq("status", "pending")
+      .order("created_at", { ascending: true });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((row) => ({
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      requestedAt: row.created_at,
+    }));
+  },
+
+  /** Approves a signup and gives it a role. */
+  async adminApprove(userId: string, roleId: string): Promise<void> {
+    const { error } = await supabase
+      .from("profiles")
+      .update({ status: "active", role_id: roleId })
+      .eq("id", userId);
+    if (error) throw new Error(error.message);
+  },
+
+  async setAccountActive(userId: string, active: boolean): Promise<void> {
+    const { error } = await supabase
+      .from("profiles")
+      .update({ status: active ? "active" : "inactive" })
+      .eq("id", userId);
+    if (error) throw new Error(error.message);
+  },
+
+  async setAccountRole(userId: string, roleId: string): Promise<void> {
+    const { error } = await supabase.from("profiles").update({ role_id: roleId }).eq("id", userId);
+    if (error) throw new Error(error.message);
+  },
+
+  /**
+   * Creates an account for somebody else.
+   *
+   * This cannot happen in the browser: it needs the service_role key, which
+   * bypasses row level security and must never be shipped to a client. The
+   * admin-create-user edge function does it, re-checking the caller's
+   * permission against the database rather than trusting the UI.
+   */
+  async createUser(input: {
+    name: string;
+    email: string;
+    password: string;
+    roleId: string;
+    clientId?: string | null;
+  }): Promise<Account> {
+    const { data, error } = await supabase.functions.invoke("admin-create-user", {
+      body: input,
+    });
+    if (error) {
+      const message = (data as { error?: string } | null)?.error;
+      throw new Error(message || error.message);
+    }
+    const result = data as { id: string; email: string; name: string; roleId: string; clientId: string | null };
+    return {
+      id: result.id,
+      name: result.name,
+      email: result.email,
+      roleId: result.roleId,
+      clientId: result.clientId,
+      status: "active",
+      createdAt: new Date().toISOString(),
+      active: true,
+    };
+  },
+
+  /** A client portal login for a customer record. */
+  async createClientAccount(input: {
+    name: string;
+    email: string;
+    password: string;
+    roleId: string;
+    clientId: string;
+  }): Promise<Account> {
+    return this.createUser(input);
+  },
 };

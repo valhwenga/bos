@@ -1,11 +1,52 @@
 import React from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { AuthStore } from "@/lib/authStore";
+import { Loader2 } from "lucide-react";
+import { useAuth } from "./AuthProvider";
+import RequireTwoFactorEnrolment from "./RequireTwoFactorEnrolment";
 
+/**
+ * Gates the signed-in area.
+ *
+ * The `loading` state matters: restoring a persisted session is asynchronous,
+ * so treating "not signed in yet" as "signed out" would bounce the user to the
+ * login page on every page refresh.
+ */
 const Protected: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const authed = AuthStore.isAuthed();
+  const { status, profile, requiresTwoFactor, twoFactorSatisfied } = useAuth();
   const loc = useLocation();
-  if (!authed) return <Navigate to="/auth/login" replace state={{ from: loc.pathname }} />;
+
+  if (status === "loading") {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-label="Loading" />
+      </div>
+    );
+  }
+
+  if (status === "signed-out") {
+    return <Navigate to="/auth/login" replace state={{ from: loc.pathname }} />;
+  }
+
+  // Signed in, but not yet approved or since deactivated. Sending them to the
+  // app would show a shell with every module denied, which reads as breakage
+  // rather than as a pending account.
+  if (!profile || profile.status !== "active") {
+    return <Navigate to="/auth/pending" replace />;
+  }
+
+  // A verified factor exists but has not been used on this session, so the
+  // password alone got them this far. This is the check that was missing: the
+  // "require two-factor" switch was stored and never consulted.
+  if (!twoFactorSatisfied) {
+    return <Navigate to="/auth/two-factor" replace state={{ from: loc.pathname }} />;
+  }
+
+  // The role demands a second factor and this account has none, so enrolment
+  // is not optional. Letting them past would make the role setting cosmetic.
+  if (requiresTwoFactor) {
+    return <RequireTwoFactorEnrolment>{children}</RequireTwoFactorEnrolment>;
+  }
+
   return <>{children}</>;
 };
 

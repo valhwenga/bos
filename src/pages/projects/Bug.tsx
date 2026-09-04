@@ -1,21 +1,36 @@
 import React, { useState } from "react";
+import { useCache } from "@/lib/collectionCache";
+import {
+  projectsCache,
+  projectTasksCache,
+  projectTimeCache,
+  projectBugsCache,
+  projectEventsCache,
+  projectTypesCache,
+} from "@/lib/projectStore";
+import { toast } from "@/components/ui/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ProjectStore, Bug as BugType } from "@/lib/projectStore";
 
 const Bug: React.FC = () => {
+  // Rows come from Postgres via caches, so this re-renders when they arrive.
+  useCache(projectsCache);
+  useCache(projectTasksCache);
+  useCache(projectTimeCache);
+  useCache(projectBugsCache);
+  useCache(projectEventsCache);
+  useCache(projectTypesCache);
   const [title, setTitle] = useState("");
-  const [bugs, setBugs] = useState<BugType[]>(ProjectStore.listBugs());
+  const bugs = ProjectStore.listBugs();
   const add = () => {
     if (!title.trim()) return;
-    ProjectStore.upsertBug({ id: `b_${Date.now()}`, projectId: "p_default", title, severity: "med", open: true });
+    void ProjectStore.upsertBug({ id: `b_${Date.now()}`, projectId: "p_default", title, severity: "med", open: true });
     setTitle("");
-    setBugs(ProjectStore.listBugs());
   };
   const toggle = (b: BugType) => {
-    ProjectStore.upsertBug({ ...b, open: !b.open });
-    setBugs(ProjectStore.listBugs());
+    void ProjectStore.upsertBug({ ...b, open: !b.open });
   };
 
   return (
@@ -27,13 +42,13 @@ const Bug: React.FC = () => {
         <CardContent className="space-y-4">
           <div className="flex gap-2">
             <Input placeholder="New bug title" value={title} onChange={(e)=> setTitle(e.target.value)} />
-            <Button variant="elevated" onClick={add}>Add</Button>
+            <Button onClick={add}>Add</Button>
           </div>
           <div className="space-y-2">
             {bugs.map(b => (
               <div key={b.id} className="flex items-center justify-between border rounded-lg p-2 bg-background">
                 <div className="flex items-center gap-2">
-                  <span className={`inline-block w-2 h-2 rounded-full ${b.open ? "bg-amber-500" : "bg-emerald-500"}`} />
+                  <span className={`inline-block w-2 h-2 rounded-full ${b.open ? "bg-warning" : "bg-success"}`} />
                   <span className="text-sm">{b.title}</span>
                 </div>
                 <Button size="sm" variant="ghost" onClick={()=> toggle(b)}>{b.open ? "Close" : "Reopen"}</Button>

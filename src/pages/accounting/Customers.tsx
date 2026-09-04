@@ -1,11 +1,20 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { toast } from "@/components/ui/use-toast";
+import { useCache } from "@/lib/collectionCache";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { CustomersStore, type Customer, type CustomerAddress } from "@/lib/customersStore";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ProvinceSelect } from "@/components/ProvinceSelect";
+import { Users, Mail, Pencil, Trash2 } from "lucide-react";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatCard } from "@/components/ui/stat-card";
+import { customersCache, CustomersStore, type Customer, type CustomerAddress } from "@/lib/customersStore";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CompanySettingsStore } from "@/lib/companySettings";
 
 const emptyAddress = (): CustomerAddress => ({ line1: "", line2: "", city: "", state: "", postalCode: "", country: "" });
 
@@ -18,10 +27,19 @@ const CustomerDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void;
     setC(prev => ({ ...prev, shippingAddress: { ...(prev.billingAddress||{}) }, shippingSameAsBilling: true }));
   };
 
-  const save = () => {
+  const save = async () => {
     if (!c.name.trim()) return;
     if (c.shippingSameAsBilling) c.shippingAddress = { ...(c.billingAddress||{}) };
-    CustomersStore.upsert(c);
+    try {
+      await CustomersStore.upsert(c);
+    } catch (err) {
+      toast({
+        title: "Could not save customer",
+        description: err instanceof Error ? err.message : "Nothing was saved.",
+        variant: "destructive",
+      });
+      return;
+    }
     onSaved();
     onOpenChange(false);
   };
@@ -76,7 +94,11 @@ const CustomerDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void;
               <Input placeholder="Address line 2" value={c.billingAddress?.line2 || ""} onChange={(e)=> setC({ ...c, billingAddress: { ...(c.billingAddress||{}), line2: e.target.value } })} />
               <div className="grid grid-cols-2 gap-2">
                 <Input placeholder="City" value={c.billingAddress?.city || ""} onChange={(e)=> setC({ ...c, billingAddress: { ...(c.billingAddress||{}), city: e.target.value } })} />
-                <Input placeholder="State/Province" value={c.billingAddress?.state || ""} onChange={(e)=> setC({ ...c, billingAddress: { ...(c.billingAddress||{}), state: e.target.value } })} />
+                <ProvinceSelect 
+                  value={c.billingAddress?.state || ""} 
+                  onValueChange={(value)=> setC({ ...c, billingAddress: { ...(c.billingAddress||{}), state: value } })}
+                  placeholder="Select Province"
+                />
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <Input placeholder="Postal Code" value={c.billingAddress?.postalCode || ""} onChange={(e)=> setC({ ...c, billingAddress: { ...(c.billingAddress||{}), postalCode: e.target.value } })} />
@@ -96,7 +118,12 @@ const CustomerDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void;
               <Input placeholder="Address line 2" value={c.shippingAddress?.line2 || ""} onChange={(e)=> setC({ ...c, shippingAddress: { ...(c.shippingAddress||{}), line2: e.target.value } })} disabled={!!c.shippingSameAsBilling} />
               <div className="grid grid-cols-2 gap-2">
                 <Input placeholder="City" value={c.shippingAddress?.city || ""} onChange={(e)=> setC({ ...c, shippingAddress: { ...(c.shippingAddress||{}), city: e.target.value } })} disabled={!!c.shippingSameAsBilling} />
-                <Input placeholder="State/Province" value={c.shippingAddress?.state || ""} onChange={(e)=> setC({ ...c, shippingAddress: { ...(c.shippingAddress||{}), state: e.target.value } })} disabled={!!c.shippingSameAsBilling} />
+                <ProvinceSelect 
+                  value={c.shippingAddress?.state || ""} 
+                  onValueChange={(value)=> setC({ ...c, shippingAddress: { ...(c.shippingAddress||{}), state: value } })}
+                  disabled={!!c.shippingSameAsBilling}
+                  placeholder="Select Province"
+                />
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <Input placeholder="Postal Code" value={c.shippingAddress?.postalCode || ""} onChange={(e)=> setC({ ...c, shippingAddress: { ...(c.shippingAddress||{}), postalCode: e.target.value } })} disabled={!!c.shippingSameAsBilling} />
@@ -108,7 +135,7 @@ const CustomerDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void;
 
         <DialogFooter>
           <Button variant="secondary" onClick={()=> onOpenChange(false)}>Cancel</Button>
-          <Button onClick={save} disabled={!c.name.trim()}>Save</Button>
+          <Button onClick={() => void save()} disabled={!c.name.trim()}>Save</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -118,66 +145,228 @@ const CustomerDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void;
 const Customers: React.FC = () => {
   const [open, setOpen] = useState(false);
   const [edit, setEdit] = useState<Customer | undefined>(undefined);
-  const [q, setQ] = useState("");
-  const [list, setList] = useState(CustomersStore.list());
+  const [viewing, setViewing] = useState<Customer | undefined>(undefined);
+  // Rows come from Postgres via a cache, so this re-renders when they arrive.
+  const { rows: list } = useCache(customersCache);
 
   useEffect(() => {
-    const refresh = () => setList(CustomersStore.list());
+    const refresh = () => void customersCache.refresh();
     const onStorage = (e: StorageEvent) => { if (e.key && e.key.startsWith('crm.customers')) refresh(); };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
   }, []);
 
-  const filtered = useMemo(() => list.filter(c =>
-    !q || c.name.toLowerCase().includes(q.toLowerCase()) || (c.companyName||"").toLowerCase().includes(q.toLowerCase()) || (c.email||"").toLowerCase().includes(q.toLowerCase())
-  ), [list, q]);
+  const remove = (id: string) => {
+    void CustomersStore.remove(id).catch((err: unknown) =>
+      toast({
+        title: "Could not delete customer",
+        description: err instanceof Error ? err.message : "The customer is unchanged.",
+        variant: "destructive",
+      }),
+    );
+  };
 
-  const remove = (id: string) => { CustomersStore.remove(id); setList(CustomersStore.list()); };
+  const CustomerDetails: React.FC<{ customer: Customer }> = ({ customer }) => {
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Customer Information</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <h3 className="text-lg font-semibold">{customer.name}</h3>
+                <p className="text-muted-foreground">{customer.companyName || '-'}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium">Email</label>
+                  <p className="text-lg">{customer.email || '-'}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Phone</label>
+                  <p className="text-lg">{customer.phone || '-'}</p>
+                </div>
+              </div>
+              <div>
+                <label className="text-sm font-medium">Tax Number</label>
+                <p className="text-lg">{customer.taxNumber || '-'}</p>
+              </div>
+              <div>
+                <label className="text-sm font-medium">Responsible Person</label>
+                <div className="space-y-1">
+                  <p className="text-lg">{customer.responsible?.name || '-'}</p>
+                  <p className="text-sm text-muted-foreground">{customer.responsible?.title || '-'}</p>
+                  <p className="text-sm text-muted-foreground">{customer.responsible?.email || '-'}</p>
+                  <p className="text-sm text-muted-foreground">{customer.responsible?.phone || '-'}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Quick Actions</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <Button onClick={() => window.location.href = `mailto:${customer.email}`} className="w-full">
+                  Send Email
+                </Button>
+                <Button onClick={() => window.open(`tel:${customer.phone}`)} className="w-full">
+                  Call Customer
+                </Button>
+                <Button onClick={() => window.location.href = `/accounting/invoices?customerId=${customer.id}`} className="w-full">
+                  View Invoices
+                </Button>
+                <Button onClick={() => window.location.href = `/accounting/quotations?customerId=${customer.id}`} className="w-full">
+                  View Quotes
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => window.location.href = `/accounting/invoices?create=true&customerId=${customer.id}`} className="w-full">
+                  Create Invoice
+                </Button>
+                <Button size="sm" onClick={() => window.location.href = `/accounting/quotations?create=true&customerId=${customer.id}`} className="w-full">
+                  Create Quote
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Addresses</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <h4 className="font-medium mb-2">Billing Address</h4>
+                <div className="text-sm space-y-1">
+                  <p>{customer.billingAddress?.line1 || '-'}</p>
+                  <p>{customer.billingAddress?.line2 || '-'}</p>
+                  <p>{customer.billingAddress?.city || '-'}, {customer.billingAddress?.state || '-'}</p>
+                  <p>{customer.billingAddress?.postalCode || '-'}</p>
+                  <p>{customer.billingAddress?.country || '-'}</p>
+                </div>
+              </div>
+              {customer.shippingAddress && !customer.shippingSameAsBilling && (
+                <div>
+                  <h4 className="font-medium mb-2">Shipping Address</h4>
+                  <div className="text-sm space-y-1">
+                    <p>{customer.shippingAddress?.line1 || '-'}</p>
+                    <p>{customer.shippingAddress?.line2 || '-'}</p>
+                    <p>{customer.shippingAddress?.city || '-'}, {customer.shippingAddress?.state || '-'}</p>
+                    <p>{customer.shippingAddress?.postalCode || '-'}</p>
+                    <p>{customer.shippingAddress?.country || '-'}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  };
+
+  const columns: Column<Customer>[] = [
+    {
+      id: "name",
+      header: "Name",
+      sortValue: (c) => c.name,
+      cell: (c) => <span className="font-medium text-foreground">{c.name}</span>,
+    },
+    { id: "company", header: "Company", hideOnMobile: true, sortValue: (c) => c.companyName ?? "", cell: (c) => c.companyName || <span className="text-subtle">—</span> },
+    {
+      id: "email",
+      header: "Email",
+      sortValue: (c) => c.email ?? "",
+      cell: (c) =>
+        c.email ? (
+          <a href={`mailto:${c.email}`} onClick={(e) => e.stopPropagation()} className="text-muted-foreground hover:text-foreground hover:underline">
+            {c.email}
+          </a>
+        ) : (
+          <span className="text-subtle">—</span>
+        ),
+    },
+    { id: "phone", header: "Phone", hideOnMobile: true, cell: (c) => c.phone || <span className="text-subtle">—</span> },
+    { id: "responsible", header: "Responsible", hideOnMobile: true, cell: (c) => c.responsible?.name || <span className="text-subtle">—</span> },
+    {
+      id: "actions",
+      header: <span className="sr-only">Actions</span>,
+      align: "right",
+      width: "1%",
+      cell: (c) => (
+        <div className="inline-flex items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()}>
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => { setEdit(c); setOpen(true); }} aria-label={`Edit ${c.name}`}>
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 text-muted-foreground hover:text-danger"
+            onClick={() => remove(c.id)}
+            aria-label={`Delete ${c.name}`}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
+  const withEmail = list.filter((c) => !!c.email).length;
 
   return (
-    <div className="p-6 space-y-4">
-      <Card className="shadow-[0_10px_0_rgba(0,0,0,0.08)]">
-        <CardHeader className="flex-row items-center justify-between">
-          <CardTitle>Customers</CardTitle>
-          <div className="flex items-center gap-2">
-            <Input placeholder="Search name/company/email" value={q} onChange={(e)=> setQ(e.target.value)} className="w-64" />
-            <Button onClick={()=> { setEdit(undefined); setOpen(true); }}>New Customer</Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-lg overflow-hidden border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Company</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Responsible</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map(c => (
-                  <TableRow key={c.id}>
-                    <TableCell>{c.name}</TableCell>
-                    <TableCell>{c.companyName}</TableCell>
-                    <TableCell>{c.email}</TableCell>
-                    <TableCell>{c.phone}</TableCell>
-                    <TableCell>{c.responsible?.name}</TableCell>
-                    <TableCell className="text-right space-x-2">
-                      <Button size="sm" variant="secondary" onClick={()=> { setEdit(c); setOpen(true); }}>Edit</Button>
-                      <Button size="sm" variant="destructive" onClick={()=> remove(c.id)}>Delete</Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+    <div className="flex flex-col gap-6 p-6">
+      <PageHeader
+        title="Customers"
+        description="Everyone you bill. Select a row to see their full record."
+        breadcrumbs={[{ label: "Accounting", to: "/accounting/quotations" }, { label: "Customers" }]}
+        actions={<Button onClick={() => { setEdit(undefined); setOpen(true); }}>New customer</Button>}
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <StatCard label="Customers" value={list.length} hint="On your books" icon={Users} />
+          <StatCard
+            label="Contactable"
+            value={withEmail}
+            hint={list.length ? `${list.length - withEmail} missing an email` : "No customers yet"}
+            icon={Mail}
+            tone={list.length && withEmail < list.length ? "warning" : "neutral"}
+          />
+        </div>
+      </PageHeader>
 
-      <CustomerDialog open={open} onOpenChange={(v)=> { setOpen(v); if (!v) { setEdit(undefined); setList(CustomersStore.list()); } }} customer={edit} onSaved={()=> setList(CustomersStore.list())} />
+      <DataTable
+        rows={list}
+        columns={columns}
+        rowKey={(c) => c.id}
+        searchAccessor={(c) => `${c.name} ${c.companyName ?? ""} ${c.email ?? ""} ${c.phone ?? ""}`}
+        searchPlaceholder="Search by name, company or email…"
+        onRowClick={(c) => setViewing(c)}
+        empty={{
+          title: "No customers yet",
+          description: "Add a customer and they'll be selectable on quotes and invoices.",
+          action: <Button onClick={() => { setEdit(undefined); setOpen(true); }}>New customer</Button>,
+        }}
+      />
+
+      <CustomerDialog open={open} onOpenChange={(v)=> { setOpen(v); if (!v) { setEdit(undefined); void customersCache.refresh(); } }} customer={edit} onSaved={()=> void customersCache.refresh()} />
+      
+      {viewing && (
+        <Dialog open={true} onOpenChange={() => setViewing(undefined)}>
+          <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <CardTitle>Customer Details</CardTitle>
+            </DialogHeader>
+            <CustomerDetails customer={viewing} />
+            <div className="flex justify-end">
+              <Button onClick={() => setViewing(undefined)}>Close</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 };

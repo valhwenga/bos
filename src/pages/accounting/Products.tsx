@@ -1,68 +1,136 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { toast } from "@/components/ui/use-toast";
+import { useCache } from "@/lib/collectionCache";
+import { Package, Pencil, Trash2 } from "lucide-react";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatCard } from "@/components/ui/stat-card";
+import { CompanySettingsStore } from "@/lib/companySettings";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { ProductsStore, type Product } from "@/lib/productsStore";
+import { productsCache, ProductsStore, type Product } from "@/lib/productsStore";
 
 const Products: React.FC = () => {
-  const [list, setList] = useState<Product[]>(ProductsStore.list());
+  // Rows come from Postgres via a cache, so this re-renders when they arrive.
+  const { rows: list } = useCache(productsCache);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [name, setName] = useState("");
   const [price, setPrice] = useState<number>(0);
   const [description, setDescription] = useState<string>("");
 
-  const refresh = () => setList(ProductsStore.list());
+  const refresh = () => void productsCache.refresh();
   useEffect(()=>{ refresh(); },[]);
 
   const startAdd = () => { setEditing(null); setName(""); setPrice(0); setDescription(""); setOpen(true); };
   const startEdit = (p: Product) => { setEditing(p); setName(p.name); setPrice(p.price); setDescription(p.description || ""); setOpen(true); };
-  const remove = (id: string) => { ProductsStore.remove(id); refresh(); };
-  const save = () => {
+  const remove = (id: string) => {
+    const ok = window.confirm("Delete this product? This action cannot be undone.");
+    if (!ok) return;
+    void ProductsStore.remove(id).catch((err: unknown) =>
+      toast({
+        title: "Could not delete product",
+        description: err instanceof Error ? err.message : "The product is unchanged.",
+        variant: "destructive",
+      }),
+    );
+  };
+  const save = async () => {
     if (!name.trim()) return;
     const p: Product = { id: editing?.id || `p_${Date.now()}`, name, price, description };
-    ProductsStore.upsert(p);
+    try {
+      await ProductsStore.upsert(p);
+    } catch (err) {
+      toast({
+        title: "Could not save product",
+        description: err instanceof Error ? err.message : "Nothing was saved.",
+        variant: "destructive",
+      });
+      return;
+    }
     setOpen(false);
     refresh();
   };
 
+  const currency = CompanySettingsStore.get().currencySymbol || "";
+
+  const columns: Column<Product>[] = [
+    { id: "name", header: "Name", sortValue: (p) => p.name, cell: (p) => <span className="font-medium">{p.name}</span> },
+    {
+      id: "price",
+      header: "Price",
+      align: "right",
+      sortValue: (p) => p.price,
+      cell: (p) => `${currency}${p.price.toFixed(2)}`,
+    },
+    {
+      id: "description",
+      header: "Description",
+      hideOnMobile: true,
+      cell: (p) => (
+        <span className="block max-w-md truncate text-muted-foreground" title={p.description || ""}>
+          {p.description || "—"}
+        </span>
+      ),
+    },
+    {
+      id: "actions",
+      header: <span className="sr-only">Actions</span>,
+      align: "right",
+      width: "1%",
+      cell: (p) => (
+        <div className="inline-flex items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()}>
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => startEdit(p)} aria-label={`Edit ${p.name}`}>
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 text-muted-foreground hover:text-danger"
+            onClick={() => remove(p.id)}
+            aria-label={`Delete ${p.name}`}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
+  const averagePrice = list.length ? list.reduce((sum, p) => sum + p.price, 0) / list.length : 0;
+
   return (
-    <div className="p-6 space-y-4">
-      <Card className="shadow-[0_10px_0_rgba(0,0,0,0.08)]">
-        <CardHeader className="flex-row items-center justify-between">
-          <CardTitle>Products</CardTitle>
-          <Button onClick={startAdd}>Add Product</Button>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-lg overflow-hidden border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead className="text-right">Price</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {list.map(p => (
-                  <TableRow key={p.id}>
-                    <TableCell>{p.name}</TableCell>
-                    <TableCell className="text-right">{p.price.toFixed(2)}</TableCell>
-                    <TableCell className="max-w-[360px] truncate" title={p.description || ""}>{p.description || "—"}</TableCell>
-                    <TableCell className="text-right space-x-2">
-                      <Button size="sm" variant="secondary" onClick={()=> startEdit(p)}>Edit</Button>
-                      <Button size="sm" variant="destructive" onClick={()=> remove(p.id)}>Delete</Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+    <div className="flex flex-col gap-6 p-6">
+      <PageHeader
+        title="Products"
+        description="The items and services you can add to quotes and invoices."
+        breadcrumbs={[{ label: "Accounting", to: "/accounting/quotations" }, { label: "Products" }]}
+        actions={<Button onClick={startAdd}>Add product</Button>}
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <StatCard label="Products" value={list.length} hint="Available to bill" icon={Package} />
+          <StatCard
+            label="Average price"
+            value={`${currency}${averagePrice.toFixed(2)}`}
+            hint={list.length ? `Across ${list.length} item${list.length === 1 ? "" : "s"}` : "Nothing priced yet"}
+          />
+        </div>
+      </PageHeader>
+
+      <DataTable
+        rows={list}
+        columns={columns}
+        rowKey={(p) => p.id}
+        searchAccessor={(p) => `${p.name} ${p.description ?? ""}`}
+        searchPlaceholder="Search products…"
+        onRowClick={startEdit}
+        empty={{
+          title: "No products yet",
+          description: "Add the items or services you sell so they're one click away on a quote.",
+          action: <Button onClick={startAdd}>Add product</Button>,
+        }}
+      />
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
@@ -85,7 +153,7 @@ const Products: React.FC = () => {
           </div>
           <DialogFooter>
             <Button variant="secondary" onClick={()=> setOpen(false)}>Cancel</Button>
-            <Button onClick={save}>Save</Button>
+            <Button onClick={() => void save()}>Save</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

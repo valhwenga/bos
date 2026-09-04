@@ -3,14 +3,21 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
-import { AccountingStore, Quotation, LineItem } from "@/lib/accountingStore";
+import { useCache } from "@/lib/collectionCache";
+import { SendDocumentDialog } from "@/components/accounting/SendDocumentDialog";
+import { paymentsCache } from "@/lib/paymentStore";
+import { quotationsCache, AccountingStore, Quotation, LineItem } from "@/lib/accountingStore";
+import { previewNextNumber, resolveNumberOnSave } from "@/lib/documentNumbers";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatCard } from "@/components/ui/stat-card";
 import { toast } from "@/components/ui/use-toast";
 import { CompanySettingsStore } from "@/lib/companySettings";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { ChevronsUpDown, Check } from "lucide-react";
+import { ChevronsUpDown, Check, CreditCard, Eye, Printer, ArrowRightLeft, Edit, Trash2, FileText, TrendingUp, CheckCircle2 } from "lucide-react";
 import { CustomersStore } from "@/lib/customersStore";
 import { ProductsStore } from "@/lib/productsStore";
 import { useNavigate } from "react-router-dom";
@@ -29,11 +36,11 @@ const computeTotals = (q: Quotation) => {
   return { sub, discount, shipping, tax, grand };
 };
 
-const NewQuoteDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void; onAdd: (q: Quotation) => void }>= ({ open, onOpenChange, onAdd }) => {
+const NewQuoteDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void; onAdd: (q: Quotation) => void; editing?: Quotation }>= ({ open, onOpenChange, onAdd, editing }) => {
   const customers = CustomersStore.list();
   const [customerId, setCustomerId] = useState<string>(customers[0]?.id || "");
-  const [estimateNo] = useState(`Q-${new Date().getFullYear()}-${Math.floor(Math.random()*9000+1000)}`);
-  const [estimateDate] = useState(new Date().toISOString().slice(0,10));
+  const [estimateNo, setEstimateNo] = useState("");
+  const [estimateDate, setEstimateDate] = useState(new Date().toISOString().slice(0,10));
   const [expiryDate, setExpiryDate] = useState("");
   const [reference, setReference] = useState("");
   const [salesperson, setSalesperson] = useState("");
@@ -47,6 +54,43 @@ const NewQuoteDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void;
   const [items, setItems] = useState<LineItem[]>([{ id: `li_${Date.now()}`, name: products[0]?.name || "Item", qty: 1, price: products[0]?.price || 0, description: products[0]?.description || "" }]);
   const [custOpen, setCustOpen] = useState(false);
 
+  // Populate from the record being edited, or reset for a new quotation.
+  useEffect(() => {
+    if (!open) return;
+    if (editing) {
+      setCustomerId(editing.customer?.id || customers[0]?.id || "");
+      setEstimateNo(editing.number);
+      setEstimateDate(editing.createdAt?.slice(0, 10) || new Date().toISOString().slice(0, 10));
+      setExpiryDate(editing.expiryDate || "");
+      setReference(editing.reference || "");
+      setSalesperson(editing.salesperson || "");
+      setProjectName(editing.projectName || "");
+      setSubject(editing.subject || "");
+      setNotes(editing.notes || "");
+      setDiscountPct(editing.discountPct || 0);
+      setShipping(editing.shipping || 0);
+      setUseShippingAddress(!!editing.useShippingAddress);
+      setItems(editing.items?.length ? editing.items.map((i) => ({ ...i })) : []);
+    } else {
+      setCustomerId(customers[0]?.id || "");
+      void previewNextNumber("quotation").then(setEstimateNo);
+      setEstimateDate(new Date().toISOString().slice(0, 10));
+      setExpiryDate("");
+      setReference("");
+      setSalesperson("");
+      setProjectName("");
+      setSubject("");
+      setNotes("");
+      setDiscountPct(0);
+      setShipping(0);
+      setUseShippingAddress(false);
+      setItems([{ id: `li_${Date.now()}`, name: products[0]?.name || "Item", qty: 1, price: products[0]?.price || 0, description: products[0]?.description || "" }]);
+    }
+    // Re-seeding on every `customers`/`products` identity change would clobber
+    // edits mid-session; the open/editing pair is what should drive this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, editing]);
+
   const addItem = () => setItems(prev => [...prev, { id: `li_${Date.now()}`, name: products[0]?.name || "Item", qty: 1, price: products[0]?.price || 0, description: products[0]?.description || "" }]);
   const removeItem = (id: string) => setItems(prev => prev.filter(i=> i.id!==id));
   const updateItem = (id: string, patch: Partial<LineItem>) => setItems(prev => prev.map(i=> i.id===id ? { ...i, ...patch } : i));
@@ -58,12 +102,14 @@ const NewQuoteDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void;
 
   const selectedCustomer = customers.find(c=> c.id===customerId) || customers[0];
   const quote: Quotation = {
-    id: `q_${Date.now()}`,
+    // Keep the existing identity, number, status and creation date when
+    // editing; a fresh id here would save a duplicate instead of an update.
+    id: editing?.id || `q_${Date.now()}`,
     number: estimateNo,
     customer: selectedCustomer || { id: customerId || `c_${Date.now()}`, name: selectedCustomer?.name || "" },
     items,
-    status: "draft",
-    createdAt: new Date().toISOString(),
+    status: editing?.status || "draft",
+    createdAt: editing?.createdAt || new Date().toISOString(),
     notes,
     reference,
     expiryDate,
@@ -76,10 +122,14 @@ const NewQuoteDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void;
   };
   const t = computeTotals(quote);
 
-  const save = () => {
+  const save = async () => {
     if (!customerId) { toast({ title: "Customer required", variant: "destructive" }); return; }
     if (items.length===0 || items.some(i=> !i.name.trim())) { toast({ title: "Add at least one item", variant: "destructive" }); return; }
-    onAdd(quote);
+    // Editing keeps the existing number; a new quotation consumes one now.
+    const number = editing
+      ? quote.number
+      : await resolveNumberOnSave("quotation", estimateNo, await previewNextNumber("quotation"));
+    onAdd({ ...quote, number });
     onOpenChange(false);
   };
 
@@ -87,7 +137,7 @@ const NewQuoteDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void;
     <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
       <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>New Quotation</DialogTitle>
+          <DialogTitle>{editing ? `Edit ${editing.number}` : "New Quotation"}</DialogTitle>
         </DialogHeader>
         <div className="grid lg:grid-cols-2 gap-4">
           <div className="grid gap-2">
@@ -220,8 +270,8 @@ const NewQuoteDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void;
               <span>Shipping</span>
               <Input className="w-24 text-right" type="number" min={0} value={shipping} onChange={(e)=> setShipping(parseFloat(e.target.value||"0"))} />
             </div>
-            {CompanySettingsStore.get().taxRatePct ? (
-              <div className="flex items-center justify-between text-sm mt-2"><span>Tax ({CompanySettingsStore.get().taxRatePct}%)</span><span>{t.tax.toFixed(2)}</span></div>
+            {CompanySettingsStore.get()?.taxRatePct ? (
+              <div className="flex items-center justify-between text-sm mt-2"><span>Tax ({CompanySettingsStore.get()?.taxRatePct}%)</span><span>{t.tax.toFixed(2)}</span></div>
             ) : null}
             <div className="h-px bg-border my-2" />
             <div className="flex items-center justify-between font-semibold mt-1"><span>Grand Total</span><span>{t.grand.toFixed(2)}</span></div>
@@ -230,7 +280,7 @@ const NewQuoteDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void;
         </div>
         <DialogFooter>
           <Button variant="secondary" onClick={()=> onOpenChange(false)}>Cancel</Button>
-          <Button onClick={save}>Save as Draft</Button>
+          <Button onClick={() => void save()}>{editing ? "Save changes" : "Save as draft"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -238,7 +288,9 @@ const NewQuoteDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void;
 };
 
 const Quotations: React.FC = () => {
-  const [quotes, setQuotes] = useState(AccountingStore.listQuotes());
+  // Rows come from Postgres via a cache, so this re-renders when they arrive.
+  const { rows: quotes, loading: quotesLoading, error: quotesError } = useCache(quotationsCache);
+  useCache(paymentsCache);
   const navigate = useNavigate();
   const total = useMemo(() => (q: Quotation) => computeTotals(q).grand, []);
   const c = CompanySettingsStore.get();
@@ -250,87 +302,249 @@ const Quotations: React.FC = () => {
   const [capOpen, setCapOpen] = useState(false);
   const [activeQuote, setActiveQuote] = useState<Quotation | undefined>(undefined);
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<Quotation | undefined>(undefined);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [sendOpen, setSendOpen] = useState(false);
+  const [sendDoc, setSendDoc] = useState<Quotation | undefined>(undefined);
+  const [previewQuote, setPreviewQuote] = useState<Quotation | undefined>(undefined);
 
   useEffect(() => {
-    const refresh = () => setQuotes(AccountingStore.listQuotes());
+    const refresh = () => { void quotationsCache.refresh(); };
     const onPayments = () => refresh();
     const onStorage = (e: StorageEvent) => {
       if (!e.key) return;
       if (e.key.startsWith("acct.payments") || e.key.startsWith("acct.quotes")) refresh();
     };
-    window.addEventListener('payments-changed', onPayments as any);
+    window.addEventListener('payments-changed', onPayments as EventListener);
     window.addEventListener('storage', onStorage);
+    
     return () => {
-      window.removeEventListener('payments-changed', onPayments as any);
+      window.removeEventListener('payments-changed', onPayments as EventListener);
       window.removeEventListener('storage', onStorage);
     };
   }, []);
 
-  const addQuote = (q: Quotation) => {
-    AccountingStore.upsertQuote(q);
-    setQuotes(AccountingStore.listQuotes());
-    toast({ title: "Quotation added", description: q.number });
+  const editQuote = (q: Quotation) => {
+    setEditing(q);
+    setOpen(true);
   };
 
-  const convert = (id: string) => {
-    const inv = AccountingStore.convertQuoteToInvoice(id);
-    if (inv) toast({ title: "Converted to invoice", description: inv.number });
+  const saveQuote = async (q: Quotation) => {
+    const isEdit = !!editing;
+    try {
+      await AccountingStore.upsertQuote(q);
+    } catch (err) {
+      toast({
+        title: isEdit ? "Could not update quotation" : "Could not save quotation",
+        description: err instanceof Error ? err.message : "Nothing was saved.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setEditing(undefined);
+    toast({ title: isEdit ? "Quotation updated" : "Quotation added", description: q.number });
   };
 
+  const convert = async (id: string) => {
+    try {
+      const inv = await AccountingStore.convertQuoteToInvoice(id);
+      if (inv) toast({ title: "Converted to invoice", description: inv.number });
+    } catch (err) {
+      toast({
+        title: "Could not convert quotation",
+        description: err instanceof Error ? err.message : "The quotation is unchanged.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Opens the real send dialog. This used to build a mailto: link, which hands
+  // the job to whatever mail client the machine has, cannot attach the PDF, and
+  // does nothing at all where no client is configured.
   const emailQuote = (q: Quotation) => {
-    const total = computeTotals(q).grand.toFixed(2);
-    const subject = encodeURIComponent(`Quotation ${q.number}`);
-    const body = encodeURIComponent(
-      `Hello ${q.customer.name},%0D%0A%0D%0APlease find quotation ${q.number}.%0D%0ATotal: $${total}.%0D%0A%0D%0AThank you.`,
-    );
-    window.location.href = `mailto:${q.customer.email || ""}?subject=${subject}&body=${body}`;
+    setSendDoc(q);
+    setSendOpen(true);
   };
+
 
   const printQuote = (q: Quotation) => navigate(`/accounting/quotations/${q.id}/print`);
 
+  const quotePrintUrl = (id: string) => `${import.meta.env.BASE_URL}accounting/quotations/${id}/print`;
+
+  const openPreview = (q: Quotation) => {
+    setPreviewQuote(q);
+    setPreviewOpen(true);
+  };
+
+  const statusTone: Record<Quotation["status"], string> = {
+    accepted: "bg-success-soft text-success",
+    converted: "bg-info-soft text-info",
+    declined: "bg-danger-soft text-danger",
+    sent: "bg-warning-soft text-warning",
+    draft: "bg-muted text-muted-foreground",
+  };
+
+  const paidFor = (q: Quotation) => PaymentStore.sumAmount(PaymentStore.byQuote(q.id));
+
+  const columns: Column<Quotation>[] = [
+    { id: "number", header: "No.", sortValue: (q) => q.number, cell: (q) => <span className="font-medium">{q.number}</span> },
+    { id: "customer", header: "Customer", sortValue: (q) => q.customer.name, cell: (q) => q.customer.name },
+    {
+      id: "status",
+      header: "Status",
+      sortValue: (q) => q.status,
+      cell: (q) => (
+        <span className={`inline-flex rounded-sm px-1.5 py-0.5 text-xs font-medium capitalize ${statusTone[q.status]}`}>
+          {q.status}
+        </span>
+      ),
+    },
+    { id: "paid", header: "Paid", align: "right", hideOnMobile: true, sortValue: paidFor, cell: (q) => `${c.currencySymbol}${paidFor(q).toFixed(2)}` },
+    {
+      id: "balance",
+      header: "Balance",
+      align: "right",
+      sortValue: outstanding,
+      cell: (q) => (
+        <span className={outstanding(q) > 0 ? "font-medium text-foreground" : "text-muted-foreground"}>
+          {c.currencySymbol}{outstanding(q).toFixed(2)}
+        </span>
+      ),
+    },
+    {
+      id: "actions",
+      header: <span className="sr-only">Actions</span>,
+      align: "right",
+      width: "1%",
+      cell: (q) => (
+        <div className="inline-flex items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()}>
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => editQuote(q)} aria-label={`Edit ${q.number}`}>
+            <Edit className="h-3.5 w-3.5" />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => printQuote(q)} aria-label={`Print ${q.number}`}>
+            <Printer className="h-3.5 w-3.5" />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => { setActiveQuote(q); setCapOpen(true); }} aria-label={`Capture payment for ${q.number}`}>
+            <CreditCard className="h-3.5 w-3.5" />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => convert(q.id)} aria-label={`Convert ${q.number} to invoice`} title="Convert to invoice">
+            <ArrowRightLeft className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 text-muted-foreground hover:text-danger"
+            aria-label={`Delete ${q.number}`}
+            onClick={() => {
+              if (confirm(`Delete quotation ${q.number}? This cannot be undone.`)) {
+                void AccountingStore.removeQuote(q.id)
+                  .then(() => toast({ title: "Quotation deleted", description: q.number }))
+                  .catch((err: unknown) => toast({
+                    title: "Could not delete quotation",
+                    description: err instanceof Error ? err.message : "The quotation is unchanged.",
+                    variant: "destructive",
+                  }));
+              }
+            }}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
+  const pipeline = quotes
+    .filter((q) => q.status !== "declined" && q.status !== "converted")
+    .reduce((sum, q) => sum + q.items.reduce((t, i) => t + i.qty * i.price, 0), 0);
+
   return (
-    <div className="p-6 space-y-4">
-      <Card className="shadow-[0_10px_0_rgba(0,0,0,0.08)]">
-        <CardHeader className="flex-row items-center justify-between">
-          <CardTitle>Quotations</CardTitle>
-          <Button onClick={()=> setOpen(true)}>New Quotation</Button>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="rounded-lg overflow-hidden border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>No.</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Paid</TableHead>
-                  <TableHead className="text-right">Balance</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {quotes.map((q) => (
-                  <TableRow key={q.id}>
-                    <TableCell>{q.number}</TableCell>
-                    <TableCell>{q.customer.name}</TableCell>
-                    <TableCell className="capitalize">{q.status}</TableCell>
-                    <TableCell className="text-right">{c.currencySymbol}{PaymentStore.sumAmount(PaymentStore.byQuote(q.id)).toFixed(2)}</TableCell>
-                    <TableCell className="text-right">{c.currencySymbol}{outstanding(q).toFixed(2)}</TableCell>
-                    <TableCell className="text-right space-x-2">
-                      <Button size="sm" variant="secondary" onClick={()=> { setActiveQuote(q); setCapOpen(true); }}>Capture Payment</Button>
-                      <Button size="sm" variant="secondary" onClick={() => emailQuote(q)}>Email</Button>
-                      <Button size="sm" variant="outline" onClick={() => printQuote(q)}>Print/PDF</Button>
-                      <Button size="sm" onClick={() => convert(q.id)}>Convert to Invoice</Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+    <div className="flex flex-col gap-6 p-6">
+      <PageHeader
+        title="Quotations"
+        description="Quotes you've sent, and what they're worth if they land."
+        breadcrumbs={[{ label: "Accounting", to: "/accounting/quotations" }, { label: "Quotations" }]}
+        actions={<Button onClick={() => { setEditing(undefined); setOpen(true); }}>New quotation</Button>}
+      >
+        <div className="grid gap-3 sm:grid-cols-3">
+          <StatCard label="Quotations" value={quotes.length} hint="All time" icon={FileText} />
+          <StatCard
+            label="Open pipeline"
+            value={`${c.currencySymbol}${pipeline.toFixed(2)}`}
+            hint="Excludes declined and converted"
+            icon={TrendingUp}
+            tone="info"
+          />
+          <StatCard
+            label="Accepted"
+            value={quotes.filter((q) => q.status === "accepted").length}
+            hint="Ready to invoice"
+            icon={CheckCircle2}
+            tone="success"
+          />
+        </div>
+      </PageHeader>
+
+      <DataTable
+        rows={quotes}
+        columns={columns}
+        rowKey={(q) => q.id}
+        searchAccessor={(q) => `${q.number} ${q.customer.name} ${q.status}`}
+        searchPlaceholder="Search by number, customer or status…"
+        onRowClick={(q) => openPreview(q)}
+        empty={{
+          title: "No quotations yet",
+          description: "Send your first quote — accepted ones convert straight into invoices.",
+          action: <Button onClick={() => { setEditing(undefined); setOpen(true); }}>New quotation</Button>,
+        }}
+      />
+
+      <NewQuoteDialog
+        open={open}
+        onOpenChange={(v) => { setOpen(v); if (!v) setEditing(undefined); }}
+        onAdd={saveQuote}
+        editing={editing}
+      />
+      <SendDocumentDialog
+        doc={sendDoc}
+        kind="quotation"
+        open={sendOpen}
+        onOpenChange={setSendOpen}
+        // A quotation that has been sent is no longer a draft.
+        onSent={() => {
+          if (sendDoc && sendDoc.status === "draft") {
+            void AccountingStore.upsertQuote({ ...sendDoc, status: "sent" });
+          }
+        }}
+      />
+
+      <CapturePaymentDialog open={capOpen} onOpenChange={(v)=> { setCapOpen(v); if (!v) { setActiveQuote(undefined); void quotationsCache.refresh(); } }} context={{ quote: activeQuote }} onSaved={()=> { void quotationsCache.refresh(); }} />
+
+      <Dialog open={previewOpen} onOpenChange={(v) => { setPreviewOpen(v); if (!v) setPreviewQuote(undefined); }}>
+        <DialogContent className="max-w-5xl max-h-[85vh] overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>Quotation Preview</DialogTitle>
+          </DialogHeader>
+          <div className="h-[70vh] border rounded overflow-hidden bg-white">
+            {previewQuote ? (
+              <iframe
+                title="Quotation preview"
+                className="w-full h-full"
+                src={quotePrintUrl(previewQuote.id)}
+              />
+            ) : null}
           </div>
-        </CardContent>
-      </Card>
-      <NewQuoteDialog open={open} onOpenChange={setOpen} onAdd={addQuote} />
-      <CapturePaymentDialog open={capOpen} onOpenChange={(v)=> { setCapOpen(v); if (!v) { setActiveQuote(undefined); setQuotes(AccountingStore.listQuotes()); } }} context={{ quote: activeQuote }} onSaved={()=> { setQuotes(AccountingStore.listQuotes()); }} />
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setPreviewOpen(false)}>Close</Button>
+            {previewQuote ? (
+              <>
+                <Button variant="outline" onClick={() => printQuote(previewQuote)}>Open Full Preview</Button>
+                <Button onClick={() => { emailQuote(previewQuote); setPreviewOpen(false); }}>Send Email</Button>
+              </>
+            ) : null}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

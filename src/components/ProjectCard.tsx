@@ -1,76 +1,73 @@
-import { MoreVertical } from "lucide-react";
+import { CalendarDays } from "lucide-react";
 import { Card } from "./ui/card";
-import { StatusBadge } from "./StatusBadge";
 import { AvatarGroup } from "./AvatarGroup";
-import { Button } from "./ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "./ui/dropdown-menu";
+import { cn } from "@/lib/utils";
+
+export type ProjectCardStatus = "Open" | "In Progress" | "Pending" | "Rejected" | "Complete";
+
+const STATUS_TONE: Record<ProjectCardStatus, string> = {
+  Open: "bg-muted text-muted-foreground",
+  "In Progress": "bg-info-soft text-info",
+  Pending: "bg-warning-soft text-warning",
+  Rejected: "bg-danger-soft text-danger",
+  Complete: "bg-success-soft text-success",
+};
 
 interface ProjectCardProps {
   icon: string;
-  iconBg: string;
   title: string;
   description: string;
-  status: "On Hold" | "In Progress" | "Complete" | "Canceled" | "Pending" | "New" | "Won" | "Loss";
+  status: ProjectCardStatus;
   members: { name: string; color?: string }[];
   startDate: string;
   dueDate: string;
+  /** Flags an unfinished project past its due date. */
+  overdue?: boolean;
 }
 
 export const ProjectCard = ({
   icon,
-  iconBg,
   title,
   description,
   status,
   members,
   startDate,
   dueDate,
+  overdue = false,
 }: ProjectCardProps) => {
   return (
-    <Card className="p-5 hover:shadow-lg transition-shadow">
-      <div className="flex items-start justify-between mb-4">
-        <div
-          className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-lg"
-          style={{ backgroundColor: iconBg }}
-        >
+    <Card className="flex h-full flex-col gap-3 border-border p-4 shadow-xs transition-shadow duration-fast ease-standard hover:border-border-strong hover:shadow-sm">
+      <div className="flex items-start gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary text-sm font-semibold uppercase text-primary-foreground">
           {icon}
         </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8">
-              <MoreVertical className="w-4 h-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem>Edit</DropdownMenuItem>
-            <DropdownMenuItem>Duplicate</DropdownMenuItem>
-            <DropdownMenuItem className="text-destructive">Delete</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-
-      <h3 className="text-lg font-semibold mb-2">{title}</h3>
-      <StatusBadge status={status} className="mb-3" />
-      <p className="text-sm text-muted-foreground mb-4 line-clamp-2">{description}</p>
-
-      <div className="mb-4">
-        <p className="text-xs text-muted-foreground mb-2">MEMBERS</p>
-        <AvatarGroup members={members} />
-      </div>
-
-      <div className="flex justify-between text-sm">
-        <div>
-          <p className="text-xs text-muted-foreground mb-1">Start Date</p>
-          <p className="font-medium text-destructive">{startDate}</p>
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <h3 className="truncate text-sm font-semibold text-foreground">{title}</h3>
+          <span className={cn("w-fit rounded-sm px-1.5 py-0.5 text-xs font-medium", STATUS_TONE[status])}>
+            {status}
+          </span>
         </div>
-        <div className="text-right">
-          <p className="text-xs text-muted-foreground mb-1">Due Date</p>
-          <p className="font-medium">{dueDate}</p>
+      </div>
+
+      {description && (
+        <p className="line-clamp-2 text-xs text-muted-foreground">{description}</p>
+      )}
+
+      {/* Only rendered when there are members — this used to show an empty
+          "MEMBERS" heading on every card. */}
+      {members.length > 0 && <AvatarGroup members={members} />}
+
+      <div className="mt-auto flex items-end justify-between gap-2 border-t border-border pt-2.5 text-xs">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-muted-foreground">Start</span>
+          <span className="font-medium text-foreground">{startDate || "—"}</span>
+        </div>
+        <div className="flex flex-col items-end gap-0.5">
+          <span className="text-muted-foreground">Due</span>
+          <span className={cn("inline-flex items-center gap-1 font-medium", overdue ? "text-danger" : "text-foreground")}>
+            {overdue && <CalendarDays className="h-3 w-3" aria-hidden="true" />}
+            {dueDate || "—"}
+          </span>
         </div>
       </div>
     </Card>

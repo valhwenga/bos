@@ -1,42 +1,93 @@
-import { useEffect, useState } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { HRMStore } from "@/lib/hrmStore";
+import { BankDetailsRepo, type BankDetails } from "@/lib/hrmRepo";
+import { canAccess } from "@/lib/accessControl";
+import { useAccounts } from "@/lib/useAccounts";
+import { UnlinkedEmployeesNotice } from "@/components/UnlinkedEmployeesNotice";
+import { useCache } from "@/lib/collectionCache";
+import { employeesCache } from "@/lib/hrmStore";
+import { departmentsCache } from "@/lib/hrmDepartmentsStore";
 import { Button } from "@/components/ui/button";
-import { Plus, Edit, Trash, Eye, Search } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { Plus, Search, Filter, Download, Upload, Eye, Edit, Trash2, Trash } from "lucide-react";
+import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { HRMStore, type Employee, type EmployeeDocument } from "@/lib/hrmStore";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Users, UserCheck, Building2 } from "lucide-react";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatCard } from "@/components/ui/stat-card";
+import { CompanySettingsStore } from "@/lib/companySettings";
+import type { Employee, EmployeeDocument } from "@/lib/hrmStore";
+import { acceptFile, FileTooLargeError, safeSetItem } from "@/lib/fileStorage";
+import { toast } from "@/components/ui/use-toast";
+
+// Simple local HRM store to replace CompanyAwareHRMStore
+/**
+ * This page kept its own employee store on the key `hrm_employees`, while the
+ * rest of the app read `hrm.employees` through HRMStore — so employees added
+ * here were invisible to payroll, leave and the dashboard, and vice versa. Both
+ * are now the same Postgres table.
+ */
+const LocalHRMStore = HRMStore;
+
+import { EmployeeDocumentVault } from "@/components/EmployeeDocumentVault";
 import { Textarea } from "@/components/ui/textarea";
 import { HRMDepartmentsStore, type Department } from "@/lib/hrmDepartmentsStore";
 import { Separator } from "@/components/ui/separator";
 
 const HRMEmployees = () => {
-  const [employees, setEmployees] = useState<Employee[]>(HRMStore.list());
+  // Rows come from Postgres via a cache, so this re-renders when they arrive.
+  const { rows: employees } = useCache(employeesCache);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Employee | null>(null);
+  const [viewing, setViewing] = useState<Employee | null>(null);
+  const [viewOpen, setViewOpen] = useState(false);
   const [form, setForm] = useState<Employee>({ id: "", name: "", status: "Active", cv: null, qualifications: null, idCopy: null, otherDocuments: [] });
-  const [departments, setDepartments] = useState<Department[]>(HRMDepartmentsStore.list());
+  // Departments come from the same cache, so the picker and the table's
+  // department column populate as soon as they load.
+  const { rows: departments } = useCache(departmentsCache);
+  const [bank, setBank] = useState<BankDetails>({ employeeId: "" });
+  const accounts = useAccounts();
   const [attempted, setAttempted] = useState(false);
+  const cs = CompanySettingsStore.get();
 
-  const refresh = () => setEmployees(HRMStore.list());
-  useEffect(()=>{
-    // migrate departmentId for existing employees
-    const deps = HRMDepartmentsStore.list();
-    const map: Record<string,string> = Object.fromEntries(deps.map(d=> [d.name, d.id]));
-    HRMStore.migrateDepartmentIds(map);
-    refresh();
+  const totalEntries = employees.length;
+  const showingFrom = totalEntries === 0 ? 0 : 1;
+  const showingTo = totalEntries;
+
+  const refresh = () => { void employeesCache.refresh(); };
+  useEffect(() => {
+    // Departments are needed for the form's picker and for showing an
+    // employee's department name.
+    void HRMDepartmentsStore.load();
   }, []);
 
-  const startAdd = () => { setEditing(null); setForm({ id: `EMP${Math.floor(Math.random()*900+100)}`, name: "", status: "Active", cv: null, qualifications: null, idCopy: null, otherDocuments: [] }); setDepartments(HRMDepartmentsStore.list()); setAttempted(false); setOpen(true); };
-  const startEdit = (e: Employee) => { setEditing(e); setForm(e); setOpen(true); };
-  const remove = (id: string) => { HRMStore.remove(id); refresh(); };
+  const startAdd = () => { setBank({ employeeId: "" }); setEditing(null); setForm({ id: `EMP${Math.floor(Math.random()*900+100)}`, name: "", status: "Active", cv: null, qualifications: null, idCopy: null, otherDocuments: [] }); setAttempted(false); setOpen(true); };
+  const startEdit = (e: Employee) => {
+    setEditing(e);
+    setForm(e);
+    // Bank details live in their own table and are only readable with payroll
+    // access, so they are fetched when the form opens rather than listed.
+    setBank({ employeeId: e.id });
+    void BankDetailsRepo.byEmployee()
+      .then((all) => setBank(all[e.id] ?? { employeeId: e.id }))
+      .catch(() => undefined);
+    setOpen(true);
+  };
+  const remove = (id: string) => {
+    const ok = window.confirm("Delete this employee? This action cannot be undone.");
+    if (!ok) return;
+    void LocalHRMStore.remove(id).catch((err: unknown) =>
+      toast({
+        title: "Could not delete the employee",
+        description: err instanceof Error ? err.message : "The record is unchanged.",
+        variant: "destructive",
+      }),
+    );
+  };
   const allRequiredPresent = () => {
     const f = form;
     return Boolean(
@@ -45,155 +96,177 @@ const HRMEmployees = () => {
       (editing ? true : (f.cv && f.qualifications && f.idCopy))
     );
   };
-  const save = () => {
+  const save = async () => {
     setAttempted(true);
     if (!allRequiredPresent()) return;
-    HRMStore.upsert({ ...form });
+    try {
+      await LocalHRMStore.upsert({ ...form });
+      // Saved after the employee, which must exist before details can point at
+      // it. A failure here is reported separately: the employee is saved and
+      // only the banking needs redoing.
+      if (canAccess("hrm.payroll", "edit") && (bank.bankName || bank.branchCode || bank.accountNumber)) {
+        try {
+          await BankDetailsRepo.upsert({ ...bank, employeeId: form.id as string });
+        } catch (err) {
+          toast({
+            title: "Employee saved, bank details were not",
+            description: err instanceof Error ? err.message : "Re-enter the banking information.",
+            variant: "destructive",
+          });
+        }
+      }
+    } catch (err) {
+      toast({
+        title: "Could not save",
+        description: err instanceof Error ? err.message : "Saving this employee failed.",
+        variant: "destructive",
+      });
+      return;
+    }
     setOpen(false);
     refresh();
   };
 
-  const toDoc = (f: File, cb: (d: EmployeeDocument)=> void) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      cb({ name: f.name, type: f.type, size: f.size, dataUrl: String(reader.result) });
-    };
-    reader.readAsDataURL(f);
+  /**
+   * Employee records hold three documents each (CV, qualifications, ID copy),
+   * so this is the fastest way to exhaust browser storage. acceptFile refuses
+   * a file that would do so and explains why, rather than letting the save
+   * throw QuotaExceededError and lose the record.
+   */
+  const toDoc = async (f: File, cb: (d: EmployeeDocument) => void) => {
+    try {
+      const stored = await acceptFile("employee-documents", f);
+      cb({ name: stored.name, type: stored.type, size: stored.size, dataUrl: stored.dataUrl ?? "" });
+    } catch (err) {
+      toast({
+        title: err instanceof FileTooLargeError ? "File too large" : "Storage full",
+        description: err instanceof Error ? err.message : "That file could not be attached.",
+        variant: "destructive",
+      });
+    }
   };
+  const columns: Column<Employee>[] = [
+    {
+      id: "employee",
+      header: "Employee",
+      sortValue: (e) => e.name,
+      cell: (e) => (
+        <div className="flex items-center gap-2.5">
+          <Avatar className="h-8 w-8">
+            <AvatarFallback className="bg-primary text-2xs font-medium text-primary-foreground">
+              {e.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex min-w-0 flex-col">
+            <span className="truncate font-medium">{e.name}</span>
+            <span className="text-xs text-muted-foreground">{e.id}</span>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: "contact",
+      header: "Contact",
+      hideOnMobile: true,
+      sortValue: (e) => e.email ?? "",
+      cell: (e) => (
+        <div className="flex flex-col text-xs">
+          <span className="text-foreground">{e.email || "—"}</span>
+          <span className="text-muted-foreground">{e.phone || ""}</span>
+        </div>
+      ),
+    },
+    {
+      id: "department",
+      header: "Department",
+      // Resolved from departmentId rather than the name copied onto the record,
+      // which only ever got set when the form wrote it — so an employee created
+      // any other way showed a dash.
+      sortValue: (e) => departmentName(e) ?? "",
+      cell: (e) => departmentName(e) || <span className="text-subtle">—</span>,
+    },
+    { id: "designation", header: "Designation", hideOnMobile: true, sortValue: (e) => e.designation ?? "", cell: (e) => e.designation || <span className="text-subtle">—</span> },
+    { id: "joined", header: "Joined", hideOnMobile: true, sortValue: (e) => e.joiningDate ?? "", cell: (e) => e.joiningDate || <span className="text-subtle">—</span> },
+    {
+      id: "salary",
+      header: "Salary",
+      align: "right",
+      hideOnMobile: true,
+      sortValue: (e) => parseFloat(String(e.salary ?? "").replace(/[^0-9.]/g, "")) || 0,
+      cell: (e) => (e.salary ? `${cs.currencySymbol}${String(e.salary).replace(/[^0-9.,\s-]/g, "").trim()}` : "—"),
+    },
+    {
+      id: "status",
+      header: "Status",
+      sortValue: (e) => e.status ?? "",
+      cell: (e) => (
+        <span className={`inline-flex rounded-sm px-1.5 py-0.5 text-xs font-medium ${e.status === "Active" ? "bg-success-soft text-success" : "bg-muted text-muted-foreground"}`}>
+          {e.status || "Unknown"}
+        </span>
+      ),
+    },
+    {
+      id: "actions",
+      header: <span className="sr-only">Actions</span>,
+      align: "right",
+      width: "1%",
+      cell: (e) => (
+        <div className="inline-flex items-center justify-end gap-0.5" onClick={(ev) => ev.stopPropagation()}>
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => { setViewing(e); setViewOpen(true); }} aria-label={`View ${e.name}`}>
+            <Eye className="h-3.5 w-3.5" />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => startEdit(e)} aria-label={`Edit ${e.name}`}>
+            <Edit className="h-3.5 w-3.5" />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-danger" onClick={() => remove(e.id)} aria-label={`Delete ${e.name}`}>
+            <Trash className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
+  const activeCount = employees.filter((e) => e.status === "Active").length;
+  const departmentName = (e: Employee) =>
+    departments.find((d) => d.id === e.departmentId)?.name ?? e.department;
+
+  const departmentCount = new Set(employees.map((e) => e.departmentId || e.department).filter(Boolean)).size;
+
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold mb-2">Manage Employees</h1>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span>Dashboard</span>
-            <span>›</span>
-            <span>HRM System</span>
-            <span>›</span>
-            <span className="text-primary">Employees</span>
-          </div>
+    <div className="flex flex-col gap-6 p-6">
+      <PageHeader
+        title="Employees"
+        description="Everyone on the team, their role and where they sit."
+        breadcrumbs={[{ label: "HRM", to: "/hrm/employees" }, { label: "Employees" }]}
+        actions={
+          <Button onClick={startAdd}>
+            <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+            Add employee
+          </Button>
+        }
+      >
+        <div className="grid gap-3 sm:grid-cols-3">
+          <StatCard label="Employees" value={employees.length} hint="On the books" icon={Users} />
+          <StatCard label="Active" value={activeCount} hint={`${employees.length - activeCount} inactive`} icon={UserCheck} tone="success" />
+          <StatCard label="Departments" value={departmentCount} hint="Represented across the team" icon={Building2} />
         </div>
+      </PageHeader>
 
-        <Button size="sm" onClick={startAdd}>
-          <Plus className="w-4 h-4 mr-2" />
-          Add Employee
-        </Button>
-      </div>
+      {canAccess("hrm.employees", "edit") && <UnlinkedEmployeesNotice />}
 
-      <div className="bg-card rounded-lg border border-border overflow-hidden">
-        <div className="p-4 border-b border-border flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Select defaultValue="10">
-              <SelectTrigger className="w-20">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="10">10</SelectItem>
-                <SelectItem value="25">25</SelectItem>
-                <SelectItem value="50">50</SelectItem>
-              </SelectContent>
-            </Select>
-            <span className="text-sm text-muted-foreground">entries per page</span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input type="search" placeholder="Search employees..." className="pl-9 w-64" />
-            </div>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-secondary/50">
-              <tr>
-                <th className="text-left p-4 font-semibold text-sm">EMPLOYEE</th>
-                <th className="text-left p-4 font-semibold text-sm">CONTACT</th>
-                <th className="text-left p-4 font-semibold text-sm">DEPARTMENT</th>
-                <th className="text-left p-4 font-semibold text-sm">DESIGNATION</th>
-                <th className="text-left p-4 font-semibold text-sm">JOINING DATE</th>
-                <th className="text-left p-4 font-semibold text-sm">SALARY</th>
-                <th className="text-left p-4 font-semibold text-sm">STATUS</th>
-                <th className="text-right p-4 font-semibold text-sm">ACTION</th>
-              </tr>
-            </thead>
-            <tbody>
-              {employees.map((employee) => (
-                <tr key={employee.id} className="border-t border-border hover:bg-secondary/30 transition-colors">
-                  <td className="p-4">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="w-10 h-10">
-                        <AvatarFallback className="bg-primary text-primary-foreground font-medium">
-                          {employee.name.split(" ").map(n => n[0]).join("")}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="font-medium">{employee.name}</p>
-                        <p className="text-xs text-muted-foreground">{employee.id}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="p-4">
-                    <div className="text-sm">
-                      <p className="text-foreground">{employee.email}</p>
-                      <p className="text-muted-foreground">{employee.phone}</p>
-                    </div>
-                  </td>
-                  <td className="p-4">
-                    <span className="text-sm">{employee.department}</span>
-                  </td>
-                  <td className="p-4">
-                    <span className="text-sm">{employee.designation}</span>
-                  </td>
-                  <td className="p-4">
-                    <span className="text-sm">{employee.joiningDate}</span>
-                  </td>
-                  <td className="p-4">
-                    <span className="text-sm font-medium">{employee.salary}</span>
-                  </td>
-                  <td className="p-4">
-                    <Badge 
-                      variant={employee.status === "Active" ? "default" : "secondary"}
-                      className={employee.status === "Active" ? "bg-primary" : ""}
-                    >
-                      {employee.status}
-                    </Badge>
-                  </td>
-                  <td className="p-4">
-                    <div className="flex items-center justify-end gap-2">
-                      <Button size="icon" variant="ghost" className="h-9 w-9 text-blue-600 hover:text-blue-700 hover:bg-blue-50">
-                        <Eye className="w-4 h-4" />
-                      </Button>
-                      <Button size="icon" variant="ghost" className="h-9 w-9 text-green-600 hover:text-green-700 hover:bg-green-50" onClick={()=> startEdit(employee)}>
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button size="icon" variant="ghost" className="h-9 w-9 text-red-600 hover:text-red-700 hover:bg-red-50" onClick={()=> remove(employee.id)}>
-                        <Trash className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="p-4 border-t border-border flex items-center justify-between text-sm text-muted-foreground">
-          <span>Showing 1 to 6 of 6 entries</span>
-          <div className="flex gap-1">
-            <Button variant="outline" size="sm" disabled>
-              Previous
-            </Button>
-            <Button variant="outline" size="sm" className="bg-primary text-primary-foreground">
-              1
-            </Button>
-            <Button variant="outline" size="sm" disabled>
-              Next
-            </Button>
-          </div>
-        </div>
-      </div>
+      <DataTable
+        rows={employees}
+        columns={columns}
+        rowKey={(e) => e.id}
+        searchAccessor={(e) => `${e.name} ${e.id} ${e.email ?? ""} ${departmentName(e) ?? ""} ${e.designation ?? ""}`}
+        searchPlaceholder="Search by name, department or role…"
+        onRowClick={(e) => { setViewing(e); setViewOpen(true); }}
+        empty={{
+          title: "No employees yet",
+          description: "Add your first employee to start tracking attendance, leave and payroll.",
+          action: <Button onClick={startAdd}>Add employee</Button>,
+        }}
+      />
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-[95vw] w-[95vw] lg:max-w-[1200px] h-[85vh] max-h-[85vh] overflow-y-auto overflow-x-hidden">
@@ -283,6 +356,94 @@ const HRMEmployees = () => {
                       <Input value={form.nationalId || ""} onChange={(e) => setForm({ ...form, nationalId: e.target.value })} />
                       {attempted && !form.nationalId && <span className="text-xs text-destructive">Required</span>}
                     </div>
+                  </div>
+                </div>
+
+                {/* Only shown to payroll: the row lives in a separate,
+                    payroll-only table, so a user without that access could not
+                    save these anyway and should not be shown empty fields that
+                    silently fail. */}
+                {canAccess("hrm.payroll", "edit") && (
+                  <div>
+                    <h4 className="font-semibold mb-2">Bank Details</h4>
+                    <Separator className="mb-3" />
+                    <p className="mb-3 text-xs text-muted-foreground">
+                      Where this employee's salary is paid. The payroll bank export cannot
+                      produce a file for anyone without these.
+                    </p>
+                    <div className="grid md:grid-cols-2 gap-3">
+                      <div className="grid gap-1">
+                        <label className="text-xs text-muted-foreground">Bank</label>
+                        <Input
+                          value={bank.bankName || ""}
+                          onChange={(e) => setBank({ ...bank, bankName: e.target.value })}
+                          placeholder="FNB"
+                        />
+                      </div>
+                      <div className="grid gap-1">
+                        <label className="text-xs text-muted-foreground">Branch code</label>
+                        <Input
+                          value={bank.branchCode || ""}
+                          onChange={(e) => setBank({ ...bank, branchCode: e.target.value.replace(/\D/g, "").slice(0, 6) })}
+                          placeholder="250655"
+                          inputMode="numeric"
+                        />
+                      </div>
+                      <div className="grid gap-1">
+                        <label className="text-xs text-muted-foreground">Account number</label>
+                        <Input
+                          value={bank.accountNumber || ""}
+                          onChange={(e) => setBank({ ...bank, accountNumber: e.target.value.replace(/\s/g, "") })}
+                          placeholder="62012345678"
+                          inputMode="numeric"
+                        />
+                      </div>
+                      <div className="grid gap-1">
+                        <label className="text-xs text-muted-foreground">Account type</label>
+                        <Input
+                          value={bank.accountType || ""}
+                          onChange={(e) => setBank({ ...bank, accountType: e.target.value })}
+                          placeholder="Cheque"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <h4 className="font-semibold mb-2">System Access</h4>
+                  <Separator className="mb-3" />
+                  <div className="grid gap-1">
+                    <label className="text-xs text-muted-foreground">Linked login</label>
+                    <Select
+                      value={form.profileId ?? "none"}
+                      onValueChange={(v) => setForm({ ...form, profileId: v === "none" ? undefined : v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Not linked" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Not linked</SelectItem>
+                        {accounts
+                          .filter(
+                            (a) =>
+                              a.status === "active" &&
+                              // A login already used by a different employee is
+                              // not offered: two records pointing at the same
+                              // person would show each other's leave.
+                              !employees.some((e) => e.profileId === a.id && e.id !== form.id),
+                          )
+                          .map((a) => (
+                            <SelectItem key={a.id} value={a.id}>
+                              {a.name || a.email} — {a.email}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Which account this person signs in with. Without it they cannot see their
+                      own leave or balance, because those are filtered by this link.
+                    </p>
                   </div>
                 </div>
 
@@ -437,12 +598,17 @@ const HRMEmployees = () => {
             <Button variant="secondary" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={save} disabled={!allRequiredPresent()}>
+            <Button onClick={() => void save()} disabled={!allRequiredPresent()}>
               Save
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Employee Document Vault */}
+      {viewing && (
+        <EmployeeDocumentVault employeeId={viewing.id} />
+      )}
     </div>
   );
 };

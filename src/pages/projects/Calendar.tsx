@@ -1,4 +1,14 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useCache } from "@/lib/collectionCache";
+import {
+  projectsCache,
+  projectTasksCache,
+  projectTimeCache,
+  projectBugsCache,
+  projectEventsCache,
+  projectTypesCache,
+} from "@/lib/projectStore";
+import { toast } from "@/components/ui/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +18,13 @@ import { DayPicker } from "react-day-picker";
 import "react-day-picker/dist/style.css";
 
 const Calendar: React.FC = () => {
+  // Rows come from Postgres via caches, so this re-renders when they arrive.
+  useCache(projectsCache);
+  useCache(projectTasksCache);
+  useCache(projectTimeCache);
+  useCache(projectBugsCache);
+  useCache(projectEventsCache);
+  useCache(projectTypesCache);
   const [selected, setSelected] = useState<Date>(new Date());
   const [title, setTitle] = useState("");
   const [type, setType] = useState<CalendarEventType>("task");
@@ -16,7 +33,7 @@ const Calendar: React.FC = () => {
   const [remindWeek, setRemindWeek] = useState(true);
   const [remindDay, setRemindDay] = useState(true);
   const [remindHour, setRemindHour] = useState(true);
-  const [events, setEvents] = useState<CalendarEvent[]>(ProjectStore.listEvents());
+  const events = ProjectStore.listEvents();
   const [editEvent, setEditEvent] = useState<CalendarEvent | null>(null);
   const [editTask, setEditTask] = useState<Task | null>(null);
   const [addForTask, setAddForTask] = useState<Task | null>(null);
@@ -28,8 +45,7 @@ const Calendar: React.FC = () => {
     if (!title.trim()) return;
     const startAtIso = time ? new Date(time).toISOString() : new Date(selected).toISOString();
     const ev: CalendarEvent = { id: `ev_${Date.now()}`, date: dateKey(selected), title, projectId: "p_default", startAt: startAtIso, type, description, remindWeek, remindDay, remindHour };
-    ProjectStore.addEvent(ev);
-    setEvents(ProjectStore.listEvents());
+    void ProjectStore.addEvent(ev);
     setTitle("");
     setDescription("");
   };
@@ -50,19 +66,19 @@ const Calendar: React.FC = () => {
   const modifiers = { hasTask: typeDates.task, hasMeeting: typeDates.meeting, hasReminder: typeDates.reminder, hasOther: typeDates.other };
   const typeBadge = (t?: CalendarEventType) => {
     switch (t) {
-      case "task": return "bg-blue-100 text-blue-800";
-      case "meeting": return "bg-emerald-100 text-emerald-800";
-      case "reminder": return "bg-amber-100 text-amber-800";
-      default: return "bg-slate-100 text-slate-800";
+      case "task": return "bg-info-soft text-info";
+      case "meeting": return "bg-success-soft text-success";
+      case "reminder": return "bg-warning-soft text-warning";
+      default: return "bg-muted text-foreground";
     }
   };
 
   useEffect(() => {
-    const onChange = () => setEvents(ProjectStore.listEvents());
-    window.addEventListener('proj.events-changed', onChange as any);
+    const onChange = () =>
+    window.addEventListener('proj.events-changed', onChange);
     const onStorage = (e: StorageEvent) => { if (e.key && e.key.startsWith('proj.events')) onChange(); };
     window.addEventListener('storage', onStorage);
-    return () => { window.removeEventListener('proj.events-changed', onChange as any); window.removeEventListener('storage', onStorage); };
+    return () => { window.removeEventListener('proj.events-changed', onChange); window.removeEventListener('storage', onStorage); };
   }, []);
 
   return (
@@ -79,10 +95,10 @@ const Calendar: React.FC = () => {
               onSelect={(d) => d && setSelected(d)}
               modifiers={modifiers}
               modifiersClassNames={{
-                hasTask: "rounded-md ring-2 ring-blue-500",
-                hasMeeting: "rounded-md ring-2 ring-emerald-500",
-                hasReminder: "rounded-md ring-2 ring-amber-500",
-                hasOther: "rounded-md ring-2 ring-slate-500",
+                hasTask: "rounded-md ring-2 ring-info",
+                hasMeeting: "rounded-md ring-2 ring-success",
+                hasReminder: "rounded-md ring-2 ring-warning",
+                hasOther: "rounded-md ring-2 ring-muted-foreground",
               }}
             />
           </div>
@@ -106,7 +122,7 @@ const Calendar: React.FC = () => {
                 </div>
               </div>
               <Input placeholder="Description (optional)" value={description} onChange={(e)=> setDescription(e.target.value)} />
-              <div className="flex justify-end"><Button variant="elevated" onClick={add}>Add</Button></div>
+              <div className="flex justify-end"><Button onClick={add}>Add</Button></div>
             </div>
             <div className="space-y-2">
               {filtered.map(e => (
@@ -123,7 +139,7 @@ const Calendar: React.FC = () => {
                     </div>
                     <div className="flex items-center gap-2">
                       <Button size="sm" variant="secondary" onClick={()=> setEditEvent(e)}>View / Edit</Button>
-                      <Button size="sm" variant="destructive" onClick={()=> { ProjectStore.removeEvent(e.id); setEvents(ProjectStore.listEvents()); }}>Delete</Button>
+                      <Button size="sm" variant="destructive" onClick={()=> { void ProjectStore.removeEvent(e.id); }}>Delete</Button>
                     </div>
                   </div>
                 </div>
@@ -185,7 +201,7 @@ const Calendar: React.FC = () => {
           </div>)}
           <DialogFooter>
             <Button variant="secondary" onClick={()=> setEditEvent(null)}>Close</Button>
-            {editEvent && <Button onClick={()=> { ProjectStore.updateEvent(editEvent); setEvents(ProjectStore.listEvents()); setEditEvent(null); }}>Save</Button>}
+            {editEvent && <Button onClick={()=> { void ProjectStore.updateEvent(editEvent); setEditEvent(null); }}>Save</Button>}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -201,7 +217,7 @@ const Calendar: React.FC = () => {
               <div className="grid grid-cols-2 gap-2 mt-2">
                 <div>
                   <label className="text-xs text-muted-foreground">Status</label>
-                  <select className="border rounded px-2 text-sm bg-background text-foreground w-full h-10" value={editTask.status} onChange={(e)=> setEditTask({ ...editTask, status: e.target.value as any })}>
+                  <select className="border rounded px-2 text-sm bg-background text-foreground w-full h-10" value={editTask.status} onChange={(e) => setEditTask({ ...editTask, status: e.target.value as 'todo'|'inprogress'|'done' })}>
                     <option value="todo">To do</option>
                     <option value="inprogress">In progress</option>
                     <option value="done">Done</option>
@@ -217,7 +233,7 @@ const Calendar: React.FC = () => {
           </div>)}
           <DialogFooter>
             <Button variant="secondary" onClick={()=> setEditTask(null)}>Close</Button>
-            {editTask && <Button onClick={()=> { ProjectStore.upsertTask(editTask); setEditTask(null); }}>Save</Button>}
+            {editTask && <Button onClick={()=> { void ProjectStore.upsertTask(editTask); setEditTask(null); }}>Save</Button>}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -263,7 +279,7 @@ const Calendar: React.FC = () => {
               const typeSel = (document.getElementById('add-type') as HTMLSelectElement)?.value as CalendarEventType;
               const iso = new Date(when).toISOString();
               const ev: CalendarEvent = { id: `ev_${Date.now()}`, projectId: addForTask.projectId, title: addForTask.title, date: iso.slice(0,10), startAt: iso, type: typeSel, description: addForTask.description };
-              ProjectStore.addEvent(ev); setEvents(ProjectStore.listEvents()); setAddForTask(null);
+              void ProjectStore.addEvent(ev); setAddForTask(null);
             }}>Add</Button>}
           </DialogFooter>
         </DialogContent>

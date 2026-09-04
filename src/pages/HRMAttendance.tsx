@@ -1,5 +1,10 @@
 import { Button } from "@/components/ui/button";
-import { Download, Calendar, Search } from "lucide-react";
+import { useCache } from "@/lib/collectionCache";
+import { attendanceCache } from "@/lib/userStore";
+import { Download, Calendar, Search, CalendarClock, CheckCircle2, Timer, ListChecks } from "lucide-react";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatCard } from "@/components/ui/stat-card";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -13,21 +18,25 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+type ViewMode = "today" | "all" | "date";
 type Row = { employee: string; id: string; department?: string; checkIn: string; checkOut: string; workHours: string; status: string; date: string };
 
 const statusColors = {
-  Present: "bg-primary text-white",
-  "In Progress": "bg-orange-500 text-white",
-  Absent: "bg-red-500 text-white",
+  Present: "bg-primary text-primary-foreground",
+  "In Progress": "bg-warning text-warning-foreground",
+  Absent: "bg-danger text-danger-foreground",
 };
 
 const HRMAttendance = () => {
-  const [attendance, setAttendance] = useState<AttendanceEntry[]>(UserStore.attendance());
-  const [view, setView] = useState<"today" | "all">("today");
+  // Attendance comes from Postgres via a cache, so this re-renders when it
+  // loads and when a colleague clocks in.
+  const { rows: attendance } = useCache(attendanceCache);
+  const [view, setView] = useState<ViewMode>("today");
+  const [selectedDate, setSelectedDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const user = UserStore.get();
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
-      if (e.key === "auth.attendance") setAttendance(UserStore.attendance());
+      if (e.key === "auth.attendance") void attendanceCache.refresh();
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
@@ -55,18 +64,18 @@ const HRMAttendance = () => {
 
   const rows: Row[] = useMemo(() => {
     if (view === "all") return rowsAll;
-    const today = new Date().toISOString().slice(0,10);
+    const targetDate = view === "date" ? selectedDate : new Date().toISOString().slice(0, 10);
     // filter original attendance by ISO date match to avoid locale issues
-    const indices = attendance.map((e, i) => ({ i, e })).filter(x => x.e.date === today).map(x => x.i);
+    const indices = attendance.map((e, i) => ({ i, e })).filter(x => x.e.date === targetDate).map(x => x.i);
     return rowsAll.filter((_, i) => indices.includes(i));
-  }, [rowsAll, attendance, view]);
+  }, [rowsAll, attendance, view, selectedDate]);
 
   const presentCount = rows.filter(r => r.status === 'Present').length;
   const inProgress = rows.filter(r => r.status === 'In Progress').length;
   const absentCount = rows.filter(r => r.status === 'Absent').length;
 
-  const doClockIn = () => { UserStore.clockIn(); setAttendance(UserStore.attendance()); };
-  const doClockOut = () => { UserStore.clockOut(); setAttendance(UserStore.attendance()); };
+  const doClockIn = () => { void UserStore.clockIn(); };
+  const doClockOut = () => { void UserStore.clockOut(); };
 
   const handleExport = () => {
     const header = ["Employee","ID","Department","Date","Check In","Check Out","Work Hours","Status"];
@@ -76,214 +85,123 @@ const HRMAttendance = () => {
     const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `attendance_${view}_${new Date().toISOString().slice(0,10)}.csv`;
+    const datePart = view === "date" ? selectedDate : new Date().toISOString().slice(0,10);
+    a.href = url; a.download = `attendance_${view}_${datePart}.csv`;
     document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
   };
 
   const todayIso = new Date().toISOString().slice(0,10);
-  const todayEntry = attendance.find(e => e.date === todayIso);
-  const todayStatus = (() => {
-    if (!todayEntry) return "Absent";
-    if (todayEntry.clockIn && todayEntry.clockOut) return "Present";
-    if (todayEntry.clockIn && !todayEntry.clockOut) return "In Progress";
+  const statusIso = view === "date" ? selectedDate : todayIso;
+  const statusEntry = attendance.find(e => e.date === statusIso);
+  const statusLabel = view === "date" ? "Selected Date Status" : "Today's Status";
+  const dayStatus = (() => {
+    if (!statusEntry) return "Absent";
+    if (statusEntry.clockIn && statusEntry.clockOut) return "Present";
+    if (statusEntry.clockIn && !statusEntry.clockOut) return "In Progress";
     return "Absent";
   })();
 
+  type AttendanceRow = (typeof rows)[number];
+
+  const columns: Column<AttendanceRow>[] = [
+    {
+      id: "employee",
+      header: "Employee",
+      sortValue: (r) => r.employee,
+      cell: (r) => (
+        <div className="flex items-center gap-2.5">
+          <Avatar className="h-8 w-8">
+            <AvatarFallback className="bg-primary text-2xs font-medium text-primary-foreground">
+              {r.employee.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex min-w-0 flex-col">
+            <span className="truncate font-medium">{r.employee}</span>
+            <span className="text-xs text-muted-foreground">{r.id}</span>
+          </div>
+        </div>
+      ),
+    },
+    { id: "department", header: "Department", hideOnMobile: true, sortValue: (r) => r.department ?? "", cell: (r) => r.department || <span className="text-subtle">—</span> },
+    { id: "date", header: "Date", sortValue: (r) => r.date, cell: (r) => r.date },
+    { id: "in", header: "Check in", align: "right", cell: (r) => <span className="font-medium">{r.checkIn}</span> },
+    { id: "out", header: "Check out", align: "right", cell: (r) => <span className="font-medium">{r.checkOut}</span> },
+    { id: "hours", header: "Hours", align: "right", hideOnMobile: true, cell: (r) => r.workHours },
+    {
+      id: "status",
+      header: "Status",
+      sortValue: (r) => r.status,
+      cell: (r) => (
+        <span className={`inline-flex rounded-sm px-1.5 py-0.5 text-xs font-medium ${statusColors[r.status as keyof typeof statusColors] ?? "bg-muted text-muted-foreground"}`}>
+          {r.status}
+        </span>
+      ),
+    },
+  ];
+
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold mb-2">Employee Attendance</h1>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span>Dashboard</span>
-            <span>›</span>
-            <span>HRM System</span>
-            <span>›</span>
-            <span className="text-primary">Attendance</span>
-          </div>
+    <div className="flex flex-col gap-6 p-6">
+      <PageHeader
+        title="Attendance"
+        description="Clock-ins and hours worked across the team."
+        breadcrumbs={[{ label: "HRM", to: "/hrm/employees" }, { label: "Attendance" }]}
+        actions={
+          <>
+            <Button variant="outline" onClick={doClockIn}>Clock in</Button>
+            <Button variant="outline" onClick={doClockOut}>Clock out</Button>
+            <Button onClick={handleExport}>
+              <Download className="mr-2 h-4 w-4" aria-hidden="true" />
+              Export
+            </Button>
+          </>
+        }
+      >
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            label={statusLabel}
+            value={dayStatus}
+            hint={`${statusEntry?.clockIn ? new Date(statusEntry.clockIn).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"} – ${statusEntry?.clockOut ? new Date(statusEntry.clockOut).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}`}
+            icon={CalendarClock}
+          />
+          {/* Labels below now describe what is actually counted. "Late arrivals"
+              previously showed the total record count, and "On leave" showed
+              people who had clocked in but not out. */}
+          <StatCard label="Completed days" value={presentCount} hint="Clocked in and out" icon={CheckCircle2} tone="success" />
+          <StatCard label="Still clocked in" value={inProgress} hint="No clock-out recorded" icon={Timer} tone={inProgress ? "warning" : "neutral"} />
+          <StatCard label="Records" value={rows.length} hint="In the selected period" icon={ListChecks} />
         </div>
+      </PageHeader>
 
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={doClockIn}>
-            Clock In
-          </Button>
-          <Button variant="outline" size="sm" onClick={doClockOut}>
-            Clock Out
-          </Button>
-          <Select value={view} onValueChange={(v)=> setView(v as any)}>
-            <SelectTrigger className="w-32">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="today">Today</SelectItem>
-              <SelectItem value="all">All</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button variant="outline" size="sm">
-            <Calendar className="w-4 h-4 mr-2" />
-            Select Date
-          </Button>
-          <Button size="sm" onClick={handleExport}>
-            <Download className="w-4 h-4 mr-2" />
-            Export Report
-          </Button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-card rounded-lg border border-border p-5">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-muted-foreground">Today's Status</span>
-            <div className="w-10 h-10 rounded-lg bg-secondary/40 flex items-center justify-center">
-              <span className="text-xl">📅</span>
-            </div>
-          </div>
-          <p className="text-3xl font-bold">{todayStatus}</p>
-          <p className="text-xs text-muted-foreground mt-1">
-            {todayEntry?.clockIn ? new Date(todayEntry.clockIn).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}) : '-'}
-            {" "}–{" "}
-            {todayEntry?.clockOut ? new Date(todayEntry.clockOut).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}) : '-'}
-          </p>
-        </div>
-        <div className="bg-card rounded-lg border border-border p-5">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-muted-foreground">Present Today</span>
-            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-              <span className="text-xl">✓</span>
-            </div>
-          </div>
-          <p className="text-3xl font-bold">{presentCount}</p>
-          <p className="text-xs text-muted-foreground mt-1">Recorded days</p>
-        </div>
-
-        <div className="bg-card rounded-lg border border-border p-5">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-muted-foreground">On Leave</span>
-            <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
-              <span className="text-xl">🏖️</span>
-            </div>
-          </div>
-          <p className="text-3xl font-bold">{inProgress}</p>
-          <p className="text-xs text-muted-foreground mt-1">Checked-in, not out</p>
-        </div>
-
-        <div className="bg-card rounded-lg border border-border p-5">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-muted-foreground">Late Arrivals</span>
-            <div className="w-10 h-10 rounded-lg bg-orange-500/10 flex items-center justify-center">
-              <span className="text-xl">⏰</span>
-            </div>
-          </div>
-          <p className="text-3xl font-bold">{rows.length}</p>
-          <p className="text-xs text-muted-foreground mt-1">Total records</p>
-        </div>
-
-        <div className="bg-card rounded-lg border border-border p-5">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-muted-foreground">Absent</span>
-            <div className="w-10 h-10 rounded-lg bg-red-500/10 flex items-center justify-center">
-              <span className="text-xl">✗</span>
-            </div>
-          </div>
-          <p className="text-3xl font-bold">{absentCount}</p>
-          <p className="text-xs text-muted-foreground mt-1">No check-in</p>
-        </div>
-      </div>
-
-      <div className="bg-card rounded-lg border border-border overflow-hidden">
-        <div className="p-4 border-b border-border flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Select defaultValue="10">
-              <SelectTrigger className="w-20">
-                <SelectValue />
-              </SelectTrigger>
+      <DataTable
+        rows={rows}
+        columns={columns}
+        rowKey={(r) => `${r.id}-${r.date}`}
+        searchAccessor={(r) => `${r.employee} ${r.id} ${r.department ?? ""} ${r.date}`}
+        searchPlaceholder="Search by employee or date…"
+        toolbar={
+          <>
+            <Select value={view} onValueChange={(v) => setView(v as ViewMode)}>
+              <SelectTrigger className="h-9 w-32"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="10">10</SelectItem>
-                <SelectItem value="25">25</SelectItem>
-                <SelectItem value="50">50</SelectItem>
+                <SelectItem value="today">Today</SelectItem>
+                <SelectItem value="date">Selected date</SelectItem>
+                <SelectItem value="all">All</SelectItem>
               </SelectContent>
             </Select>
-            <span className="text-sm text-muted-foreground">entries per page</span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input type="search" placeholder="Search..." className="pl-9 w-64" />
-            </div>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-secondary/50">
-              <tr>
-                <th className="text-left p-4 font-semibold text-sm">EMPLOYEE</th>
-                <th className="text-left p-4 font-semibold text-sm">DEPARTMENT</th>
-                <th className="text-left p-4 font-semibold text-sm">DATE</th>
-                <th className="text-left p-4 font-semibold text-sm">CHECK IN</th>
-                <th className="text-left p-4 font-semibold text-sm">CHECK OUT</th>
-                <th className="text-left p-4 font-semibold text-sm">WORK HOURS</th>
-                <th className="text-left p-4 font-semibold text-sm">STATUS</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((record, index) => (
-                <tr key={index} className="border-t border-border hover:bg-secondary/30 transition-colors">
-                  <td className="p-4">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="w-10 h-10">
-                        <AvatarFallback className="bg-primary text-primary-foreground font-medium">
-                          {record.employee.split(" ").map(n => n[0]).join("")}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="font-medium">{record.employee}</p>
-                        <p className="text-xs text-muted-foreground">{record.id}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="p-4">
-                    <span className="text-sm">{record.department}</span>
-                  </td>
-                  <td className="p-4">
-                    <span className="text-sm">{record.date}</span>
-                  </td>
-                  <td className="p-4">
-                    <span className="text-sm font-medium">{record.checkIn}</span>
-                  </td>
-                  <td className="p-4">
-                    <span className="text-sm font-medium">{record.checkOut}</span>
-                  </td>
-                  <td className="p-4">
-                    <span className="text-sm">{record.workHours}</span>
-                  </td>
-                  <td className="p-4">
-                    <Badge className={statusColors[record.status as keyof typeof statusColors]}>
-                      {record.status}
-                    </Badge>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="p-4 border-t border-border flex items-center justify-between text-sm text-muted-foreground">
-          <span>Showing 1 to 6 of 6 entries</span>
-          <div className="flex gap-1">
-            <Button variant="outline" size="sm" disabled>
-              Previous
-            </Button>
-            <Button variant="outline" size="sm" className="bg-primary text-primary-foreground">
-              1
-            </Button>
-            <Button variant="outline" size="sm" disabled>
-              Next
-            </Button>
-          </div>
-        </div>
-      </div>
+            <Input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => { setSelectedDate(e.target.value); setView("date"); }}
+              className="h-9 w-36"
+              aria-label="Selected date"
+            />
+          </>
+        }
+        empty={{
+          title: "No attendance recorded",
+          description: "Clock-ins for the selected period will show up here.",
+        }}
+      />
     </div>
   );
 };

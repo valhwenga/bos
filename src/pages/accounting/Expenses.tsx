@@ -1,10 +1,16 @@
 import React, { useMemo, useState } from "react";
+import { toast } from "@/components/ui/use-toast";
+import { useCache } from "@/lib/collectionCache";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Expense, ExpenseStore, DEFAULT_EXPENSE_CATEGORIES } from "@/lib/expenseStore";
+import { Pencil, Trash2, ReceiptText, TrendingDown } from "lucide-react";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatCard } from "@/components/ui/stat-card";
+import { expensesCache, Expense, ExpenseStore, DEFAULT_EXPENSE_CATEGORIES } from "@/lib/expenseStore";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { CompanySettingsStore } from "@/lib/companySettings";
 
@@ -61,7 +67,8 @@ const ExpenseDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void; 
 
 const Expenses: React.FC = () => {
   const c = CompanySettingsStore.get();
-  const [expenses, setExpenses] = useState(ExpenseStore.list());
+  // Rows come from Postgres via a cache, so this re-renders when they arrive.
+  const { rows: expenses } = useCache(expensesCache);
   const [q, setQ] = useState("");
   const [category, setCategory] = useState<string>("all");
   const [from, setFrom] = useState<string>("");
@@ -76,68 +83,119 @@ const Expenses: React.FC = () => {
   );
 
   const add = () => { setEditing(undefined); setDlgOpen(true); };
-  const save = (e: Expense) => { editing ? ExpenseStore.update(e) : ExpenseStore.add(e); setExpenses(ExpenseStore.list()); };
-  const del = (id: string) => { ExpenseStore.remove(id); setExpenses(ExpenseStore.list()); };
+  const save = (e: Expense) => {
+    const write = editing ? ExpenseStore.update(e) : ExpenseStore.add(e);
+    void write.catch((err: unknown) =>
+      toast({
+        title: "Could not save expense",
+        description: err instanceof Error ? err.message : "Nothing was saved.",
+        variant: "destructive",
+      }),
+    );
+  };
+  const del = (id: string) => {
+    const ok = window.confirm("Delete this expense? This action cannot be undone.");
+    if (!ok) return;
+    void ExpenseStore.remove(id).catch((err: unknown) =>
+      toast({
+        title: "Could not delete expense",
+        description: err instanceof Error ? err.message : "The expense is unchanged.",
+        variant: "destructive",
+      }),
+    );
+  };
 
   const total = useMemo(() => filtered.reduce((s,e)=> s + (e.amount + (e.tax||0)), 0), [filtered]);
 
+  const columns: Column<Expense>[] = [
+    { id: "date", header: "Date", sortValue: (e) => e.date, cell: (e) => new Date(e.date).toLocaleDateString() },
+    { id: "vendor", header: "Vendor", sortValue: (e) => e.vendor ?? "", cell: (e) => <span className="font-medium">{e.vendor || "—"}</span> },
+    {
+      id: "category",
+      header: "Category",
+      sortValue: (e) => e.category ?? "",
+      cell: (e) => (
+        <span className="rounded-sm bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">{e.category || "Uncategorised"}</span>
+      ),
+    },
+    {
+      id: "notes",
+      header: "Notes",
+      hideOnMobile: true,
+      cell: (e) => <span className="block max-w-xs truncate text-muted-foreground" title={e.notes}>{e.notes || "—"}</span>,
+    },
+    { id: "amount", header: "Amount", align: "right", hideOnMobile: true, sortValue: (e) => e.amount, cell: (e) => `${c.currencySymbol}${e.amount.toFixed(2)}` },
+    { id: "tax", header: "Tax", align: "right", hideOnMobile: true, sortValue: (e) => e.tax ?? 0, cell: (e) => `${c.currencySymbol}${(e.tax || 0).toFixed(2)}` },
+    {
+      id: "total",
+      header: "Total",
+      align: "right",
+      sortValue: (e) => e.amount + (e.tax || 0),
+      cell: (e) => <span className="font-medium">{c.currencySymbol}{(e.amount + (e.tax || 0)).toFixed(2)}</span>,
+    },
+    {
+      id: "actions",
+      header: <span className="sr-only">Actions</span>,
+      align: "right",
+      width: "1%",
+      cell: (e) => (
+        <div className="inline-flex items-center justify-end gap-0.5" onClick={(ev) => ev.stopPropagation()}>
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => { setEditing(e); setDlgOpen(true); }} aria-label="Edit expense">
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-danger" onClick={() => del(e.id)} aria-label="Delete expense">
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
+  const taxTotal = filtered.reduce((sum, e) => sum + (e.tax || 0), 0);
+
   return (
-    <div className="p-6 space-y-4">
-      <Card className="shadow-[0_10px_0_rgba(0,0,0,0.08)]">
-        <CardHeader className="flex-row items-center justify-between">
-          <CardTitle>Expenses</CardTitle>
-          <div className="flex gap-2">
-            <Input placeholder="Search vendor/notes" value={q} onChange={(e)=> setQ(e.target.value)} className="w-56" />
+    <div className="flex flex-col gap-6 p-6">
+      <PageHeader
+        title="Expenses"
+        description="What the business has spent, and on what."
+        breadcrumbs={[{ label: "Accounting", to: "/accounting/quotations" }, { label: "Expenses" }]}
+        actions={<Button onClick={add}>Add expense</Button>}
+      >
+        <div className="grid gap-3 sm:grid-cols-3">
+          <StatCard label="Expenses" value={filtered.length} hint="Matching current filters" icon={ReceiptText} />
+          <StatCard label="Total spend" value={`${c.currencySymbol}${total.toFixed(2)}`} hint="Including tax" icon={TrendingDown} tone="warning" />
+          <StatCard label="Tax" value={`${c.currencySymbol}${taxTotal.toFixed(2)}`} hint="Recoverable where applicable" />
+        </div>
+      </PageHeader>
+
+      <DataTable
+        rows={filtered}
+        columns={columns}
+        rowKey={(e) => e.id}
+        searchAccessor={(e) => `${e.vendor ?? ""} ${e.notes ?? ""} ${e.category ?? ""}`}
+        searchPlaceholder="Search vendor, notes or category…"
+        onRowClick={(e) => { setEditing(e); setDlgOpen(true); }}
+        toolbar={
+          <>
             <Select value={category} onValueChange={setCategory}>
-              <SelectTrigger className="w-44"><SelectValue placeholder="All categories" /></SelectTrigger>
+              <SelectTrigger className="h-9 w-40"><SelectValue placeholder="All categories" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All categories</SelectItem>
-                {DEFAULT_EXPENSE_CATEGORIES.map(cat=> <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
+                {DEFAULT_EXPENSE_CATEGORIES.map((cat) => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
               </SelectContent>
             </Select>
-            <Input type="date" value={from} onChange={(e)=> setFrom(e.target.value)} />
-            <Input type="date" value={to} onChange={(e)=> setTo(e.target.value)} />
-            <Button onClick={add}>Add Expense</Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-lg overflow-hidden border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Vendor</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Notes</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead className="text-right">Tax</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map(e=> (
-                  <TableRow key={e.id}>
-                    <TableCell>{new Date(e.date).toLocaleDateString()}</TableCell>
-                    <TableCell>{e.vendor}</TableCell>
-                    <TableCell>{e.category}</TableCell>
-                    <TableCell className="max-w-[260px] truncate" title={e.notes}>{e.notes}</TableCell>
-                    <TableCell className="text-right">{c.currencySymbol}{e.amount.toFixed(2)}</TableCell>
-                    <TableCell className="text-right">{c.currencySymbol}{(e.tax||0).toFixed(2)}</TableCell>
-                    <TableCell className="text-right">{c.currencySymbol}{(e.amount + (e.tax||0)).toFixed(2)}</TableCell>
-                    <TableCell className="text-right space-x-2">
-                      <Button size="sm" variant="secondary" onClick={()=> { setEditing(e); setDlgOpen(true); }}>Edit</Button>
-                      <Button size="sm" variant="destructive" onClick={()=> del(e.id)}>Delete</Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-          <div className="flex justify-end text-sm mt-2"><span className="mr-2">Total:</span><span className="font-semibold">{c.currencySymbol}{total.toFixed(2)}</span></div>
-        </CardContent>
-      </Card>
-      <ExpenseDialog open={dlgOpen} onOpenChange={(v)=> { setDlgOpen(v); if (!v) setExpenses(ExpenseStore.list()); }} initial={editing} onSave={save} />
+            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="h-9 w-36" aria-label="From date" />
+            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="h-9 w-36" aria-label="To date" />
+          </>
+        }
+        empty={{
+          title: "No expenses recorded",
+          description: "Log what the business spends to keep income-versus-expense reporting accurate.",
+          action: <Button onClick={add}>Add expense</Button>,
+        }}
+      />
+
+      <ExpenseDialog open={dlgOpen} onOpenChange={(v)=> { setDlgOpen(v); if (!v) void expensesCache.refresh(); }} initial={editing} onSave={save} />
     </div>
   );
 };

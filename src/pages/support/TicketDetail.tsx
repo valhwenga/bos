@@ -1,12 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCache } from "@/lib/collectionCache";
+import { ticketsCache } from "@/lib/supportStore";
+import { clientsCache } from "@/lib/clientsStore";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { SupportStore, type Ticket, type Attachment, type Comment } from "@/lib/supportStore";
 import { AuditLogStore } from "@/lib/auditLogStore";
+import { sendEmail } from "@/lib/sendDocument";
+import { SendIdentities, sendIdentitiesCache } from "@/lib/sendIdentities";
 import { getCurrentRole, canAccess } from "@/lib/accessControl";
-import { UsersStore } from "@/lib/usersStore";
+import { useAccounts, useStaffAccounts } from "@/lib/useAccounts";
+import { AuthStore } from "@/lib/authStore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/components/ui/use-toast";
@@ -20,24 +26,57 @@ function toDataUrl(file: File): Promise<Attachment> {
   });
 }
 
+/** Radix reserves "" to mean "no selection", so a sentinel is needed instead. */
+const UNASSIGNED = "__unassigned__";
+
 const TicketDetail = () => {
+  // Rows come from Postgres via caches, so this re-renders when they arrive.
+  const { rows: ticketRows } = useCache(ticketsCache);
+  useCache(sendIdentitiesCache);
+  useCache(clientsCache);
   const { id } = useParams();
   const navigate = useNavigate();
-  const [t, setT] = useState<Ticket | undefined>(undefined);
   const [comment, setComment] = useState("");
+  // Defaults on for a ticket raised by email, off for one raised internally.
+  const [emailReply, setEmailReply] = useState(true);
+  const [emailing, setEmailing] = useState(false);
   const [cFiles, setCFiles] = useState<Attachment[]>([]);
   const [closeNote, setCloseNote] = useState("");
   const [rejectReason, setRejectReason] = useState("");
   const [cannedId, setCannedId] = useState<string>("");
   const canned = SupportStore.canned();
+  const users = useAccounts();
+  const staff = useStaffAccounts();
 
-  const refresh = () => setT(id ? SupportStore.get(id) : undefined);
-  useEffect(()=>{ refresh(); }, [id]);
+  // Read from the cache rather than copied into state on mount. Copying showed
+  // "Ticket not found" whenever this page was reached before the tickets had
+  // loaded — arriving from the inbox rather than from the ticket list, say.
+  const t = useMemo(
+    () => (id ? ticketRows.find((row) => row.id === id) : undefined),
+    [ticketRows, id],
+  );
+  const refresh = useCallback(() => {
+    void ticketsCache.refresh();
+  }, []);
 
   const isManager = useMemo(() => {
     const role = getCurrentRole();
     return role.level === "Department" && canAccess("support","edit");
   }, []);
+
+  const acc = AuthStore.currentUser();
+  const me = acc?.id;
+  const myClientId = acc?.clientId;
+
+  useEffect(() => {
+    if (!myClientId) return;
+    if (!t) return;
+    if (t.clientId !== myClientId) navigate(-1);
+  }, [myClientId, t, navigate]);
+  const applyDuePreset = (hours: number) => {
+    const iso = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
+    saveTicket({ ...t, dueAt: iso } as Ticket, "sla_due", `SLA due set to ${new Date(iso).toLocaleString()}`);
+  };
 
   if (!t) return (
     <div className="p-6">
@@ -49,45 +88,42 @@ const TicketDetail = () => {
   );
 
   const saveTicket = (next: Ticket, action: string, details?: string) => {
-    SupportStore.upsert({ ...next, updatedAt: new Date().toISOString() });
-    AuditLogStore.append({ id: crypto.randomUUID?.() || String(Date.now()), ts: new Date().toISOString(), actor: "user", entity: "ticket", entityId: next.id, action: "update", details: details || action });
+    void SupportStore.upsert({ ...next, updatedAt: new Date().toISOString() });
+    void AuditLogStore.append({ entity: "ticket", entityId: next.id, action: "update", details: details || action });
     refresh();
     if (action.startsWith("status:")) {
       const s = action.split(":")[1];
       toast({ title: `Status updated`, description: `Ticket moved to ${s.replace(/_/g,' ')}` });
       try {
         // Notify requester and assignee on status updates
-        const users = UsersStore.list();
         const requester = users.find(u => u.id === next.requester);
-        if (requester) notify(requester.id, "ticket", `Ticket ${next.id} status: ${s.replace(/_/g,' ')}`, next.title, `/support/tickets/${next.id}`);
-        if (next.assigneeId) notify(next.assigneeId, "ticket", `Ticket ${next.id} status: ${s.replace(/_/g,' ')}`, next.title, `/support/tickets/${next.id}`);
-      } catch {}
+        if (requester) void notify(requester.id, "ticket", `Ticket ${next.id} status: ${s.replace(/_/g,' ')}`, next.title, `/support/tickets/${next.id}`);
+        if (next.assigneeId) void notify(next.assigneeId, "ticket", `Ticket ${next.id} status: ${s.replace(/_/g,' ')}`, next.title, `/support/tickets/${next.id}`);
+      } catch { void 0; }
     } else if (action === "comment") {
       toast({ title: "Comment added" });
     } else if (action === "assign") {
       toast({ title: "Assignment updated", description: details });
       try {
-        if (next.assigneeId) notify(next.assigneeId, "ticket", `Assigned: ${next.title}`, `You were assigned to ticket ${next.id}`, `/support/tickets/${next.id}`);
-      } catch {}
+        if (next.assigneeId) void notify(next.assigneeId, "ticket", `Assigned: ${next.title}`, `You were assigned to ticket ${next.id}`, `/support/tickets/${next.id}`);
+      } catch { void 0; }
     } else if (action === "request_closure") {
       toast({ title: "Closure requested" });
       try {
-        if (next.assigneeId) notify(next.assigneeId, "ticket", `Closure requested: ${next.title}`, undefined, `/support/tickets/${next.id}`);
-      } catch {}
+        if (next.assigneeId) void notify(next.assigneeId, "ticket", `Closure requested: ${next.title}`, undefined, `/support/tickets/${next.id}`);
+      } catch { void 0; }
     } else if (action === "approve_closure") {
       toast({ title: "Ticket closed" });
       try {
-        const users = UsersStore.list();
         const requester = users.find(u => u.id === next.requester);
-        if (requester) notify(requester.id, "ticket", `Ticket closed: ${next.title}`, undefined, `/support/tickets/${next.id}`);
-      } catch {}
+        if (requester) void notify(requester.id, "ticket", `Ticket closed: ${next.title}`, undefined, `/support/tickets/${next.id}`);
+      } catch { void 0; }
     } else if (action === "reject_closure") {
       toast({ title: "Closure rejected", description: details });
       try {
-        const users = UsersStore.list();
         const requester = users.find(u => u.id === next.requester);
-        if (requester) notify(requester.id, "ticket", `Closure rejected: ${next.title}`, details, `/support/tickets/${next.id}`);
-      } catch {}
+        if (requester) void notify(requester.id, "ticket", `Closure rejected: ${next.title}`, details, `/support/tickets/${next.id}`);
+      } catch { void 0; }
     }
   };
 
@@ -96,8 +132,41 @@ const TicketDetail = () => {
     const c: Comment = { id: Math.random().toString(36).slice(2), author: "user", ts: new Date().toISOString(), message: comment, attachments: cFiles };
     const firstResponseAt = t.firstResponseAt || c.ts;
     const next: Ticket = { ...t, comments: [...t.comments, c], firstResponseAt };
+    const text = comment;
     setComment(""); setCFiles([]);
     saveTicket(next, "comment");
+
+    // A ticket that arrived by email is a conversation with somebody outside
+    // the system. A comment they never receive leaves them waiting while the
+    // ticket looks answered from in here, so it goes to them as well — with the
+    // reference in the subject, which is what threads their reply back onto
+    // this ticket rather than opening a new one.
+    if (emailReply && t.requesterEmail && text.trim()) {
+      setEmailing(true);
+      try {
+        const result = await sendEmail({
+          to: t.requesterEmail,
+          subject: `[${t.reference ?? t.id}] ${t.title}`,
+          body: text,
+          module: "support",
+          // From the address they wrote to, so their next reply comes back to
+          // the queue rather than to whoever the default happens to be.
+          fromIdentity: SendIdentities.forAddress(t.inboxAddress)?.address,
+        });
+        toast({
+          title: "Replied",
+          description: `Emailed to ${t.requesterEmail}${result.from ? ` from ${result.from}` : ""}.`,
+        });
+      } catch (err: unknown) {
+        toast({
+          title: "Comment saved, but not emailed",
+          description: err instanceof Error ? err.message : "The mail server refused it.",
+          variant: "destructive",
+        });
+      } finally {
+        setEmailing(false);
+      }
+    }
   };
 
   const onAttach = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -137,7 +206,7 @@ const TicketDetail = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold mb-1">{t.title}</h1>
-          <p className="text-sm text-muted-foreground">Ticket {t.id} • {t.category} • <span className="capitalize">{t.priority}</span> • <span className="capitalize">{t.status.replace(/_/g,' ')}</span></p>
+          <p className="text-sm text-muted-foreground">{t.reference ?? `Ticket ${t.id}`} • {t.category} • <span className="capitalize">{t.priority}</span> • <span className="capitalize">{t.status.replace(/_/g,' ')}</span></p>
           <div className="mt-1 flex items-center gap-2 text-xs">
             {t.dueAt && (
               <Badge variant="secondary">SLA Due: {new Date(t.dueAt).toLocaleString()}</Badge>
@@ -186,7 +255,17 @@ const TicketDetail = () => {
               ))}
             </div>
             <div className="mt-3 grid gap-2">
-              <Textarea placeholder="Write a comment..." value={comment} onChange={(e)=> setComment(e.target.value)} />
+              <Textarea placeholder={t.requesterEmail ? "Write a reply..." : "Write a comment..."} value={comment} onChange={(e)=> setComment(e.target.value)} />
+              {t.requesterEmail && (
+                <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={emailReply}
+                    onChange={(e) => setEmailReply(e.target.checked)}
+                  />
+                  Email this to {t.requesterEmail}
+                </label>
+              )}
               <div className="flex items-center gap-2">
                 <Select value={cannedId} onValueChange={(v)=> { setCannedId(v); const found = canned.find(c => c.id===v); if(found) setComment((prev)=> (prev ? prev+"\n\n" : "") + found.body); }}>
                   <SelectTrigger className="w-64"><SelectValue placeholder="Insert canned response..." /></SelectTrigger>
@@ -200,7 +279,9 @@ const TicketDetail = () => {
                 {cFiles.map(f => (
                   <span key={f.id} className="text-xs text-muted-foreground">{f.name}</span>
                 ))}
-                <Button onClick={addComment}>Add Comment</Button>
+                <Button onClick={() => void addComment()} disabled={emailing}>
+                  {emailing ? "Sending…" : t.requesterEmail && emailReply ? "Reply to customer" : "Add comment"}
+                </Button>
               </div>
             </div>
           </div>
@@ -209,13 +290,32 @@ const TicketDetail = () => {
         <div className="space-y-4">
           <div className="rounded-lg border p-4">
             <h4 className="font-semibold mb-2">Assignment</h4>
-            <Select value={t.assigneeId || ""} onValueChange={(v)=> saveTicket({ ...t, assigneeId: v || undefined } as Ticket, 'assign', v || 'unassigned')}>
-              <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="">Unassigned</SelectItem>
-                {UsersStore.list().map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <div className="grid gap-2">
+              <Select
+                value={t.assigneeId || UNASSIGNED}
+                onValueChange={(v)=> saveTicket({ ...t, assigneeId: v === UNASSIGNED ? undefined : v } as Ticket, 'assign', v === UNASSIGNED ? 'unassigned' : users.find(u => u.id === v)?.name ?? v)}
+              >
+                <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
+                  {staff.map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <div className="flex justify-end">
+                <Button variant="secondary" disabled={!me} onClick={()=> { if(!me) return; saveTicket({ ...t, assigneeId: me } as Ticket, 'assign', 'self'); }}>Assign to me</Button>
+              </div>
+            </div>
+            <div className="mt-3 grid gap-1">
+              <label className="text-xs text-muted-foreground">Expiry / SLA Due</label>
+              <div className="grid gap-2">
+                <Input type="datetime-local" value={t.dueAt ? new Date(t.dueAt).toISOString().slice(0,16) : ""} onChange={(e)=> saveTicket({ ...t, dueAt: e.target.value ? new Date(e.target.value).toISOString() : undefined } as Ticket, "sla_due", "SLA due updated") } />
+                <div className="flex gap-2">
+                  <Button type="button" variant="secondary" onClick={()=> applyDuePreset(1)}>+1h</Button>
+                  <Button type="button" variant="secondary" onClick={()=> applyDuePreset(24)}>+1d</Button>
+                  <Button type="button" variant="secondary" onClick={()=> applyDuePreset(24*7)}>+1w</Button>
+                </div>
+              </div>
+            </div>
           </div>
           <div className="rounded-lg border p-4">
             <h4 className="font-semibold mb-2">Request Closure</h4>

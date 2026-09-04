@@ -3,23 +3,34 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Spiketech - Business Operating System</title>
-    <meta name="description" content="Complete business operating system with project management, CRM, HRM, accounting and more" />
-    <meta name="author" content="Spiketech" />
+    <title>SpikeTech — Business Operating System</title>
+    <meta name="description" content="Run accounting, CRM, HR, projects and support for your business in one place." />
+    <meta name="author" content="SpikeTech" />
 
-    <meta property="og:title" content="Spiketech - Business Operating System" />
-    <meta property="og:description" content="Complete business operating system with project management, CRM, HRM, accounting and more" />
+    <meta property="og:title" content="SpikeTech — Business Operating System" />
+    <meta property="og:description" content="Run accounting, CRM, HR, projects and support for your business in one place." />
     <meta property="og:type" content="website" />
-    <meta property="og:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
 
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:site" content="@lovable_dev" />
-    <meta name="twitter:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
+
+    <link rel="icon" href="/favicon.ico" />
     <link rel="manifest" href="/manifest.json" />
-    <meta name="theme-color" content="#10b981" />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@400;500;600;700&family=Rubik:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700&family=Nunito:wght@400;600;700&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+    <meta name="theme-color" content="#12735c" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0f1719" media="(prefers-color-scheme: dark)" />
+
+    <script>
+      // Apply the stored theme before first paint so dark mode doesn't flash
+      // a light background on load.
+      (function () {
+        try {
+          var mode = localStorage.getItem("ui.theme.mode");
+          if (!mode) {
+            mode = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+          }
+          if (mode === "dark") document.documentElement.classList.add("dark");
+        } catch (e) {}
+      })();
+    </script>
   </head>
 
   <body>

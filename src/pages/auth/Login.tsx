@@ -1,66 +1,116 @@
 import React, { useState } from "react";
+import { Link, useLocation, useNavigate, type Location } from "react-router-dom";
+import { Loader2 } from "lucide-react";
 import { AuthStore } from "@/lib/authStore";
-import { useNavigate, useLocation, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { CompanySettingsStore } from "@/lib/companySettings";
+import { Label } from "@/components/ui/label";
+import { AuthShell, AuthError } from "@/components/auth/AuthShell";
+
+interface LoginLocationState {
+  from?: string;
+}
+
+/**
+ * Where to go after signing in.
+ *
+ * Only an internal path is accepted. A value like "//evil.example.com" or
+ * "\\evil.example.com" is treated by browsers as protocol-relative, so passing
+ * it straight to navigate() would send someone off-site immediately after
+ * authenticating — the shape of open redirect that phishing relies on.
+ */
+export function safeReturnPath(from: unknown): string {
+  if (typeof from !== "string") return "/";
+  const path = from.trim();
+  // Must be a single leading slash, and not a scheme or a backslash escape.
+  if (!/^\/(?!\/)/.test(path) || path.includes("\\") || /^\/\s*\w+:/.test(path)) return "/";
+  return path;
+}
 
 const Login: React.FC = () => {
-  const [email, setEmail] = useState("admin@example.com");
-  const [password, setPassword] = useState("admin");
-  const [error, setError] = useState<string>("");
-  const nav = useNavigate();
-  const loc = useLocation() as any;
-  const onSubmit = (e: React.FormEvent) => {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation() as Location<LoginLocationState>;
+  // Explains an automatic sign-out, so a timed-out session does not look like
+  // the app simply threw the user back to the login page.
+  const timedOut = new URLSearchParams(location.search).get("reason") === "timeout";
+
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError("");
+    setSubmitting(true);
     try {
-      AuthStore.signIn(email, password);
-      const to = loc.state?.from || "/";
-      nav(to, { replace: true });
-    } catch (err: any) {
-      setError(err.message || "Login failed");
+      await AuthStore.signIn(email, password);
+      navigate(safeReturnPath(location.state?.from), { replace: true });
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "We couldn't sign you in. Check your details and try again.");
+      setSubmitting(false);
     }
   };
-  const cs = CompanySettingsStore.get();
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#5F33FF] to-[#7A60D9] flex items-center justify-center p-6">
-      <div className="bg-white/95 rounded-xl shadow-xl w-full max-w-md overflow-hidden">
-        <div className="p-6 pb-3 text-center">
-          <div className="flex items-center justify-center mb-2">
-            {cs.logoDataUrl ? (
-              <img src={cs.logoDataUrl} alt="logo" className="h-10 w-auto drop-shadow-sm" />
-            ) : (
-              <div className="h-10 w-10 rounded-full bg-gradient-to-br from-[#5F33FF] to-[#7A60D9] text-white flex items-center justify-center text-sm font-semibold">
-                {(cs.name||'S').slice(0,2).toUpperCase()}
-              </div>
-            )}
-          </div>
-          <div className="text-2xl font-semibold text-slate-900">Welcome Back</div>
-          <div className="text-slate-500 mt-1">Sign in to continue</div>
-          <div className="mt-4 inline-flex rounded-full bg-slate-100 p-1 relative">
-            <span className="absolute inset-0 pointer-events-none" />
-            <Link to="/auth/login" className="px-4 py-1.5 text-sm rounded-full bg-white text-slate-900 shadow transition-transform duration-300">Sign In</Link>
-            <Link to="/auth/signup" className="px-4 py-1.5 text-sm rounded-full text-slate-700 hover:text-slate-900 hover:rotate-[-1deg] transition-all">Sign Up</Link>
-          </div>
+    <AuthShell
+      title="Sign in"
+      subtitle="Enter your work email and password to continue."
+      footer={
+        <>
+          No account?{" "}
+          <Link to="/auth/signup" className="font-medium text-primary hover:underline">
+            Request access
+          </Link>
+        </>
+      }
+    >
+      <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
+        <AuthError message={error} />
+
+        {timedOut && !error && (
+          <p className="rounded-md border border-warning/30 bg-warning-soft px-3 py-2 text-sm text-foreground">
+            You were signed out because the session was idle. Sign in to continue.
+          </p>
+        )}
+
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="email">Email</Label>
+          <Input
+            id="email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@company.com"
+            autoComplete="email"
+            autoFocus
+            required
+          />
         </div>
-        <form onSubmit={onSubmit} className="p-6 pt-0 space-y-4">
-          {error && <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded p-2">{error}</div>}
-          <div className="space-y-1">
-            <div className="text-xs text-slate-600">Email</div>
-            <Input value={email} onChange={e=> setEmail(e.target.value)} type="email" placeholder="you@company.com" required />
+
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-baseline justify-between gap-2">
+            <Label htmlFor="password">Password</Label>
+            <Link to="/auth/forgot" className="text-xs text-muted-foreground hover:text-foreground hover:underline">
+              Forgot password?
+            </Link>
           </div>
-          <div className="space-y-1">
-            <div className="text-xs text-slate-600">Password</div>
-            <Input value={password} onChange={e=> setPassword(e.target.value)} type="password" placeholder="••••••••" required />
-          </div>
-          <Button type="submit" className="w-full">Sign In</Button>
-          <div className="flex items-center justify-between text-sm text-slate-600">
-            <Link to="/auth/forgot" className="text-[#5F33FF] hover:underline">Forgot password?</Link>
-            <span>No account? <Link to="/auth/signup" className="text-[#5F33FF] hover:underline">Request access</Link></span>
-          </div>
-        </form>
-      </div>
-    </div>
+          <Input
+            id="password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+            autoComplete="current-password"
+            required
+          />
+        </div>
+
+        <Button type="submit" className="mt-1 w-full" disabled={submitting}>
+          {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />}
+          {submitting ? "Signing in…" : "Sign in"}
+        </Button>
+      </form>
+    </AuthShell>
   );
 };
 

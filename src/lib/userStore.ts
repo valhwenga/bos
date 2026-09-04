@@ -1,3 +1,18 @@
+/**
+ * The signed-in user's local profile, and attendance.
+ *
+ * Attendance is in Postgres: it was per browser, which made it useless as a
+ * record — signing in on a second machine started a separate day, and nobody
+ * but that person could see any of it. A person now sees their own days and HR
+ * sees everyone's.
+ *
+ * The display preferences below stay local on purpose. They are per-device
+ * conveniences, not company data.
+ */
+
+import { AttendanceRepo } from "./hrmRepo";
+import { createCache } from "./collectionCache";
+
 export type User = {
   id: string;
   name: string;
@@ -22,33 +37,41 @@ const DEFAULT_USER: User = { id: "u_1", name: "User" };
 
 function today(): string { return new Date().toISOString().slice(0,10); }
 
+export const attendanceCache = createCache<AttendanceEntry>(async () =>
+  (await AttendanceRepo.list()).map((row) => ({
+    date: row.date,
+    clockIn: row.clockIn,
+    clockOut: row.clockOut,
+  })),
+);
+
 export const UserStore = {
-  get(): User { return r<User>(K.user, DEFAULT_USER); },
-  set(u: User) { w(K.user, u); return u; },
-  update(patch: Partial<User>) { const cur = this.get(); const next = { ...cur, ...patch }; return this.set(next); },
-  attendance(): AttendanceEntry[] { return r<AttendanceEntry[]>(K.attendance, []); },
-  setAttendance(a: AttendanceEntry[]) { w(K.attendance, a); return a; },
-  clockIn() {
-    const date = today();
-    const all = this.attendance();
-    const i = all.findIndex(e => e.date === date);
-    if (i >= 0) {
-      if (!all[i].clockIn) all[i].clockIn = new Date().toISOString();
-    } else {
-      all.push({ date, clockIn: new Date().toISOString() });
-    }
-    this.setAttendance(all);
+  get(): User {
+    return r<User>(K.user, DEFAULT_USER);
   },
-  clockOut() {
-    const date = today();
-    const all = this.attendance();
-    const i = all.findIndex(e => e.date === date);
-    if (i >= 0) {
-      all[i].clockOut = new Date().toISOString();
-    } else {
-      all.push({ date, clockOut: new Date().toISOString() });
-    }
-    this.setAttendance(all);
+  set(u: User) {
+    w(K.user, u);
+    return u;
   },
-  todayStatus(): AttendanceEntry | undefined { return this.attendance().find(e => e.date === today()); },
+  update(patch: Partial<User>) {
+    return this.set({ ...this.get(), ...patch });
+  },
+
+  attendance(): AttendanceEntry[] {
+    return attendanceCache.list();
+  },
+  loadAttendance(): Promise<AttendanceEntry[]> {
+    return attendanceCache.ensureLoaded();
+  },
+
+  async clockIn(): Promise<void> {
+    await attendanceCache.mutate(() => AttendanceRepo.clockIn());
+  },
+  async clockOut(): Promise<void> {
+    await attendanceCache.mutate(() => AttendanceRepo.clockOut());
+  },
+
+  todayStatus(): AttendanceEntry | undefined {
+    return this.attendance().find((e) => e.date === today());
+  },
 };

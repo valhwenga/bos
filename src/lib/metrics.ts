@@ -3,7 +3,7 @@ import { UserStore } from "./userStore";
 import { HRMStore } from "./hrmStore";
 import { HRMDepartmentsStore } from "./hrmDepartmentsStore";
 import { SupportStore, type Ticket } from "./supportStore";
-import { CRMStore } from "./crmStore";
+import { CrmDealsStore } from "./crmDealsStore";
 import { ProjectStore } from "./projectStore";
 import { AccountingStore } from "./accountingStore";
 import { useEffect, useMemo, useState } from "react";
@@ -23,7 +23,7 @@ function unique<T>(arr: T[]): T[] { return Array.from(new Set(arr)); }
 
 function scopeDepartmentIds(): string[] | undefined {
   const role = getCurrentRole();
-  const user = UserStore.get() as any;
+  const user = UserStore.get();
   // If user has explicit managedDepartmentIds, use them. Otherwise fallback to their own department if present.
   const managed: string[] | undefined = user?.managedDepartmentIds;
   const ownDeptId: string | undefined = user?.departmentId;
@@ -59,7 +59,10 @@ export function computeMetrics(): DashboardMetrics {
   const slaRate = withSla ? Math.round((slaHit / withSla) * 100) : 100;
 
   const projects = ProjectStore.listProjects().length;
-  const deals = CRMStore.list().length;
+  // Was CRMStore, a second deals store that wrote the same localStorage key
+  // with an incompatible stage vocabulary, so the dashboard count and the CRM
+  // board could disagree.
+  const deals = CrmDealsStore.list().length;
   const invoices = AccountingStore.listInvoices().length;
 
   return {
@@ -99,16 +102,17 @@ export function useDashboardMetrics(): DashboardMetrics {
     const onFocus = () => setTick((x) => x + 1);
     window.addEventListener("focus", onFocus);
     const onProfile = () => setTick((x) => x + 1);
-    window.addEventListener("user-profile-changed", onProfile as any);
+    window.addEventListener("user-profile-changed", onProfile as EventListener);
 
     return () => {
       window.removeEventListener("storage", onStorage);
       window.removeEventListener("focus", onFocus);
-      window.removeEventListener("user-profile-changed", onProfile as any);
+      window.removeEventListener("user-profile-changed", onProfile as EventListener);
       window.clearInterval(id);
     };
   }, []);
 
   // recompute when tick changes
-  return useMemo(() => computeMetrics(), [tick]);
+  void tick;
+  return computeMetrics();
 }

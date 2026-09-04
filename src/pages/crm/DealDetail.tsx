@@ -1,7 +1,12 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useCache } from "@/lib/collectionCache";
+import { leadsCache } from "@/lib/crmLeadsStore";
+import { dealsCache } from "@/lib/crmDealsStore";
+import { crmCustomersCache } from "@/lib/crmCustomersStore";
+import { crmTasksCache } from "@/lib/crmTasksStore";
 import { useNavigate, useParams } from "react-router-dom";
 import { CrmDealsStore, type Deal, type DealStage, type DealComment } from "@/lib/crmDealsStore";
-import { UsersStore } from "@/lib/usersStore";
+import { useAccounts, useStaffAccounts } from "@/lib/useAccounts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -17,15 +22,23 @@ const STAGES: { key: DealStage; title: string }[] = [
 ];
 
 const DealDetail = () => {
+  // Rows come from Postgres via caches, so this re-renders when they arrive.
+  useCache(leadsCache);
+  useCache(dealsCache);
+  useCache(crmCustomersCache);
+  useCache(crmTasksCache);
   const { id } = useParams();
   const nav = useNavigate();
-  const users = UsersStore.list();
+  const users = useAccounts();
+  const staff = useStaffAccounts();
   const me = users[0]?.id || "me";
   const [d, setD] = useState<Deal | undefined>(undefined);
   const [note, setNote] = useState("");
 
-  const refresh = () => setD(id ? CrmDealsStore.get(id) : undefined);
-  useEffect(()=> { refresh(); }, [id]);
+  const refresh = useCallback(() => {
+    setD(id ? CrmDealsStore.get(id) : undefined);
+  }, [id]);
+  useEffect(()=> { refresh(); }, [refresh]);
 
   if (!d) return (
     <div className="p-6">
@@ -34,8 +47,8 @@ const DealDetail = () => {
     </div>
   );
 
-  const update = (patch: Partial<Deal>) => { const next = { ...d, ...patch, updatedAt: new Date().toISOString() } as Deal; CrmDealsStore.upsert(next); setD(next); };
-  const addComment = () => { if (!note.trim()) return; CrmDealsStore.addComment(d.id, { id: Math.random().toString(36).slice(2), ts: new Date().toISOString(), authorId: me, text: note }); setNote(""); refresh(); };
+  const update = (patch: Partial<Deal>) => { const next = { ...d, ...patch, updatedAt: new Date().toISOString() } as Deal; void CrmDealsStore.upsert(next); setD(next); };
+  const addComment = () => { if (!note.trim()) return; void CrmDealsStore.addComment(d.id, { id: Math.random().toString(36).slice(2), ts: new Date().toISOString(), authorId: me, text: note }); setNote(""); refresh(); };
 
   return (
     <div className="p-6 space-y-4">
@@ -44,7 +57,17 @@ const DealDetail = () => {
           <CardTitle>Deal Detail</CardTitle>
           <div className="flex items-center gap-2">
             {canAccess('crm','full') && (
-              <Button variant="destructive" onClick={()=> { CrmDealsStore.remove(d.id); nav(-1); }}>Delete</Button>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  const ok = window.confirm("Delete this deal? This action cannot be undone.");
+                  if (!ok) return;
+                  void CrmDealsStore.remove(d.id);
+                  nav(-1);
+                }}
+              >
+                Delete
+              </Button>
             )}
             <Button variant="secondary" onClick={()=> nav(-1)}>Back</Button>
           </div>
@@ -82,7 +105,7 @@ const DealDetail = () => {
                 <SelectTrigger><SelectValue placeholder="Assign" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="unassigned">Unassigned</SelectItem>
-                  {users.map(u=> <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+                  {staff.map(u=> <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

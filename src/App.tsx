@@ -16,20 +16,21 @@ import ProjectReport from "./pages/projects/Report";
 import ProjectDetails from "./pages/projects/Details";
 import UserRole from "./pages/UserRole";
 import ManageUsers from "./pages/users/ManageUsers";
+import Clients from "./pages/users/Clients";
+import AuditLogs from "./pages/users/AuditLogs";
 import UserProfile from "./pages/users/Profile";
 import HRMEmployees from "./pages/HRMEmployees";
 import HRMDepartments from "./pages/HRMDepartments";
 import HRMAttendance from "./pages/HRMAttendance";
 import HRMLeave from "./pages/HRMLeave";
 import HRMPayroll from "./pages/HRMPayroll";
+import HRMPayrollManage from "./pages/HRMPayrollManage";
 import HRMPerformance from "./pages/HRMPerformance";
 import NotFound from "./pages/NotFound";
-import Placeholder from "./pages/Placeholder";
 import Quotations from "./pages/accounting/Quotations";
 import Invoices from "./pages/accounting/Invoices";
 import Customers from "./pages/accounting/Customers";
 import Products from "./pages/accounting/Products";
-import Taxes from "./pages/accounting/Taxes";
 import Payments from "./pages/accounting/Payments";
 import Expenses from "./pages/accounting/Expenses";
 import Reports from "./pages/accounting/Reports";
@@ -38,15 +39,18 @@ import Sales from "./pages/accounting/Sales";
 import CreditNotes from "./pages/accounting/CreditNotes";
 import Recurring from "./pages/accounting/Recurring";
 import { UserStore } from "./lib/userStore";
+import { installFailureReporting } from "./lib/reportFailures";
+import { AuthStore } from "./lib/authStore";
 import AccessGuard from "@/components/auth/AccessGuard";
-import { getCurrentRole } from "@/lib/accessControl";
+import { getSession } from "@/lib/session";
 import SupportTickets from "./pages/support/Tickets";
 import SupportTicketDetail from "./pages/support/TicketDetail";
 import SupportSettings from "./pages/support/Settings";
 import SupportDashboard from "./pages/support/Dashboard";
 import ClientPortalSupport from "./pages/portal/support/ClientTickets";
-import EmailInbox from "./pages/email/Inbox";
 import EmailSent from "./pages/email/Sent";
+import EmailInbox from "./pages/email/Inbox";
+import EmailInboundMessage from "./pages/email/InboundMessage";
 import EmailCompose from "./pages/email/Compose";
 import EmailMessage from "./pages/email/Message";
 import EmailSettings from "./pages/settings/EmailSettings";
@@ -54,6 +58,7 @@ import MessengerConversations from "./pages/messenger/Conversations";
 import MessengerChat from "./pages/messenger/Chat";
 import InvoicePrint from "./pages/accounting/InvoicePrint";
 import QuotationPrint from "./pages/accounting/QuotationPrint";
+import DataExport from "./pages/DataExport";
 import CrmLeads from "./pages/crm/Leads";
 import CrmLeadDetail from "./pages/crm/LeadDetail";
 import CrmCustomers from "./pages/crm/Customers";
@@ -64,33 +69,51 @@ import CrmReports from "./pages/crm/Reports";
 import CrmCustomerDetail from "./pages/crm/CustomerDetail";
 import { ProjectStore } from "./lib/projectStore";
 import { CrmTasksStore } from "./lib/crmTasksStore";
-import { notify } from "./lib/notificationsStore";
+import { notify, subscribeToNotifications } from "./lib/notificationsStore";
 import { RecurringStore } from "./lib/recurringStore";
 import { AccountingStore } from "./lib/accountingStore";
 import { EmailStore } from "./lib/emailStore";
+import { clearLegacyBackups } from "./lib/dataExport";
+import { Invoice } from "./lib/accountingStore";
 import { CompanySettingsStore } from "./lib/companySettings";
+import { allocateNumber } from "./lib/documentNumbers";
 import Login from "./pages/auth/Login";
 import Signup from "./pages/auth/Signup";
 import InviteAccept from "./pages/auth/InviteAccept";
 import Protected from "@/components/auth/Protected";
+import AuthProvider from "@/components/auth/AuthProvider";
+import AwaitingApproval from "./pages/auth/AwaitingApproval";
+import TwoFactorChallenge from "./pages/auth/TwoFactorChallenge";
 import PendingApprovals from "./pages/auth/PendingApprovals";
 import ForgotPassword from "./pages/auth/ForgotPassword";
 import ResetPassword from "./pages/auth/ResetPassword";
-import WhatsAppSettingsPage from "./pages/whatsapp/Settings";
-import WaConsole from "./pages/whatsapp/Console";
 
 const queryClient = new QueryClient();
 
+type SimplePdf = {
+  setFontSize: (size: number) => void;
+  text: (text: string, x: number, y: number) => void;
+  output: (type: "datauristring") => string;
+};
+
 const App = () => {
   useEffect(() => {
+    // A write that fails without being handled where it was made still has to
+    // be visible; see reportFailures.
+    installFailureReporting();
     // Simple clock-in when the app mounts (user session starts)
-    UserStore.clockIn();
+    void UserStore.clockIn();
+    // Clear any SMTP password a previous version left in this browser.
+    try { EmailStore.clearLegacyLocalMail(); } catch { void 0; }
+    // The old backup panel stored snapshots inside localStorage, each one
+    // containing the previous, so they doubled every time. Reclaim the quota.
+    clearLegacyBackups();
     const onBeforeUnload = () => {
-      try { UserStore.clockOut(); } catch {}
+      void UserStore.clockOut().catch(() => undefined);
     };
     const onVis = () => {
       if (document.visibilityState === "hidden") {
-        try { UserStore.clockOut(); } catch {}
+        void UserStore.clockOut().catch(() => undefined);
       }
     };
     window.addEventListener("beforeunload", onBeforeUnload);
@@ -99,63 +122,98 @@ const App = () => {
     let idleTimer: number | undefined;
     const resetTimer = () => {
       if (idleTimer) window.clearTimeout(idleTimer);
-      const role = getCurrentRole();
-      const mins = role.security?.sessionTimeoutMinutes ?? 0;
+      // The timeout is a property of the role, and now comes from the server
+      // with the rest of the session rather than from local role data.
+      const mins = getSession().sessionTimeoutMinutes ?? 0;
       if (mins > 0) {
         idleTimer = window.setTimeout(() => {
-          try { UserStore.clockOut(); } catch {}
+          // This used to clock the user out of attendance and stop there, so
+          // the session stayed valid and an unattended machine kept payroll and
+          // banking open. A session timeout has to end the session.
+          void UserStore.clockOut().catch(() => undefined);
+          // Await the sign-out before navigating, or the request to revoke the
+          // token is cancelled by the reload and the session stays alive.
+          void AuthStore.signOut()
+            .catch(() => undefined)
+            .finally(() => window.location.replace("/auth/login?reason=timeout"));
         }, mins * 60 * 1000);
       }
     };
     const activity = () => resetTimer();
-    ["mousemove","keydown","scroll","click"].forEach(evt => window.addEventListener(evt, activity, { passive: true } as any));
+    ["mousemove","keydown","scroll","click"].forEach((evt) => {
+      window.addEventListener(evt, activity, { passive: true });
+    });
     resetTimer();
     return () => {
       window.removeEventListener("beforeunload", onBeforeUnload);
       document.removeEventListener("visibilitychange", onVis);
-      ["mousemove","keydown","scroll","click"].forEach(evt => window.removeEventListener(evt, activity as any));
+      ["mousemove","keydown","scroll","click"].forEach((evt) => {
+        window.removeEventListener(evt, activity);
+      });
       if (idleTimer) window.clearTimeout(idleTimer);
     };
   }, []);
 
-  // Recurring Invoices: auto-generate and auto-send with attachment
+  // Recurring Invoices: auto-generate and auto-send with attachment.
+  //
+  // This matched templates whose nextRunAt fell within +/- 60 seconds of the
+  // tick, which meant a period was billed only if somebody happened to have the
+  // app open at that exact minute — and a missed window was missed permanently,
+  // because nextRunAt still advanced afterwards.
+  //
+  // It now generates every occurrence that is due, so reopening the app catches
+  // up on anything missed. The authoritative version of this is
+  // generate_due_recurring_invoices() in Postgres, which runs hourly whether or
+  // not anyone is signed in; this stays until the stores move over.
   useEffect(() => {
-    const windowMs = 60 * 1000; // 1 minute window
+    // A template left unrun for a long time should catch up, but a
+    // misconfigured one must not emit hundreds of invoices in one pass.
+    const MAX_PER_TEMPLATE_PER_PASS = 12;
     const run = async () => {
       const now = Date.now();
       const list = RecurringStore.list().filter(t => t.active);
       for (const t of list) {
         if (!t.nextRunAt) continue;
-        const at = new Date(t.nextRunAt).getTime();
-        if (Math.abs(now - at) <= windowMs) {
+        let cursor = { ...t };
+        let generated = 0;
+        while (
+          cursor.nextRunAt &&
+          new Date(cursor.nextRunAt).getTime() <= now &&
+          (!cursor.endDate || new Date(cursor.nextRunAt) <= new Date(cursor.endDate)) &&
+          generated < MAX_PER_TEMPLATE_PER_PASS
+        ) {
+          generated += 1;
+          const t = cursor;
           // Generate invoice dated at run date/time
-          const num = `${t.seqPrefix || 'INV-'}${String(t.nextNumber || 1).padStart(4,'0')}`;
+          // Recurring invoices draw from the same series as manual ones.
+          // Each template used to keep its own counter starting at 1 with a
+          // default 'INV-' prefix, so two templates both produced INV-0001,
+          // and neither series knew about manually created invoices.
+          const num = await allocateNumber('invoice');
           const inv = {
-            id: `inv_${Date.now()}`,
+            id: `inv_${Date.now()}_${generated}`,
             number: num,
             customer: t.customer,
             items: t.items,
             status: "sent" as const,
-            createdAt: new Date().toISOString(),
+            // Dated to the period it bills, not the moment it was caught up.
+            createdAt: t.nextRunAt as string,
             useShippingAddress: false,
           };
-          AccountingStore.upsertInvoice(inv as any);
-          // Advance template schedule
-          RecurringStore.upsert({ ...t, lastRunAt: new Date().toISOString(), nextRunAt: RecurringStore.computeNextRun(t), nextNumber: (t.nextNumber || 1) + 1 });
+          await AccountingStore.upsertInvoice(inv as Invoice);
+          // Advance the cursor so the loop terminates and the next iteration
+          // bills the following period.
+          cursor = { ...t, lastRunAt: new Date().toISOString(), nextRunAt: RecurringStore.computeNextRun(t) };
           // Auto-send email with generic subject and PDF attachment (company template reused conceptually)
           if (t.autoSend && t.customer.email) {
             const cs = CompanySettingsStore.get();
             const subject = `Invoice ${inv.number} from ${cs.name || 'Our Company'}`;
             const body = `Dear ${t.customer.name},\n\nPlease find attached your invoice ${inv.number}.\n\nRegards,\n${cs.name || 'Our Company'}`;
-            // Build a simple PDF using jsPDF
-            const ensureScript = (src: string) => new Promise<void>((resolve, reject) => {
-              const s = document.createElement('script'); s.src = src; s.async = true; s.onload = () => resolve(); s.onerror = () => reject(new Error('Failed to load '+src)); document.head.appendChild(s);
-            });
-            const w: any = window as any;
-            if (!(w.jspdf || w.jspdf_esm || w.jspdfjs)) {
-              try { await ensureScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js'); } catch {}
-            }
-            const { jsPDF } = (w.jspdf || w.jspdf_esm || w.jspdfjs) as any;
+            // jsPDF is a dependency, so it is bundled and works offline. This
+            // used to pull 2.5.1 from a CDN while the bundle carried 4.x, and
+            // swallowed a failed load before destructuring the global — so a
+            // blocked CDN raised a TypeError instead of reporting anything.
+            const { jsPDF } = await import('jspdf');
             const pdf = new jsPDF('p','mm','a4');
             let y = 15;
             pdf.setFontSize(16); pdf.text(`Invoice ${inv.number}`, 15, y); y += 8;
@@ -163,49 +221,60 @@ const App = () => {
             pdf.text(`Bill To: ${t.customer.name}`, 15, y); y += 8;
             pdf.setFontSize(12); pdf.text('Items', 15, y); y += 6; pdf.setFontSize(11);
             let total = 0;
-            t.items.forEach((it: any) => { const line = `${it.name}  ${it.qty} x ${it.price.toFixed(2)}`; pdf.text(line, 20, y); y += 6; total += (it.qty||0)*(it.price||0); });
+            t.items.forEach((it) => { const line = `${it.name}  ${it.qty} x ${it.price.toFixed(2)}`; pdf.text(line, 20, y); y += 6; total += (it.qty||0)*(it.price||0); });
             y += 4; pdf.text(`Total: ${total.toFixed(2)} ${cs.currencyCode || ''}`, 15, y);
             const dataUrl = pdf.output('datauristring');
-            await EmailStore.send({
-              from: { name: cs.name || 'Billing', email: cs.email || 'noreply@example.com' },
-              to: [{ name: t.customer.name, email: t.customer.email }],
-              subject,
-              body,
-              attachments: [{ id: `att_${Date.now()}`, name: `${inv.number}.pdf`, type: 'application/pdf', size: dataUrl.length, dataUrl }],
-            } as any);
+            // This used to call a simulated send that wrote to localStorage and
+            // returned, after which the schedule advanced — so the period was
+            // marked billed and the customer never received anything.
+            //
+            // Caught rather than thrown: the invoice has already been created,
+            // and letting a mail failure abort the sweep would leave the
+            // schedule unadvanced and bill the period again on the next run.
+            // The failure is recorded in the sent log with the server's reason.
+            try {
+              await EmailStore.send({
+                to: [{ name: t.customer.name, email: t.customer.email }],
+                subject,
+                body,
+                module: 'accounting',
+                attachments: [{
+                  filename: `${inv.number}.pdf`,
+                  contentBase64: dataUrl.split(',')[1],
+                  contentType: 'application/pdf',
+                }],
+              });
+            } catch (err) {
+              console.error(`Invoice ${inv.number} was generated but could not be emailed:`, err);
+            }
           }
         }
+        if (generated > 0) await RecurringStore.upsert(cursor);
       }
     };
-    const id = window.setInterval(run, 60 * 1000);
-    window.addEventListener('acct.recurring-changed', run as any);
+    // Hourly, plus on focus and on template changes. The old one-minute tick
+    // existed only because it had to catch an exact moment; generating whatever
+    // is due removes that need.
+    const id = window.setInterval(run, 60 * 60 * 1000);
+    window.addEventListener('acct.recurring-changed', run as EventListener);
     window.addEventListener('focus', run);
     run();
-    return () => { window.clearInterval(id); window.removeEventListener('acct.recurring-changed', run as any); window.removeEventListener('focus', run); };
+    return () => { window.clearInterval(id); window.removeEventListener('acct.recurring-changed', run as EventListener); window.removeEventListener('focus', run); };
   }, []);
 
   useEffect(() => {
-    const read = (k: string, fb: any) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch { return fb; } };
-    const write = (k: string, v: any) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+    const read = <T,>(k: string, fb: T): T => { try { const v = localStorage.getItem(k); return v ? (JSON.parse(v) as T) : fb; } catch { return fb; } };
+    const write = (k: string, v: unknown) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { void 0; } };
     const KEY = "proj.reminders.sent";
-    const ensurePermission = async () => {
-      if (typeof Notification !== "undefined" && Notification.permission === "default") {
-        try { await Notification.requestPermission(); } catch {}
-      }
-    };
-    ensurePermission();
-
-    const notify = (title: string, body: string) => {
-      if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-        try { new Notification(title, { body }); return; } catch {}
-      }
-      try { alert(`${title}\n\n${body}`); } catch {}
-    };
+    // Don't request permission automatically - requires user gesture
+    // Permission will be requested when user interacts with notification features
 
     const tick = () => {
       const sent = read(KEY, {} as Record<string, { w?: boolean; d?: boolean; h?: boolean }>);
       const now = Date.now();
       const windowMs = 60 * 1000; // 1 minute window
+      const projects = ProjectStore.listProjects();
+      const tasks = ProjectStore.listTasks();
       ProjectStore.listEvents().forEach(ev => {
         if (!ev.startAt) return;
         const t = new Date(ev.startAt).getTime();
@@ -219,7 +288,30 @@ const App = () => {
           if (Math.abs(now - at) <= windowMs) {
             const rec = sent[ev.id] || {};
             if (!rec[tag]) {
-              notify(`Upcoming ${ev.type || "event"}: ${ev.title}`, `Starts in ${label} at ${new Date(t).toLocaleString()}`);
+              const msgTitle = `Upcoming ${ev.type || "event"}: ${ev.title}`;
+              const msgBody = `Starts in ${label} at ${new Date(t).toLocaleString()}`;
+
+              // Route to an assignee when event is tied to a project or a task
+              let assigneeId: string | undefined;
+              let link: string | undefined;
+
+              if (ev.id.startsWith('ev_task_due_')) {
+                const taskId = ev.id.slice('ev_task_due_'.length);
+                const task = tasks.find(x => x.id === taskId);
+                assigneeId = task?.assignedToUserId;
+                link = '/projects/tasks';
+              } else {
+                const project = ev.projectId ? projects.find(p => p.id === ev.projectId) : undefined;
+                assigneeId = project?.assignedToUserId;
+                link = ev.projectId ? `/projects/${ev.projectId}` : undefined;
+              }
+
+              // Only the assignee. This used to also raise a desktop
+              // notification — or a blocking alert() — on whoever happened to
+              // have the app open, for a deadline that was not theirs.
+              if (assigneeId) {
+                void notify(assigneeId, "ticket", msgTitle, msgBody, link);
+              }
               sent[ev.id] = { ...rec, [tag]: true };
             }
           }
@@ -228,43 +320,44 @@ const App = () => {
       write(KEY, sent);
     };
     const id = window.setInterval(tick, 60 * 1000);
-    window.addEventListener('proj.events-changed', tick as any);
+    window.addEventListener('proj.events-changed', tick as EventListener);
     window.addEventListener('focus', tick);
     tick();
     return () => {
       window.clearInterval(id);
-      window.removeEventListener('proj.events-changed', tick as any);
+      window.removeEventListener('proj.events-changed', tick as EventListener);
       window.removeEventListener('focus', tick);
     };
   }, []);
 
+  // A desktop notification when one arrives for you.
+  //
+  // This used to listen for a window event that fired in the *sender's* tab,
+  // and guarded it by comparing the recipient against `UserStore.get().id` —
+  // a local profile that defaults to "u_1" and is unrelated to the signed-in
+  // account, so the comparison was meaningless. It also fell back to a
+  // blocking `alert()` when permission had not been granted, which is a modal
+  // dialog raised by somebody else's action.
+  //
+  // The subscription only ever delivers rows addressed to you, so there is
+  // nothing left to filter. No permission, no desktop notification — the bell
+  // in the header is the one that always works.
   useEffect(() => {
-    const ensurePermission = async () => {
-      if (typeof Notification !== "undefined" && Notification.permission === "default") {
-        try { await Notification.requestPermission(); } catch {}
+    const unsubscribe = subscribeToNotifications((n) => {
+      if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+      try {
+        new Notification(n.title, { body: n.description ?? "" });
+      } catch {
+        void 0;
       }
-    };
-    ensurePermission();
-    const onNotify = (e: Event) => {
-      const anyE = e as CustomEvent<any>;
-      const n = anyE.detail as { title: string; description?: string; userId?: string } | undefined;
-      if (!n) return;
-      try { const cur = UserStore.get(); if (n.userId && cur?.id && n.userId !== cur.id) return; } catch {}
-      const title = n.title;
-      const body = n.description || "";
-      if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-        try { new Notification(title, { body }); return; } catch {}
-      }
-      try { alert(`${title}${body ? `\n\n${body}` : ""}`); } catch {}
-    };
-    window.addEventListener("app:notify", onNotify as EventListener);
-    return () => window.removeEventListener("app:notify", onNotify as EventListener);
+    });
+    return unsubscribe;
   }, []);
 
   // CRM Tasks: auto due reminders (1 day / 1 hour before)
   useEffect(() => {
-    const read = (k: string, fb: any) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch { return fb; } };
-    const write = (k: string, v: any) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+    const read = <T,>(k: string, fb: T): T => { try { const v = localStorage.getItem(k); return v ? (JSON.parse(v) as T) : fb; } catch { return fb; } };
+    const write = (k: string, v: unknown) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { void 0; } };
     const KEY = "crm.tasks.reminders.sent";
     const windowMs = 60 * 1000; // 1 minute window
     const tick = () => {
@@ -272,15 +365,15 @@ const App = () => {
       const now = Date.now();
       CrmTasksStore.list().filter(t => !!t.assigneeId && !!t.dueAt && !t.completed).forEach(t => {
         const due = new Date(t.dueAt as string).getTime();
-        const plan: Array<["d"|"h", number, string]> = [
-          ["d", due - 24*60*60*1000, "1 day"],
-          ["h", due - 60*60*1000,    "1 hour"],
+        const plan: Array<["d" | "h", number, string]> = [
+          ["d", due - 24 * 60 * 60 * 1000, "1 day"],
+          ["h", due - 60 * 60 * 1000, "1 hour"],
         ];
         plan.forEach(([tag, at, label]) => {
           if (Math.abs(now - at) <= windowMs) {
             const rec = sent[t.id] || {};
             if (!rec[tag]) {
-              notify(t.assigneeId as string, 'message', `Task due ${label}: ${t.title}`, `Due at ${new Date(due).toLocaleString()}`, '/crm/tasks');
+              void notify(t.assigneeId as string, 'message', `Task due ${label}: ${t.title}`, `Due at ${new Date(due).toLocaleString()}`, '/crm/tasks');
               sent[t.id] = { ...rec, [tag]: true };
             }
           }
@@ -289,18 +382,19 @@ const App = () => {
       write(KEY, sent);
     };
     const id = window.setInterval(tick, 60 * 1000);
-    window.addEventListener('crm.tasks-changed', tick as any);
+    window.addEventListener('proj.events-changed', tick as EventListener);
     window.addEventListener('focus', tick);
     tick();
     return () => {
       window.clearInterval(id);
-      window.removeEventListener('crm.tasks-changed', tick as any);
+      window.removeEventListener('proj.events-changed', tick as EventListener);
       window.removeEventListener('focus', tick);
     };
   }, []);
 
   return (
   <QueryClientProvider client={queryClient}>
+    <AuthProvider>
     <TooltipProvider>
       <Toaster />
       <Sonner />
@@ -310,9 +404,10 @@ const App = () => {
           <Route path="/auth/login" element={<Login />} />
           <Route path="/auth/signup" element={<Signup />} />
           <Route path="/auth/invite" element={<InviteAccept />} />
-          <Route path="/auth/pending-approvals" element={<Protected><PendingApprovals /></Protected>} />
           <Route path="/auth/forgot" element={<ForgotPassword />} />
           <Route path="/auth/reset" element={<ResetPassword />} />
+          <Route path="/auth/pending" element={<AwaitingApproval />} />
+          <Route path="/auth/two-factor" element={<TwoFactorChallenge />} />
 
           {/* App routes (protected) with layout */}
           <Route path="/" element={<Protected><Layout /></Protected>}>
@@ -321,18 +416,19 @@ const App = () => {
             <Route path="hrm/employees" element={<AccessGuard module="hrm.employees"><HRMEmployees /></AccessGuard>} />
             <Route path="hrm/departments" element={<AccessGuard module="hrm.departments"><HRMDepartments /></AccessGuard>} />
             <Route path="hrm/attendance" element={<AccessGuard module="hrm.attendance"><HRMAttendance /></AccessGuard>} />
-            <Route path="hrm/leave" element={<AccessGuard module="hrm.attendance"><HRMLeave /></AccessGuard>} />
+            <Route path="hrm/leave" element={<AccessGuard module="hrm.leave"><HRMLeave /></AccessGuard>} />
             <Route path="hrm/payroll" element={<AccessGuard module="hrm.payroll"><HRMPayroll /></AccessGuard>} />
+            <Route path="hrm/payroll/manage" element={<AccessGuard module="hrm.payroll"><HRMPayrollManage /></AccessGuard>} />
             <Route path="hrm/performance" element={<AccessGuard module="hrm.performance"><HRMPerformance /></AccessGuard>} />
-            <Route path="projects" element={<Projects />} />
-            <Route path="projects/:id" element={<ProjectDetails />} />
-            <Route path="projects/tasks" element={<ProjectTasks />} />
-            <Route path="projects/timesheet" element={<ProjectTimesheet />} />
-            <Route path="projects/bug" element={<ProjectBug />} />
-            <Route path="projects/calendar" element={<ProjectCalendar />} />
-            <Route path="projects/tracker" element={<ProjectTracker />} />
-            <Route path="projects/report" element={<ProjectReport />} />
-            <Route path="users/role" element={<UserRole />} />
+            <Route path="projects" element={<AccessGuard module="projects"><Projects /></AccessGuard>} />
+            <Route path="projects/:id" element={<AccessGuard module="projects"><ProjectDetails /></AccessGuard>} />
+            <Route path="projects/tasks" element={<AccessGuard module="projects"><ProjectTasks /></AccessGuard>} />
+            <Route path="projects/timesheet" element={<AccessGuard module="projects"><ProjectTimesheet /></AccessGuard>} />
+            <Route path="projects/bug" element={<AccessGuard module="projects"><ProjectBug /></AccessGuard>} />
+            <Route path="projects/calendar" element={<AccessGuard module="projects"><ProjectCalendar /></AccessGuard>} />
+            <Route path="projects/tracker" element={<AccessGuard module="projects"><ProjectTracker /></AccessGuard>} />
+            <Route path="projects/report" element={<AccessGuard module="projects"><ProjectReport /></AccessGuard>} />
+            <Route path="users/role" element={<AccessGuard module="settings"><UserRole /></AccessGuard>} />
             {/* Accounting */}
             <Route path="accounting" element={<Navigate to="/accounting/quotations" replace />} />
             <Route path="accounting/quotations" element={<AccessGuard module="accounting"><Quotations /></AccessGuard>} />
@@ -351,7 +447,6 @@ const App = () => {
             {/* More accounting */}
             <Route path="accounting/customers" element={<AccessGuard module="accounting"><Customers /></AccessGuard>} />
             <Route path="accounting/products" element={<AccessGuard module="accounting"><Products /></AccessGuard>} />
-            <Route path="accounting/taxes" element={<AccessGuard module="accounting"><Taxes /></AccessGuard>} />
             <Route path="accounting/payments" element={<AccessGuard module="accounting"><Payments /></AccessGuard>} />
             <Route path="accounting/sales" element={<AccessGuard module="accounting"><Sales /></AccessGuard>} />
             <Route path="accounting/credits" element={<AccessGuard module="accounting"><CreditNotes /></AccessGuard>} />
@@ -359,32 +454,37 @@ const App = () => {
             <Route path="accounting/expenses" element={<AccessGuard module="accounting"><Expenses /></AccessGuard>} />
             <Route path="accounting/reports" element={<AccessGuard module="accounting"><Reports /></AccessGuard>} />
             <Route path="accounting/settings" element={<AccessGuard module="settings"><AccountingSettings /></AccessGuard>} />
-            <Route path="settings/company" element={<AccountingSettings />} />
+            <Route path="settings/company" element={<AccessGuard module="settings"><AccountingSettings /></AccessGuard>} />
             <Route path="settings/company/email" element={<AccessGuard module="settings"><EmailSettings /></AccessGuard>} />
             {/* Misc */}
-            <Route path="users" element={<ManageUsers />} />
-            <Route path="products" element={<Placeholder />} />
-            <Route path="pos" element={<Placeholder />} />
+            <Route path="users" element={<AccessGuard module="settings"><ManageUsers /></AccessGuard>} />
+            <Route path="users/client" element={<AccessGuard module="settings"><Clients /></AccessGuard>} />
+            <Route path="users/pending" element={<AccessGuard module="settings"><PendingApprovals /></AccessGuard>} />
+            <Route path="users/audit" element={<AccessGuard module="settings"><AuditLogs /></AccessGuard>} />
+            {/* A real products screen already exists under accounting. */}
+            <Route path="products" element={<Navigate to="/accounting/products" replace />} />
             <Route path="support" element={<AccessGuard module="support"><SupportDashboard /></AccessGuard>} />
             <Route path="support/tickets" element={<AccessGuard module="support"><SupportTickets /></AccessGuard>} />
             <Route path="support/tickets/:id" element={<AccessGuard module="support"><SupportTicketDetail /></AccessGuard>} />
             <Route path="support/settings" element={<AccessGuard module="support"><SupportSettings /></AccessGuard>} />
-            <Route path="portal/support" element={<ClientPortalSupport />} />
-            <Route path="zoom" element={<Placeholder />} />
+            <Route path="portal/support" element={<AccessGuard module="support"><ClientPortalSupport /></AccessGuard>} />
             <Route path="messenger" element={<AccessGuard module="messenger"><MessengerConversations /></AccessGuard>} />
             <Route path="messenger/:id" element={<AccessGuard module="messenger"><MessengerChat /></AccessGuard>} />
-            <Route path="email" element={<AccessGuard module="email"><EmailInbox /></AccessGuard>} />
+            <Route path="email" element={<Navigate to="/email/inbox" replace />} />
+            <Route path="email/inbox" element={<AccessGuard module="email"><EmailInbox /></AccessGuard>} />
+            <Route path="email/inbox/:id" element={<AccessGuard module="email"><EmailInboundMessage /></AccessGuard>} />
             <Route path="email/sent" element={<AccessGuard module="email"><EmailSent /></AccessGuard>} />
             <Route path="email/compose" element={<AccessGuard module="email"><EmailCompose /></AccessGuard>} />
             <Route path="email/:id" element={<AccessGuard module="email"><EmailMessage /></AccessGuard>} />
-            {/* WhatsApp */}
-            <Route path="whatsapp/settings" element={<AccessGuard module="whatsapp"><WhatsAppSettingsPage /></AccessGuard>} />
-            <Route path="whatsapp" element={<AccessGuard module="whatsapp"><WaConsole /></AccessGuard>} />
+            <Route path="settings/export" element={<AccessGuard module="settings"><DataExport /></AccessGuard>} />
+            {/* The old Backup & Restore address, kept so bookmarks still land. */}
+            <Route path="backup" element={<Navigate to="/settings/export" replace />} />
             <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>
       </BrowserRouter>
     </TooltipProvider>
+    </AuthProvider>
   </QueryClientProvider>
   );
 };

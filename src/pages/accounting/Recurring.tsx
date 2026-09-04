@@ -1,10 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { toast } from "@/components/ui/use-toast";
+import { useCache } from "@/lib/collectionCache";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { RecurringStore, type RecurringTemplate, type RecurringCadence } from "@/lib/recurringStore";
+import { Pencil, Trash2, Repeat, Play, Pause } from "lucide-react";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatCard } from "@/components/ui/stat-card";
+import { recurringCache, RecurringStore, type RecurringTemplate, type RecurringCadence } from "@/lib/recurringStore";
 import { CustomersStore } from "@/lib/customersStore";
 import { CompanySettingsStore } from "@/lib/companySettings";
 import { AccountingStore } from "@/lib/accountingStore";
@@ -34,7 +40,7 @@ const NewRecurringDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>v
   const computeInitialNextRun = (): string => {
     const base = new Date(`${startDate}T${timeOfDay}:00`);
     const now = Date.now();
-    let t = base;
+    const t = base;
     const advance = () => {
       switch (cadence) {
         case 'weekly': t.setDate(t.getDate()+7); break;
@@ -67,7 +73,7 @@ const NewRecurringDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>v
     }
   }, [open]);
 
-  const save = () => {
+  const save = async () => {
     if (!name.trim() || !customerId || items.length===0) return;
     const customer = customers.find(c=> c.id===customerId)!;
     const nextRunAt = editing?.nextRunAt || computeInitialNextRun();
@@ -90,7 +96,16 @@ const NewRecurringDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>v
       seqPrefix: seqPrefix || undefined,
       nextNumber: nextNumber || 1,
     };
-    RecurringStore.upsert(tpl);
+    try {
+      await RecurringStore.upsert(tpl);
+    } catch (err) {
+      toast({
+        title: "Could not save template",
+        description: err instanceof Error ? err.message : "Nothing was saved.",
+        variant: "destructive",
+      });
+      return;
+    }
     onSaved();
     onOpenChange(false);
   };
@@ -156,7 +171,7 @@ const NewRecurringDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>v
         </div>
         <DialogFooter>
           <Button variant="secondary" onClick={()=> onOpenChange(false)}>Cancel</Button>
-          <Button onClick={save} disabled={!name.trim() || !customerId || items.length===0}>Save</Button>
+          <Button onClick={() => void save()} disabled={!name.trim() || !customerId || items.length===0}>Save</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -165,12 +180,13 @@ const NewRecurringDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>v
 
 const Recurring: React.FC = () => {
   const cs = CompanySettingsStore.get();
-  const [list, setList] = useState(RecurringStore.list());
+  // Rows come from Postgres via a cache, so this re-renders when they arrive.
+  const { rows: list } = useCache(recurringCache);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<RecurringTemplate | undefined>(undefined);
 
   useEffect(() => {
-    const refresh = () => setList(RecurringStore.list());
+    const refresh = () => void recurringCache.refresh();
     const onStorage = (e: StorageEvent) => { if (e.key && e.key.startsWith('acct.recurring')) refresh(); };
     window.addEventListener('acct.recurring-changed', refresh as any);
     window.addEventListener('storage', onStorage);
@@ -194,16 +210,18 @@ const Recurring: React.FC = () => {
       createdAt: new Date().toISOString(),
       useShippingAddress: false,
     };
-    AccountingStore.upsertInvoice(inv as any);
-    RecurringStore.upsert({ ...t, lastRunAt: new Date().toISOString(), nextRunAt: RecurringStore.computeNextRun(t), nextNumber: (t.nextNumber || 1) + 1 });
+    // Awaited: if the invoice does not save, the template must not advance its
+    // schedule, or the period is billed nowhere and never retried.
+    await AccountingStore.upsertInvoice(inv as any);
+    // Also awaited: the invoice exists now, so failing to advance the schedule
+    // would bill the same period again on the next run.
+    await RecurringStore.upsert({ ...t, lastRunAt: new Date().toISOString(), nextRunAt: RecurringStore.computeNextRun(t), nextNumber: (t.nextNumber || 1) + 1 });
     try {
       if (t.autoSend && t.customer.email) {
         const subject = `Invoice ${inv.number} from ${cs.name || 'Our Company'}`;
         const body = `Dear ${t.customer.name},\n\nPlease find attached your invoice ${inv.number}.\n\nRegards,\n${cs.name || 'Our Company'}`;
-        const ensureScript = (src: string) => new Promise<void>((resolve, reject) => { const s = document.createElement('script'); s.src = src; s.async = true; s.onload = () => resolve(); s.onerror = () => reject(new Error('Failed to load '+src)); document.head.appendChild(s); });
-        const w: any = window as any;
-        if (!(w.jspdf || w.jspdf_esm || w.jspdfjs)) { try { await ensureScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js'); } catch {} }
-        const { jsPDF } = (w.jspdf || w.jspdf_esm || w.jspdfjs) as any;
+        // Bundled, so a recurring invoice still sends when the CDN is blocked.
+        const { jsPDF } = await import('jspdf');
         const pdf = new jsPDF('p','mm','a4');
         let y = 15; pdf.setFontSize(16); pdf.text(`Invoice ${inv.number}`, 15, y); y+=8;
         pdf.setFontSize(11); pdf.text(`Date: ${new Date(inv.createdAt).toLocaleDateString()}`, 15, y); y+=6;
@@ -212,60 +230,156 @@ const Recurring: React.FC = () => {
         let tot = 0; t.items.forEach((it:any)=> { pdf.text(`${it.name}  ${it.qty} x ${it.price.toFixed(2)}`, 20, y); y+=6; tot += (it.qty||0)*(it.price||0); });
         y+=4; pdf.text(`Total: ${tot.toFixed(2)} ${cs.currencyCode || ''}`, 15, y);
         const dataUrl = pdf.output('datauristring');
-        await EmailStore.send({ from: { name: cs.name || 'Billing', email: cs.email || 'noreply@example.com' }, to: [{ name: t.customer.name, email: t.customer.email }], subject, body, attachments: [{ id: `att_${Date.now()}`, name: `${inv.number}.pdf`, type: 'application/pdf', size: dataUrl.length, dataUrl }] } as any);
+        // This called a simulated send, so `autoSend` generated the invoice
+        // and emailed nobody. The failure below is reported rather than
+        // swallowed: an invoice the customer never received looks identical to
+        // one they did, and the difference only surfaces when they do not pay.
+        await EmailStore.send({
+          to: [{ name: t.customer.name, email: t.customer.email }],
+          subject,
+          body,
+          module: 'accounting',
+          attachments: [{
+            filename: `${inv.number}.pdf`,
+            contentBase64: dataUrl.split(',')[1],
+            contentType: 'application/pdf',
+          }],
+        });
+        toast({ title: 'Invoice sent', description: `${inv.number} was emailed to ${t.customer.email}.` });
       }
-    } catch {}
-    setList(RecurringStore.list());
+    } catch (err) {
+      toast({
+        title: 'Invoice created but not emailed',
+        description: `${inv.number} was generated and the schedule advanced. ${
+          err instanceof Error ? err.message : 'The mail server refused it.'
+        }`,
+        variant: 'destructive',
+      });
+    }
+    void recurringCache.refresh();
   };
 
-  return (
-    <div className="p-6 space-y-4">
-      <Card className="shadow-[0_10px_0_rgba(0,0,0,0.08)]">
-        <CardHeader className="flex-row items-center justify-between">
-          <CardTitle>Recurring Invoices</CardTitle>
-          <Button onClick={()=> { setEditing(undefined); setOpen(true); }}>New Template</Button>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-lg overflow-hidden border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Cadence</TableHead>
-                  <TableHead>Next Run</TableHead>
-                  <TableHead>Active</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {list.map(t => (
-                  <TableRow key={t.id}>
-                    <TableCell>{t.name}</TableCell>
-                    <TableCell>{t.customer.name}</TableCell>
-                    <TableCell className="capitalize">{t.cadence}{t.cadence==='customDays' ? ` (${t.intervalDays}d)` : ''}</TableCell>
-                    <TableCell>{t.nextRunAt ? new Date(t.nextRunAt).toLocaleString() : '-'}</TableCell>
-                    <TableCell>
-                      <Button size="sm" variant={t.active ? 'secondary' : 'outline'} onClick={()=> { RecurringStore.upsert({ ...t, active: !t.active }); setList(RecurringStore.list()); }}>
-                        {t.active ? 'Pause' : 'Resume'}
-                      </Button>
-                    </TableCell>
-                    <TableCell className="text-right">{cs.currencySymbol}{total(t).toFixed(2)}</TableCell>
-                    <TableCell className="text-right space-x-2">
-                      <Button size="sm" variant="outline" onClick={()=> { setEditing(t); setOpen(true); }}>Edit</Button>
-                      <Button size="sm" onClick={()=> runNow(t)}>Run Now</Button>
-                      <Button size="sm" variant="destructive" onClick={()=> { RecurringStore.remove(t.id); setList(RecurringStore.list()); }}>Delete</Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+  const columns: Column<RecurringTemplate>[] = [
+    { id: "name", header: "Name", sortValue: (t) => t.name, cell: (t) => <span className="font-medium">{t.name}</span> },
+    { id: "customer", header: "Customer", sortValue: (t) => t.customer.name, cell: (t) => t.customer.name },
+    {
+      id: "cadence",
+      header: "Cadence",
+      hideOnMobile: true,
+      sortValue: (t) => t.cadence,
+      cell: (t) => (
+        <span className="capitalize text-muted-foreground">
+          {t.cadence}{t.cadence === "customDays" ? ` (${t.intervalDays}d)` : ""}
+        </span>
+      ),
+    },
+    {
+      id: "next",
+      header: "Next run",
+      sortValue: (t) => t.nextRunAt ?? "",
+      cell: (t) => (t.nextRunAt ? new Date(t.nextRunAt).toLocaleString() : <span className="text-subtle">—</span>),
+    },
+    {
+      id: "status",
+      header: "Status",
+      sortValue: (t) => (t.active ? "active" : "paused"),
+      cell: (t) => (
+        <span className={`inline-flex rounded-sm px-1.5 py-0.5 text-xs font-medium ${t.active ? "bg-success-soft text-success" : "bg-muted text-muted-foreground"}`}>
+          {t.active ? "Active" : "Paused"}
+        </span>
+      ),
+    },
+    {
+      id: "amount",
+      header: "Amount",
+      align: "right",
+      sortValue: total,
+      cell: (t) => <span className="font-medium">{cs.currencySymbol}{total(t).toFixed(2)}</span>,
+    },
+    {
+      id: "actions",
+      header: <span className="sr-only">Actions</span>,
+      align: "right",
+      width: "1%",
+      cell: (t) => (
+        <div className="inline-flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8"
+            onClick={() => {
+              void RecurringStore.upsert({ ...t, active: !t.active }).catch((err: unknown) =>
+                toast({
+                  title: "Could not change the template",
+                  description: err instanceof Error ? err.message : "It is unchanged.",
+                  variant: "destructive",
+                }),
+              );
+            }}
+          >
+            {t.active ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+            <span className="sr-only">{t.active ? "Pause" : "Resume"}</span>
+          </Button>
+          <Button size="sm" variant="outline" className="h-8" onClick={() => runNow(t)}>Run now</Button>
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => { setEditing(t); setOpen(true); }} aria-label={`Edit ${t.name}`}>
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 text-muted-foreground hover:text-danger"
+            aria-label={`Delete ${t.name}`}
+            onClick={() => {
+              if (!window.confirm(`Delete recurring template "${t.name}"? This cannot be undone.`)) return;
+              void RecurringStore.remove(t.id).catch((err: unknown) =>
+                toast({
+                  title: "Could not delete template",
+                  description: err instanceof Error ? err.message : "The template is unchanged.",
+                  variant: "destructive",
+                }),
+              );
+            }}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ),
+    },
+  ];
 
-      <NewRecurringDialog open={open} onOpenChange={(v)=> { setOpen(v); if (!v) { setEditing(undefined); setList(RecurringStore.list()); } }} onSaved={()=> setList(RecurringStore.list())} editing={editing} />
+  const activeCount = list.filter((t) => t.active).length;
+  const monthlyValue = list.filter((t) => t.active).reduce((sum, t) => sum + total(t), 0);
+
+  return (
+    <div className="flex flex-col gap-6 p-6">
+      <PageHeader
+        title="Recurring invoices"
+        description="Templates that raise invoices automatically on a schedule."
+        breadcrumbs={[{ label: "Accounting", to: "/accounting/quotations" }, { label: "Recurring" }]}
+        actions={<Button onClick={() => { setEditing(undefined); setOpen(true); }}>New template</Button>}
+      >
+        <div className="grid gap-3 sm:grid-cols-3">
+          <StatCard label="Templates" value={list.length} hint="All time" icon={Repeat} />
+          <StatCard label="Active" value={activeCount} hint={activeCount ? "Currently scheduled" : "None running"} icon={Play} tone={activeCount ? "success" : "neutral"} />
+          <StatCard label="Per cycle" value={`${cs.currencySymbol}${monthlyValue.toFixed(2)}`} hint="Value of active templates" />
+        </div>
+      </PageHeader>
+
+      <DataTable
+        rows={list}
+        columns={columns}
+        rowKey={(t) => t.id}
+        searchAccessor={(t) => `${t.name} ${t.customer.name} ${t.cadence}`}
+        searchPlaceholder="Search templates…"
+        onRowClick={(t) => { setEditing(t); setOpen(true); }}
+        empty={{
+          title: "No recurring templates",
+          description: "Set one up and invoices will be raised — and optionally emailed — on schedule.",
+          action: <Button onClick={() => { setEditing(undefined); setOpen(true); }}>New template</Button>,
+        }}
+      />
+
+      <NewRecurringDialog open={open} onOpenChange={(v)=> { setOpen(v); if (!v) { setEditing(undefined); void recurringCache.refresh(); } }} onSaved={()=> void recurringCache.refresh()} editing={editing} />
     </div>
   );
 };

@@ -4,15 +4,33 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import CapturePaymentDialog from "@/components/accounting/CapturePaymentDialog";
+import { Trash2, Receipt, Wallet, AlertCircle } from "lucide-react";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { PageHeader } from "@/components/ui/page-header";
+import { useCache } from "@/lib/collectionCache";
+import { invoicesCache, quotationsCache } from "@/lib/accountingStore";
+import { paymentsCache } from "@/lib/paymentStore";
+import { StatCard } from "@/components/ui/stat-card";
 import { Payment, PaymentMethod, PaymentStore } from "@/lib/paymentStore";
-import { AccountingStore } from "@/lib/accountingStore";
+import { allocateNumber } from "@/lib/documentNumbers";
+import { AccountingStore, Invoice, Quotation } from "@/lib/accountingStore";
 import { CompanySettingsStore } from "@/lib/companySettings";
+import { toast } from "@/components/ui/use-toast";
+
+/** Radix reserves "" to mean "no selection", so a sentinel is needed instead. */
+const NONE = "__none__";
 
 const Payments: React.FC = () => {
-  const c = CompanySettingsStore.get();
-  const [payments, setPayments] = useState(PaymentStore.list());
+  const cs = CompanySettingsStore.get();
+  // Rows come from Postgres via a cache, so this re-renders when they arrive.
+  const { rows: payments, loading: paymentsLoading, error: paymentsError } = useCache(paymentsCache);
+  useCache(invoicesCache);
+  useCache(quotationsCache);
   const [open, setOpen] = useState(false);
+  const [applyOpen, setApplyOpen] = useState(false);
+  const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
   const [q, setQ] = useState("");
   const customers = useMemo(() => AccountingStore.listQuotes().map(q=> q.customer)
     .concat(AccountingStore.listInvoices().map(i=> i.customer))
@@ -20,6 +38,8 @@ const Payments: React.FC = () => {
   const [customerId, setCustomerId] = useState<string>("all");
   const [type, setType] = useState<"all"|"invoice"|"quote">("all");
   const [method, setMethod] = useState<PaymentMethod|"all">("all");
+  const [targetInvoiceId, setTargetInvoiceId] = useState<string>("");
+  const [targetQuoteId, setTargetQuoteId] = useState<string>("");
 
   const filtered = payments.filter(p =>
     (customerId==="all" || p.customerId===customerId)
@@ -28,43 +48,231 @@ const Payments: React.FC = () => {
     && (!q || (p.reference||"").toLowerCase().includes(q.toLowerCase()) || (p.notes||"").toLowerCase().includes(q.toLowerCase()))
   );
 
-  const del = (id: string) => { PaymentStore.remove(id); setPayments(PaymentStore.list()); };
+  const del = (id: string) => {
+    const ok = window.confirm("Delete this payment? This action cannot be undone.");
+    if (!ok) return;
+    void PaymentStore.remove(id).catch((err: unknown) =>
+      toast({
+        title: "Could not delete payment",
+        description: err instanceof Error ? err.message : "The payment is unchanged.",
+        variant: "destructive",
+      }),
+    );
+  };
+
+  const applyPayment = async () => {
+    if (!selectedPayment) return;
+    
+    let updatedPayment = { ...selectedPayment };
+    
+    if (targetInvoiceId) {
+      updatedPayment.invoiceId = targetInvoiceId;
+      updatedPayment.quoteId = undefined;
+    } else if (targetQuoteId) {
+      updatedPayment.quoteId = targetQuoteId;
+      updatedPayment.invoiceId = undefined;
+    }
+
+    // The toast used to fire before the write, so it announced an application
+    // that had not happened yet and would still claim success if it failed.
+    try {
+      await PaymentStore.update(updatedPayment);
+    } catch (err) {
+      toast({
+        title: "Could not apply payment",
+        description: err instanceof Error ? err.message : "The payment is unchanged.",
+        variant: "destructive",
+      });
+      return;
+    }
+    toast({
+      title: "Payment applied",
+      description: targetInvoiceId
+        ? `Payment applied to invoice ${targetInvoiceId}`
+        : `Payment applied to quote ${targetQuoteId}`,
+    });
+    setApplyOpen(false);
+    setSelectedPayment(null);
+    setTargetInvoiceId("");
+    setTargetQuoteId("");
+  };
+
+  const convertAcceptedQuotes = async () => {
+    const quotes = AccountingStore.listQuotes();
+    const acceptedQuotes = quotes.filter(q => q.status === "accepted");
+    
+    if (acceptedQuotes.length === 0) {
+      toast({ title: "No Accepted Quotes", description: "There are no accepted quotes to convert." });
+      return;
+    }
+    
+    let convertedCount = 0;
+    for (const quote of acceptedQuotes) {
+      // Convert quote to invoice
+      const invoice: Invoice = {
+        id: `inv_${Date.now()}_${convertedCount}`,
+        number: await allocateNumber("invoice"),
+        customer: quote.customer,
+        items: quote.items,
+        status: "sent",
+        createdAt: new Date().toISOString(),
+        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 30 days from now
+        notes: quote.notes,
+        reference: quote.reference,
+        discountPct: quote.discountPct,
+        shipping: quote.shipping,
+        useShippingAddress: quote.useShippingAddress,
+      };
+      
+      try {
+        await AccountingStore.upsertInvoice(invoice);
+        // Update quote status to converted
+        await AccountingStore.upsertQuote({ ...quote, status: "converted" });
+
+        // Apply any existing payments for this quote to the new invoice
+        for (const payment of PaymentStore.byQuote(quote.id)) {
+          await PaymentStore.update({ ...payment, invoiceId: invoice.id, quoteId: undefined });
+        }
+        convertedCount++;
+      } catch (err) {
+        toast({
+          title: `Could not convert ${quote.number}`,
+          description: err instanceof Error ? err.message : "Skipped.",
+          variant: "destructive",
+        });
+      }
+    }
+    
+    if (convertedCount > 0) {
+      toast({
+        title: "Quotes converted",
+        description: `Converted ${convertedCount} accepted quote(s) to invoices.`,
+      });
+    }
+  };
 
   useEffect(() => {
-    const refresh = () => setPayments(PaymentStore.list());
+    const refresh = () => { void paymentsCache.refresh(); };
     const onStorage = (e: StorageEvent) => { if (e.key && e.key.startsWith('acct.payments')) refresh(); };
-    window.addEventListener('payments-changed', refresh as any);
+    window.addEventListener('payments-changed', refresh as EventListener);
     window.addEventListener('storage', onStorage);
     return () => {
-      window.removeEventListener('payments-changed', refresh as any);
+      window.removeEventListener('payments-changed', refresh as EventListener);
       window.removeEventListener('storage', onStorage);
     };
   }, []);
 
+  const columns: Column<Payment>[] = [
+    {
+      id: "date",
+      header: "Date",
+      sortValue: (p) => p.date,
+      cell: (p) => new Date(p.date).toLocaleDateString(),
+    },
+    {
+      id: "customer",
+      header: "Customer",
+      sortValue: (p) => customers.find((cu) => cu.id === p.customerId)?.name ?? "",
+      cell: (p) => <span className="font-medium">{customers.find((cu) => cu.id === p.customerId)?.name || p.customerId}</span>,
+    },
+    {
+      id: "applied",
+      header: "Applied to",
+      hideOnMobile: true,
+      cell: (p) =>
+        p.invoiceId ? (
+          <span className="text-info">Invoice {p.invoiceId}</span>
+        ) : p.quoteId ? (
+          <span className="text-muted-foreground">Quote {p.quoteId}</span>
+        ) : (
+          <span className="rounded-sm bg-warning-soft px-1.5 py-0.5 text-xs font-medium text-warning">Unapplied</span>
+        ),
+    },
+    { id: "method", header: "Method", hideOnMobile: true, sortValue: (p) => p.method ?? "", cell: (p) => p.method || "—" },
+    { id: "reference", header: "Reference", hideOnMobile: true, cell: (p) => p.reference || <span className="text-subtle">—</span> },
+    {
+      id: "amount",
+      header: "Amount",
+      align: "right",
+      sortValue: (p) => p.amount ?? 0,
+      cell: (p) => <span className="font-medium">{cs.currencySymbol}{(p.amount || 0).toFixed(2)}</span>,
+    },
+    {
+      id: "actions",
+      header: <span className="sr-only">Actions</span>,
+      align: "right",
+      width: "1%",
+      cell: (p) => (
+        <div onClick={(e) => e.stopPropagation()}>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 text-muted-foreground hover:text-danger"
+            onClick={() => del(p.id)}
+            aria-label="Delete payment"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
+  const received = filtered.reduce((sum, p) => sum + (p.amount || 0), 0);
+  const unapplied = filtered.filter((p) => !p.invoiceId && !p.quoteId).length;
+
   return (
-    <div className="p-6 space-y-4">
-      <Card className="shadow-[0_10px_0_rgba(0,0,0,0.08)]">
-        <CardHeader className="flex-row items-center justify-between">
-          <CardTitle>Payments</CardTitle>
-          <div className="flex gap-2">
-            <Input placeholder="Search ref/notes" value={q} onChange={(e)=> setQ(e.target.value)} className="w-56" />
+    <div className="flex flex-col gap-6 p-6">
+      <PageHeader
+        title="Payments"
+        description="Money received, and what each payment has been applied to."
+        breadcrumbs={[{ label: "Accounting", to: "/accounting/quotations" }, { label: "Payments" }]}
+        actions={
+          <>
+            <Button variant="outline" onClick={() => void convertAcceptedQuotes()}>Convert accepted quotes</Button>
+            <Button onClick={() => setOpen(true)}>Add payment</Button>
+          </>
+        }
+      >
+        <div className="grid gap-3 sm:grid-cols-3">
+          <StatCard label="Payments" value={filtered.length} hint="Matching current filters" icon={Receipt} />
+          <StatCard label="Received" value={`${cs.currencySymbol}${received.toFixed(2)}`} hint="Sum of shown payments" icon={Wallet} tone="success" />
+          <StatCard
+            label="Unapplied"
+            value={unapplied}
+            hint={unapplied ? "Not linked to a document" : "All allocated"}
+            icon={AlertCircle}
+            tone={unapplied ? "warning" : "neutral"}
+          />
+        </div>
+      </PageHeader>
+
+      <DataTable
+        rows={filtered}
+        columns={columns}
+        rowKey={(p) => p.id}
+        searchAccessor={(p) => `${p.reference ?? ""} ${p.notes ?? ""} ${p.method ?? ""} ${customers.find((cu) => cu.id === p.customerId)?.name ?? ""}`}
+        searchPlaceholder="Search reference, notes or customer…"
+        onRowClick={(p) => { setSelectedPayment(p); setApplyOpen(true); }}
+        toolbar={
+          <>
             <Select value={customerId} onValueChange={setCustomerId}>
-              <SelectTrigger className="w-44"><SelectValue placeholder="All customers" /></SelectTrigger>
+              <SelectTrigger className="h-9 w-40"><SelectValue placeholder="All customers" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All customers</SelectItem>
-                {customers.map(cu=> <SelectItem key={cu.id} value={cu.id}>{cu.name}</SelectItem>)}
+                {customers.map((cu) => <SelectItem key={cu.id} value={cu.id}>{cu.name}</SelectItem>)}
               </SelectContent>
             </Select>
-            <Select value={type} onValueChange={(v:any)=> setType(v)}>
-              <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+            <Select value={type} onValueChange={(v) => setType(v as typeof type)}>
+              <SelectTrigger className="h-9 w-32"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="all">All types</SelectItem>
                 <SelectItem value="invoice">Invoices</SelectItem>
                 <SelectItem value="quote">Quotes</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={method} onValueChange={(v:any)=> setMethod(v)}>
-              <SelectTrigger className="w-44"><SelectValue placeholder="Method" /></SelectTrigger>
+            <Select value={method} onValueChange={(v) => setMethod(v as typeof method)}>
+              <SelectTrigger className="h-9 w-40"><SelectValue placeholder="Method" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All methods</SelectItem>
                 <SelectItem value="Cash">Cash</SelectItem>
@@ -73,49 +281,81 @@ const Payments: React.FC = () => {
                 <SelectItem value="Other">Other</SelectItem>
               </SelectContent>
             </Select>
-            <Button onClick={()=> setOpen(true)}>Add Payment</Button>
+          </>
+        }
+        empty={{
+          title: "No payments recorded",
+          description: "Capture a payment against an invoice or quote and it will appear here.",
+          action: <Button onClick={() => setOpen(true)}>Add payment</Button>,
+        }}
+      />
+
+      <CapturePaymentDialog open={open} onOpenChange={(v)=> { setOpen(v); if (!v) void paymentsCache.refresh(); }} onSaved={()=> void paymentsCache.refresh()} />
+      
+      <Dialog open={applyOpen} onOpenChange={(v) => { setApplyOpen(v); if (!v) { setSelectedPayment(null); setTargetInvoiceId(""); setTargetQuoteId(""); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Apply Payment</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {selectedPayment && (
+              <div className="p-3 bg-muted rounded-lg">
+                <div className="text-sm font-medium">Payment Details</div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  Amount: {cs.currencySymbol}{selectedPayment.amount.toFixed(2)} | Method: {selectedPayment.method}
+                </div>
+                {selectedPayment.reference && (
+                  <div className="text-xs text-muted-foreground">Reference: {selectedPayment.reference}</div>
+                )}
+              </div>
+            )}
+            
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Apply to Invoice</label>
+              <Select value={targetInvoiceId || NONE} onValueChange={(value) => { setTargetInvoiceId(value === NONE ? "" : value); setTargetQuoteId(""); }}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select invoice (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>None</SelectItem>
+                  {AccountingStore.listInvoices()
+                    .filter(inv => inv.customer.id === selectedPayment?.customerId)
+                    .map(inv => (
+                      <SelectItem key={inv.id} value={inv.id}>
+                        Invoice {inv.number} - {inv.customer.name} ({cs.currencySymbol}{inv.items.reduce((sum, item) => sum + (item.qty * item.price), 0).toFixed(2)})
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Apply to Quote</label>
+              <Select value={targetQuoteId || NONE} onValueChange={(value) => { setTargetQuoteId(value === NONE ? "" : value); setTargetInvoiceId(""); }}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select quote (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>None</SelectItem>
+                  {AccountingStore.listQuotes()
+                    .filter(q => q.status !== "converted" && q.customer.id === selectedPayment?.customerId)
+                    .map(q => (
+                      <SelectItem key={q.id} value={q.id}>
+                        Quote {q.number} - {q.customer.name} ({cs.currencySymbol}{q.items.reduce((sum, item) => sum + (item.qty * item.price), 0).toFixed(2)})
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-lg overflow-hidden border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Applied To</TableHead>
-                  <TableHead>Method</TableHead>
-                  <TableHead>Reference</TableHead>
-                  <TableHead>Notes</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map(p=> {
-                  const customer = customers.find(cu=> cu.id===p.customerId);
-                  const applied = p.invoiceId ? `Invoice ${p.invoiceId}` : (p.quoteId ? `Quote ${p.quoteId}` : "Unapplied");
-                  return (
-                    <TableRow key={p.id}>
-                      <TableCell>{new Date(p.date).toLocaleDateString()}</TableCell>
-                      <TableCell>{customer?.name || p.customerId}</TableCell>
-                      <TableCell>{applied}</TableCell>
-                      <TableCell>{p.method}</TableCell>
-                      <TableCell>{p.reference}</TableCell>
-                      <TableCell className="max-w-[260px] truncate" title={p.notes}>{p.notes}</TableCell>
-                      <TableCell className="text-right">{c.currencySymbol}{(p.amount||0).toFixed(2)}</TableCell>
-                      <TableCell className="text-right">
-                        <Button size="sm" variant="destructive" onClick={()=> del(p.id)}>Delete</Button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
-      <CapturePaymentDialog open={open} onOpenChange={(v)=> { setOpen(v); if (!v) setPayments(PaymentStore.list()); }} />
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setApplyOpen(false)}>Cancel</Button>
+            <Button onClick={() => void applyPayment()} disabled={!targetInvoiceId && !targetQuoteId}>
+              Apply Payment
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

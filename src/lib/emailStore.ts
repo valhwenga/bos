@@ -1,62 +1,133 @@
+/**
+ * Outgoing mail, and the record of it.
+ *
+ * `send()` used to be a simulation. Its own comment said so — "Simulate send:
+ * store to sent" — and it wrote a row to localStorage and returned. Compose had
+ * since been wired to the real sender, but the two recurring-invoice paths had
+ * not: they generated an invoice, called this, and then advanced the billing
+ * schedule. The period was marked billed, the customer was never emailed, and
+ * nothing reported a failure because nothing had been attempted.
+ *
+ * It sends now. The record lives in Postgres, written by the send-email
+ * function rather than by the browser, because only the function knows whether
+ * the mail server accepted the message.
+ *
+ * There is no inbox. Receiving mail needs IMAP polling or an inbound webhook,
+ * and neither exists — so the folder could only ever have been empty, which is
+ * why it is gone rather than merely unread.
+ */
+
+import { supabase } from "./supabase";
+import { createCache } from "./collectionCache";
+import { sendEmail } from "./sendDocument";
+
 export type MailAddress = { name?: string; email: string };
 export type MailAttachment = { id: string; name: string; type: string; size: number; dataUrl: string };
+
 export type MailMessage = {
   id: string;
-  from: MailAddress;
   to: MailAddress[];
-  cc?: MailAddress[];
+  cc: MailAddress[];
   subject: string;
-  body: string; // HTML or plain
-  date: string; // ISO
-  attachments?: MailAttachment[];
-  folder: "inbox" | "sent" | "drafts" | "trash";
-  threadId?: string;
-  read?: boolean;
+  body: string;
+  date: string;
+  sentByName?: string;
+  attachmentNames: string[];
+  module?: string;
+  status: "sent" | "failed";
+  error?: string;
 };
 
-export type SMTPSettings = {
-  enabled: boolean;
-  host: string;
-  port: number;
-  secure: boolean; // TLS
-  username: string;
-  password: string;
-  fromName?: string;
-  fromEmail?: string;
-};
+const K = { smtp: "email.smtp", messages: "email.messages" };
 
-const K = { messages: "email.messages", smtp: "email.smtp" };
-const r = <T,>(k: string, f: T): T => { try { const v = localStorage.getItem(k); return v ? (JSON.parse(v) as T) : f; } catch { return f; } };
-const w = (k: string, v: unknown) => localStorage.setItem(k, JSON.stringify(v));
+const asAddresses = (list: string[] | null): MailAddress[] =>
+  (list ?? []).map((email) => ({ email }));
+
+async function fetchSent(): Promise<MailMessage[]> {
+  const { data, error } = await supabase
+    .from("email_messages")
+    .select(
+      "id, sent_by_name, to_addresses, cc_addresses, subject, body, attachment_names, module, status, error, created_at",
+    )
+    .order("created_at", { ascending: false })
+    .limit(500);
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => ({
+    id: row.id as string,
+    to: asAddresses(row.to_addresses as string[]),
+    cc: asAddresses(row.cc_addresses as string[]),
+    subject: (row.subject as string) ?? "",
+    body: (row.body as string) ?? "",
+    date: row.created_at as string,
+    sentByName: (row.sent_by_name as string) ?? undefined,
+    attachmentNames: (row.attachment_names as string[]) ?? [],
+    module: (row.module as string) ?? undefined,
+    status: (row.status as MailMessage["status"]) ?? "sent",
+    error: (row.error as string) ?? undefined,
+  }));
+}
+
+export const sentMailCache = createCache<MailMessage>(fetchSent);
 
 export const EmailStore = {
-  list(): MailMessage[] { return r<MailMessage[]>(K.messages, []); },
-  byFolder(folder: MailMessage["folder"]): MailMessage[] { return this.list().filter(m => m.folder === folder); },
-  get(id: string): MailMessage | undefined { return this.list().find(m => m.id===id); },
-  upsert(m: MailMessage) { const all = this.list(); const i = all.findIndex(x=> x.id===m.id); if(i>=0) all[i]=m; else all.unshift(m); w(K.messages, all); return m; },
-  remove(id: string) { const all = this.list().filter(x=> x.id!==id); w(K.messages, all); },
-  move(id: string, folder: MailMessage["folder"]) { const m = this.get(id); if(!m) return; this.upsert({ ...m, folder }); },
-  smtp(): SMTPSettings { return r<SMTPSettings>(K.smtp, { enabled: false, host: "", port: 587, secure: false, username: "", password: "", fromName: "", fromEmail: "" }); },
-  setSmtp(s: SMTPSettings) { w(K.smtp, s); return s; },
+  list(): MailMessage[] {
+    return sentMailCache.list();
+  },
+  load(): Promise<MailMessage[]> {
+    return sentMailCache.ensureLoaded();
+  },
+  get(id: string): MailMessage | undefined {
+    return this.list().find((m) => m.id === id);
+  },
 
-  // Simulate send: store to "sent" and optionally deliver to inbox (loopback)
-  async send(m: Omit<MailMessage, "id" | "folder" | "date">) {
-    const id = `m_${Math.random().toString(36).slice(2,8)}`;
-    const date = new Date().toISOString();
-    const sent: MailMessage = { ...m, id, date, folder: "sent" } as MailMessage;
-    this.upsert(sent);
+  /**
+   * Sends an email and records it.
+   *
+   * Throws if the mail server refused. Callers that must not be undone by a
+   * failed send — a recurring invoice that has already been generated — should
+   * catch it and carry on, rather than leaving the schedule where it was and
+   * billing the period twice on the next run.
+   */
+  async send(message: {
+    to: MailAddress[];
+    cc?: MailAddress[];
+    subject: string;
+    body: string;
+    attachments?: { filename: string; contentBase64: string; contentType?: string }[];
+    module?: string;
+  }): Promise<void> {
+    const recipients = [...message.to, ...(message.cc ?? [])]
+      .map((a) => a.email.trim())
+      .filter(Boolean);
+    if (recipients.length === 0) throw new Error("No recipient.");
+
+    await sendEmail({
+      to: recipients,
+      subject: message.subject,
+      body: message.body,
+      attachments: message.attachments,
+      module: message.module ?? "email",
+    });
+
+    // The function writes the row; this makes it visible without a reload.
+    void sentMailCache.refresh();
+  },
+
+  /**
+   * SMTP settings are not kept here, and never were read from here even when
+   * they were. They sat in localStorage with the password in plain text, and
+   * nothing sent anything with them. Credentials belong to the send-email
+   * function's environment.
+   *
+   * Anything a previous version stored is cleared on load, along with the old
+   * simulated mailbox, so neither lingers in a browser.
+   */
+  clearLegacyLocalMail() {
     try {
-      // Notify internal recipients whose emails match
-      const { UsersStore } = await import("@/lib/usersStore");
-      const { notify } = await import("@/lib/notificationsStore");
-      const users = UsersStore.list();
-      const toEmails = [...(m.to||[]), ...((m.cc||[]) as any[])].map(a => a.email.toLowerCase());
-      for (const u of users) {
-        if (u.email && toEmails.includes(u.email.toLowerCase())) {
-          notify(u.id, "email", `New email: ${m.subject}`, undefined, `/email/${id}`);
-        }
-      }
-    } catch {}
-    return sent;
+      localStorage.removeItem(K.smtp);
+      localStorage.removeItem(K.messages);
+    } catch {
+      void 0;
+    }
   },
 };

@@ -1,3 +1,18 @@
+/**
+ * Employees. Rows in Postgres now.
+ *
+ * This holds personal data — home addresses, national ID numbers, next of kin —
+ * which was previously sitting in localStorage on whichever machine last opened
+ * the HR screens. Access is decided by hrm.employees in row level security.
+ *
+ * Documents (CV, ID copy, qualifications) are not carried here. They were
+ * base64 blobs on the record; they belong in the employee-documents storage
+ * bucket, which the file_storage migration created for the purpose.
+ */
+
+import { createCache } from "./collectionCache";
+import { EmployeeRepo } from "./hrmRepo";
+
 export type EmployeeDocument = {
   name: string;
   type: string;
@@ -7,6 +22,8 @@ export type EmployeeDocument = {
 
 export type Employee = {
   id: string;
+  /** The login this employee signs in with, once an administrator links them. */
+  profileId?: string;
   name: string;
   email?: string;
   phone?: string;
@@ -30,42 +47,20 @@ export type Employee = {
   otherDocuments?: EmployeeDocument[];
 };
 
-const K = {
-  employees: "hrm.employees",
-};
-
-const read = <T,>(k: string, f: T): T => {
-  try { const v = localStorage.getItem(k); return v ? (JSON.parse(v) as T) : f; } catch { return f; }
-};
-const write = (k: string, v: unknown) => localStorage.setItem(k, JSON.stringify(v));
-
-const SEED: Employee[] = [
-  { id: "EMP001", name: "John Anderson", email: "john.anderson@company.com", phone: "+1 234 567 8901", department: "Engineering", designation: "Senior Developer", joiningDate: "15 Jan 2022", salary: "$85,000", status: "Active" },
-  { id: "EMP002", name: "Sarah Williams", email: "sarah.williams@company.com", phone: "+1 234 567 8902", department: "Marketing", designation: "Marketing Manager", joiningDate: "20 Mar 2021", salary: "$75,000", status: "Active" },
-];
+export const employeesCache = createCache<Employee>(() => EmployeeRepo.list());
 
 export const HRMStore = {
-  list(): Employee[] { return read<Employee[]>(K.employees, SEED); },
-  upsert(e: Employee) {
-    const all = this.list();
-    const i = all.findIndex(x=>x.id===e.id);
-    if (i>=0) all[i] = e; else all.push(e);
-    write(K.employees, all);
+  list(): Employee[] {
+    return employeesCache.list();
+  },
+  load(): Promise<Employee[]> {
+    return employeesCache.ensureLoaded();
+  },
+  async upsert(e: Employee): Promise<Employee> {
+    await employeesCache.mutate(() => EmployeeRepo.upsert(e));
     return e;
   },
-  remove(id: string) {
-    const all = this.list().filter(x=> x.id !== id);
-    write(K.employees, all);
+  async remove(id: string): Promise<void> {
+    await employeesCache.mutate(() => EmployeeRepo.remove(id));
   },
-  migrateDepartmentIds(nameToId: Record<string, string>) {
-    const all = this.list();
-    let changed = false;
-    for (const e of all) {
-      if (!e.departmentId && e.department && nameToId[e.department]) {
-        e.departmentId = nameToId[e.department];
-        changed = true;
-      }
-    }
-    if (changed) write(K.employees, all);
-  }
 };

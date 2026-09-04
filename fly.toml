@@ -1,0 +1,29 @@
+# Fly configuration.
+#
+# Deploy with the Supabase values as build arguments, not secrets — they are
+# compiled into the bundle:
+#
+#   fly deploy \
+#     --build-arg VITE_SUPABASE_URL=https://<ref>.supabase.co \
+#     --build-arg VITE_SUPABASE_ANON_KEY=<anon key>
+#
+# Changing either one needs a rebuild, not a restart.
+
+app = "bos"
+primary_region = "jnb"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  # Static files with no server state, so scaling to zero costs nothing but the
+  # first request's cold start.
+  min_machines_running = 0
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

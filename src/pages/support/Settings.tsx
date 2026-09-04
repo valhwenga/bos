@@ -2,17 +2,47 @@ import { useEffect, useState } from "react";
 import { SupportStore, type SupportSettings } from "@/lib/supportStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { toast } from "@/components/ui/use-toast";
+import { useCache } from "@/lib/collectionCache";
+import { supportSettingsCache } from "@/lib/supportStore";
+import { InboundRoutes } from "@/components/InboundRoutes";
 
 const SupportSettings = () => {
+  // Settings are shared now, so this re-renders when they load or somebody
+  // else changes them.
+  useCache(supportSettingsCache);
   const [s, setS] = useState<SupportSettings>(SupportStore.settings());
   const [newCat, setNewCat] = useState("");
-  useEffect(()=> setS(SupportStore.settings()), []);
-  const add = () => { if(!newCat.trim()) return; const next = { ...s, categories: Array.from(new Set([...(s.categories||[]), newCat.trim()])) }; setS(SupportStore.setSettings(next)); setNewCat(""); };
-  const remove = (c: string) => { const next = { ...s, categories: (s.categories||[]).filter(x=> x!==c) }; setS(SupportStore.setSettings(next)); };
+
+  useEffect(() => {
+    void SupportStore.load().then(() => setS(SupportStore.settings()));
+  }, []);
+
+  const save = async (next: SupportSettings) => {
+    try {
+      await SupportStore.setSettings(next);
+      setS(SupportStore.settings());
+    } catch (err) {
+      toast({
+        title: "Could not save support settings",
+        description: err instanceof Error ? err.message : "Nothing was changed.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const add = () => {
+    if (!newCat.trim()) return;
+    void save({ ...s, categories: Array.from(new Set([...(s.categories || []), newCat.trim()])) });
+    setNewCat("");
+  };
+  const remove = (c: string) => {
+    void save({ ...s, categories: (s.categories || []).filter((x) => x !== c) });
+  };
   return (
     <div className="p-6 space-y-4">
       <div>
-        <h1 className="text-3xl font-bold mb-2">Support Settings</h1>
+        <h1 className="text-2xl font-semibold text-foreground">Support Settings</h1>
         <div className="text-sm text-muted-foreground">Categories, priorities and basic SLA placeholders.</div>
       </div>
 
@@ -34,6 +64,8 @@ const SupportSettings = () => {
           )}
         </div>
       </div>
+
+      <InboundRoutes />
     </div>
   );
 };

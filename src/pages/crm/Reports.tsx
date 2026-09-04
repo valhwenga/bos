@@ -1,8 +1,18 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useCache } from "@/lib/collectionCache";
+import { leadsCache } from "@/lib/crmLeadsStore";
+import { dealsCache } from "@/lib/crmDealsStore";
+import { crmCustomersCache } from "@/lib/crmCustomersStore";
+import { crmTasksCache } from "@/lib/crmTasksStore";
 import { CrmLeadsStore } from "@/lib/crmLeadsStore";
 import { CrmDealsStore } from "@/lib/crmDealsStore";
 
 const Reports = () => {
+  // Rows come from Postgres via caches, so this re-renders when they arrive.
+  useCache(leadsCache);
+  useCache(dealsCache);
+  useCache(crmCustomersCache);
+  useCache(crmTasksCache);
   const leads = CrmLeadsStore.list();
   const deals = CrmDealsStore.list();
   const leadsByStage = leads.reduce<Record<string, number>>((m, l) => { m[l.stage] = (m[l.stage]||0)+1; return m; }, {});

@@ -1,10 +1,17 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { toast } from "@/components/ui/use-toast";
+import { useCache } from "@/lib/collectionCache";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { CreditNotesStore, type CreditNote } from "@/lib/creditNotesStore";
+import { Trash2, FileMinus, Wallet } from "lucide-react";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatCard } from "@/components/ui/stat-card";
+import { creditNotesCache, CreditNotesStore, type CreditNote } from "@/lib/creditNotesStore";
+import { previewNextNumber, resolveNumberOnSave } from "@/lib/documentNumbers";
 import { AccountingStore } from "@/lib/accountingStore";
 import { CompanySettingsStore } from "@/lib/companySettings";
 
@@ -12,17 +19,29 @@ const NewCreditDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void
   const customers = useMemo(() => AccountingStore.listInvoices().map(i=> i.customer)
     .concat(AccountingStore.listQuotes().map(q=> q.customer))
     .reduce((acc, cur)=> acc.find(x=> x.id===cur.id) ? acc : acc.concat(cur), [] as {id:string; name:string}[]), []);
-  const [number] = useState(`CN-${new Date().getFullYear()}-${Math.floor(Math.random()*9000+1000)}`);
+  const [number, setNumber] = useState("");
   const [date, setDate] = useState<string>(new Date().toISOString().slice(0,10));
   const [customerId, setCustomerId] = useState<string>(customers[0]?.id || "");
   const [amount, setAmount] = useState<number>(0);
   const [notes, setNotes] = useState<string>("");
 
-  const save = () => {
+  const save = async () => {
     if (!customerId || amount<=0) return;
     const custName = customers.find(c=> c.id===customerId)?.name;
-    const cn: CreditNote = { id: `cn_${Date.now()}`, number, date, customerId, customerName: custName, amount, applied: [], notes, createdAt: new Date().toISOString() };
-    CreditNotesStore.upsert(cn);
+    // Allocated here rather than on open, so cancelling the dialog does not
+    // consume a number and leave a gap.
+    const allocated = await resolveNumberOnSave("credit_note", number, await previewNextNumber("credit_note"));
+    const cn: CreditNote = { id: `cn_${Date.now()}`, number: allocated, date, customerId, customerName: custName, amount, applied: [], notes, createdAt: new Date().toISOString() };
+    try {
+      await CreditNotesStore.upsert(cn);
+    } catch (err) {
+      toast({
+        title: "Could not save credit note",
+        description: err instanceof Error ? err.message : "Nothing was saved.",
+        variant: "destructive",
+      });
+      return;
+    }
     onSaved();
     onOpenChange(false);
   };
@@ -49,7 +68,7 @@ const NewCreditDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void
         </div>
         <DialogFooter>
           <Button variant="secondary" onClick={()=> onOpenChange(false)}>Cancel</Button>
-          <Button onClick={save} disabled={!customerId || amount<=0}>Save</Button>
+          <Button onClick={() => void save()} disabled={!customerId || amount<=0}>Save</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -67,7 +86,7 @@ const ApplyDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void; cr
     return Math.max(0, (credit?.amount||0) - applied);
   }, [alloc, credit?.amount]);
 
-  const save = () => {
+  const save = async () => {
     if (!credit) return;
     const applied = Object.entries(alloc).filter(([,a])=> (a||0)>0).map(([invoiceId, amount])=> ({ invoiceId, amount }));
     const merged = [...(credit.applied||[])];
@@ -76,7 +95,18 @@ const ApplyDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void; cr
       if (i>=0) merged[i] = { invoiceId: a.invoiceId, amount: (merged[i].amount||0) + a.amount };
       else merged.push(a);
     });
-    CreditNotesStore.upsert({ ...credit, applied: merged });
+    // Applying a credit resolves each invoice link server-side; it refuses
+    // rather than record a credit against an invoice it cannot find.
+    try {
+      await CreditNotesStore.upsert({ ...credit, applied: merged });
+    } catch (err) {
+      toast({
+        title: "Could not apply credit",
+        description: err instanceof Error ? err.message : "The credit is unchanged.",
+        variant: "destructive",
+      });
+      return;
+    }
     onSaved();
     onOpenChange(false);
   };
@@ -112,7 +142,7 @@ const ApplyDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void; cr
         <div className="text-sm">Remaining to allocate: <span className="font-semibold">{c.currencySymbol}{remaining.toFixed(2)}</span></div>
         <DialogFooter>
           <Button variant="secondary" onClick={()=> onOpenChange(false)}>Cancel</Button>
-          <Button onClick={save}>Apply</Button>
+          <Button onClick={() => void save()}>Apply</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -121,13 +151,14 @@ const ApplyDialog: React.FC<{ open: boolean; onOpenChange: (v:boolean)=>void; cr
 
 const CreditNotes: React.FC = () => {
   const cs = CompanySettingsStore.get();
-  const [list, setList] = useState(CreditNotesStore.list());
+  // Rows come from Postgres via a cache, so this re-renders when they arrive.
+  const { rows: list } = useCache(creditNotesCache);
   const [open, setOpen] = useState(false);
   const [applyOpen, setApplyOpen] = useState(false);
   const [active, setActive] = useState<CreditNote | undefined>(undefined);
 
   useEffect(() => {
-    const refresh = () => setList(CreditNotesStore.list());
+    const refresh = () => void creditNotesCache.refresh();
     const onStorage = (e: StorageEvent) => { if (e.key && e.key.startsWith('acct.credits')) refresh(); };
     window.addEventListener('acct.credits-changed', refresh as any);
     window.addEventListener('storage', onStorage);
@@ -136,54 +167,95 @@ const CreditNotes: React.FC = () => {
 
   const appliedSum = (cn: CreditNote) => (cn.applied||[]).reduce((s,a)=> s+a.amount, 0);
 
-  return (
-    <div className="p-6 space-y-4">
-      <Card className="shadow-[0_10px_0_rgba(0,0,0,0.08)]">
-        <CardHeader className="flex-row items-center justify-between">
-          <CardTitle>Credit Notes</CardTitle>
-          <Button onClick={()=> setOpen(true)}>New Credit</Button>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-lg overflow-hidden border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>No.</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead className="text-right">Applied</TableHead>
-                  <TableHead className="text-right">Remaining</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {list.map(cn => {
-                  const applied = appliedSum(cn);
-                  const remaining = Math.max(0, (cn.amount||0) - applied);
-                  return (
-                    <TableRow key={cn.id}>
-                      <TableCell>{cn.number}</TableCell>
-                      <TableCell>{new Date(cn.date).toLocaleDateString()}</TableCell>
-                      <TableCell>{cn.customerName || cn.customerId}</TableCell>
-                      <TableCell className="text-right">{cs.currencySymbol}{(cn.amount||0).toFixed(2)}</TableCell>
-                      <TableCell className="text-right">{cs.currencySymbol}{applied.toFixed(2)}</TableCell>
-                      <TableCell className="text-right">{cs.currencySymbol}{remaining.toFixed(2)}</TableCell>
-                      <TableCell className="text-right space-x-2">
-                        <Button size="sm" variant="outline" onClick={()=> { setActive(cn); setApplyOpen(true); }}>Apply</Button>
-                        <Button size="sm" variant="destructive" onClick={()=> { CreditNotesStore.remove(cn.id); setList(CreditNotesStore.list()); }}>Delete</Button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+  const remainingFor = (cn: CreditNote) => Math.max(0, (cn.amount || 0) - appliedSum(cn));
 
-      <NewCreditDialog open={open} onOpenChange={(v)=> { setOpen(v); if (!v) setList(CreditNotesStore.list()); }} onSaved={()=> setList(CreditNotesStore.list())} />
-      <ApplyDialog open={applyOpen} onOpenChange={(v)=> { setApplyOpen(v); if (!v) { setActive(undefined); setList(CreditNotesStore.list()); } }} credit={active} onSaved={()=> setList(CreditNotesStore.list())} />
+  const columns: Column<CreditNote>[] = [
+    { id: "number", header: "No.", sortValue: (cn) => cn.number, cell: (cn) => <span className="font-medium">{cn.number}</span> },
+    { id: "date", header: "Date", sortValue: (cn) => cn.date, cell: (cn) => new Date(cn.date).toLocaleDateString() },
+    { id: "customer", header: "Customer", sortValue: (cn) => cn.customerName ?? "", cell: (cn) => cn.customerName || cn.customerId },
+    { id: "amount", header: "Amount", align: "right", hideOnMobile: true, sortValue: (cn) => cn.amount ?? 0, cell: (cn) => `${cs.currencySymbol}${(cn.amount || 0).toFixed(2)}` },
+    { id: "applied", header: "Applied", align: "right", hideOnMobile: true, sortValue: appliedSum, cell: (cn) => `${cs.currencySymbol}${appliedSum(cn).toFixed(2)}` },
+    {
+      id: "remaining",
+      header: "Remaining",
+      align: "right",
+      sortValue: remainingFor,
+      cell: (cn) => (
+        <span className={remainingFor(cn) > 0 ? "font-medium text-foreground" : "text-muted-foreground"}>
+          {cs.currencySymbol}{remainingFor(cn).toFixed(2)}
+        </span>
+      ),
+    },
+    {
+      id: "actions",
+      header: <span className="sr-only">Actions</span>,
+      align: "right",
+      width: "1%",
+      cell: (cn) => (
+        <div className="inline-flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+          <Button size="sm" variant="outline" className="h-8" onClick={() => { setActive(cn); setApplyOpen(true); }}>
+            Apply
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 text-muted-foreground hover:text-danger"
+            aria-label={`Delete credit note ${cn.number}`}
+            onClick={() => {
+              if (!window.confirm(`Delete credit note ${cn.number}? This cannot be undone.`)) return;
+              void CreditNotesStore.remove(cn.id).catch((err: unknown) =>
+                toast({
+                  title: "Could not delete credit note",
+                  description: err instanceof Error ? err.message : "The credit note is unchanged.",
+                  variant: "destructive",
+                }),
+              );
+            }}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
+  const unapplied = list.reduce((sum, cn) => sum + remainingFor(cn), 0);
+
+  return (
+    <div className="flex flex-col gap-6 p-6">
+      <PageHeader
+        title="Credit notes"
+        description="Credits owed back to customers, and how much of each is still unused."
+        breadcrumbs={[{ label: "Accounting", to: "/accounting/quotations" }, { label: "Credit notes" }]}
+        actions={<Button onClick={() => setOpen(true)}>New credit note</Button>}
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <StatCard label="Credit notes" value={list.length} hint="All time" icon={FileMinus} />
+          <StatCard
+            label="Unapplied credit"
+            value={`${cs.currencySymbol}${unapplied.toFixed(2)}`}
+            hint={unapplied > 0 ? "Still owed to customers" : "All credit applied"}
+            icon={Wallet}
+            tone={unapplied > 0 ? "warning" : "success"}
+          />
+        </div>
+      </PageHeader>
+
+      <DataTable
+        rows={list}
+        columns={columns}
+        rowKey={(cn) => cn.id}
+        searchAccessor={(cn) => `${cn.number} ${cn.customerName ?? ""} ${cn.customerId ?? ""}`}
+        searchPlaceholder="Search by number or customer…"
+        empty={{
+          title: "No credit notes",
+          description: "Raise a credit note when you need to refund or discount an issued invoice.",
+          action: <Button onClick={() => setOpen(true)}>New credit note</Button>,
+        }}
+      />
+
+      <NewCreditDialog open={open} onOpenChange={(v)=> { setOpen(v); if (!v) void creditNotesCache.refresh(); }} onSaved={()=> void creditNotesCache.refresh()} />
+      <ApplyDialog open={applyOpen} onOpenChange={(v)=> { setApplyOpen(v); if (!v) { setActive(undefined); void creditNotesCache.refresh(); } }} credit={active} onSaved={()=> void creditNotesCache.refresh()} />
     </div>
   );
 };

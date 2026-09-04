@@ -1,3 +1,13 @@
+/**
+ * CRM customers: the relationship record and its contact people.
+ *
+ * Distinct from the accounting `customers` table, which is who an invoice is
+ * billed to. Rows in Postgres now.
+ */
+
+import { createCache } from "./collectionCache";
+import { CrmCustomerRepo } from "./crmRepo";
+
 export type ContactPerson = { id: string; name: string; email?: string; phone?: string; role?: string };
 export type CrmCustomer = {
   id: string;
@@ -11,17 +21,23 @@ export type CrmCustomer = {
   createdAt: string;
 };
 
-const K = { customers: 'crm.customers' };
-const r = <T,>(k: string, f: T): T => { try { const v = localStorage.getItem(k); return v ? (JSON.parse(v) as T) : f; } catch { return f; } };
-const w = (k: string, v: unknown) => localStorage.setItem(k, JSON.stringify(v));
-
-const SEED: CrmCustomer[] = [
-  { id: 'C001', name: 'Acme Inc.', address: '100 Main St', taxNumber: 'TAX-123', contacts: [{ id: 'p1', name: 'Francisco Smith', email: 'francisco@acme.com', role: 'Manager' }], createdAt: new Date().toISOString() },
-];
+export const crmCustomersCache = createCache<CrmCustomer>(() => CrmCustomerRepo.list());
 
 export const CrmCustomersStore = {
-  list(): CrmCustomer[] { return r<CrmCustomer[]>(K.customers, SEED); },
-  upsert(c: CrmCustomer) { const all = this.list(); const i = all.findIndex(x=> x.id===c.id); if (i>=0) all[i]=c; else all.unshift(c); w(K.customers, all); return c; },
-  remove(id: string) { const all = this.list().filter(x=> x.id!==id); w(K.customers, all); },
-  get(id: string) { return this.list().find(x=> x.id===id); },
+  list(): CrmCustomer[] {
+    return crmCustomersCache.list();
+  },
+  load(): Promise<CrmCustomer[]> {
+    return crmCustomersCache.ensureLoaded();
+  },
+  get(id: string) {
+    return this.list().find((x) => x.id === id);
+  },
+  async upsert(c: CrmCustomer): Promise<CrmCustomer> {
+    await crmCustomersCache.mutate(() => CrmCustomerRepo.upsert(c));
+    return c;
+  },
+  async remove(id: string): Promise<void> {
+    await crmCustomersCache.mutate(() => CrmCustomerRepo.remove(id));
+  },
 };

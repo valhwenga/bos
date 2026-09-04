@@ -1,24 +1,56 @@
-import { RolesStore, type ModuleKey, type Role } from "./rolesStore";
+import { Modules, type AccessLevel, type ModuleKey, type Role } from "./modules";
+import { getSession } from "./session";
 
-const K = { roleId: "auth.roleId" };
+const ACCESS_ORDER = { none: 0, view: 1, edit: 2, full: 3 } as const;
 
+/**
+ * The role a session resolves to when no role can be determined — signed out,
+ * awaiting approval, deactivated, or a role that no longer exists. It grants
+ * nothing.
+ *
+ * This must never be replaced with a privileged fallback. Doing so makes every
+ * unresolvable session a Super Admin, which is precisely the defect this
+ * constant exists to prevent.
+ */
+export const NO_ACCESS_ROLE: Role = {
+  id: "role_none",
+  name: "No Access",
+  level: "External",
+  description: "Fallback for sessions whose role cannot be resolved",
+  access: Object.fromEntries(Modules.map((m) => [m.key, "none" as AccessLevel])) as Record<ModuleKey, AccessLevel>,
+};
+
+/**
+ * Resolve the current session's role, failing closed.
+ *
+ * The access map comes from the server (profiles.role_id joined to role_access)
+ * and is cached in the session snapshot. It used to come from a localStorage
+ * key the user could edit, so anyone could grant themselves Super Admin by
+ * typing one line into the console.
+ *
+ * This remains a UI-layer convenience: it decides what to render, not what the
+ * database will allow. Row level security is the actual boundary.
+ */
 export function getCurrentRole(): Role {
-  try {
-    const rid = localStorage.getItem(K.roleId);
-    const role = rid ? RolesStore.get(rid) : undefined;
-    return role || (RolesStore.get("role_super_admin") || RolesStore.list()[0]!);
-  } catch {
-    return RolesStore.list()[0]!;
-  }
+  const { access, roleId, roleName } = (() => {
+    const s = getSession();
+    return { access: s.access, roleId: s.profile?.roleId ?? null, roleName: s.roleName };
+  })();
+
+  if (!roleId) return NO_ACCESS_ROLE;
+
+  return {
+    id: roleId,
+    name: roleName ?? roleId,
+    level: "Team",
+    description: "",
+    access: Object.fromEntries(
+      Modules.map((m) => [m.key, access[m.key] ?? ("none" as AccessLevel)]),
+    ) as Record<ModuleKey, AccessLevel>,
+  };
 }
 
-export function setCurrentRole(id: string) {
-  localStorage.setItem(K.roleId, id);
-}
-
-export function canAccess(module: ModuleKey, required: "view" | "edit" | "full"): boolean {
-  const role = getCurrentRole();
-  const lvl = role.access[module] || "none";
-  const order = { none: 0, view: 1, edit: 2, full: 3 } as const;
-  return order[lvl] >= order[required];
+export function canAccess(module: ModuleKey, required: AccessLevel = "view"): boolean {
+  const level = getSession().access[module] ?? "none";
+  return ACCESS_ORDER[level] >= ACCESS_ORDER[required];
 }
