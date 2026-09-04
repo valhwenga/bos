@@ -251,9 +251,8 @@ const BackupManager: React.FC = () => {
                       {backup.metadata?.storesBackedUp?.length || 0} stores
                     </div>
                     <div className="text-xs text-muted-foreground mt-1">
-                      Includes: {backup.invoices?.length || 0} invoices, 
-                      {backup.customers?.length || 0} customers, 
-                      {backup.communication?.messages?.length || 0} messages,
+                      Includes: {backup.invoices?.length || 0} invoices,
+                      {backup.customers?.length || 0} customers,
                       {backup.crm?.deals?.length || 0} deals,
                       {backup.employees?.length || 0} employees
                     </div>

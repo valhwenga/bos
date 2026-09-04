@@ -17,7 +17,6 @@ import { HRMLeaveStore } from "./hrmLeaveStore";
 import { HRMPerformanceStore } from "./hrmPerformanceStore";
 import { HRMStore } from "./hrmStore";
 import { LeaveBalanceStore } from "./leaveBalanceStore";
-import { MessengerStore } from "./messengerStore";
 import { PayrollStore } from "./payrollStore";
 import { RecurringStore } from "./recurringStore";
 import { SalesStore } from "./salesStore";
@@ -167,6 +166,9 @@ export const BackupStore = {
       // Other - skip stores without list method, handled by fullLocalStorage
       emails: [],
       expenses: ExpenseStore.list(),
+      // Conversations and messages are rows in Postgres now, readable only by
+      // the people in the thread. They used to be exported from here, which
+      // meant every thread you had sent to, in a file on your machine.
       messenger: [],
       // Notifications are per-recipient rows in Postgres now. They used to be
       // exported from here — meaning a copy of other people's notifications,

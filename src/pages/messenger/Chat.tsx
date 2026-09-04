@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { MessengerStore, type ChatMessage, type Conversation } from "@/lib/messengerStore";
+import {
+  MessengerStore,
+  conversationsCache,
+  messagesCache,
+  subscribeToMessages,
+  type ChatMessage,
+} from "@/lib/messengerStore";
 import { useAccounts } from "@/lib/useAccounts";
 import { AuthStore } from "@/lib/authStore";
 import { Button } from "@/components/ui/button";
@@ -13,8 +19,6 @@ import { HRMStore } from "@/lib/hrmStore";
 const Chat = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [c, setC] = useState<Conversation | undefined>(undefined);
-  const [msgs, setMsgs] = useState<ChatMessage[]>([]);
   const [text, setText] = useState("");
   useCache(rolesCache);
   const users = useAccounts();
@@ -22,41 +26,65 @@ const Chat = () => {
   const [typingUsers, setTypingUsers] = useState<Record<string, number>>({}); // userId -> last ts
   const [replyToId, setReplyToId] = useState<string | null>(null);
   const [files, setFiles] = useState<File[]>([]);
-  const [attachmentsPreview, setAttachmentsPreview] = useState<{ id: string; name: string; type: string; size: number; dataUrl: string }[]>([]);
 
-  const refresh = useCallback(() => {
+  useCache(conversationsCache);
+  // A cache per conversation, so switching threads subscribes to the new one.
+  // `id` is always present on this route; the fallback keeps the hook order
+  // fixed rather than making the subscription conditional.
+  useCache(useMemo(() => messagesCache(id ?? "none"), [id]));
+
+  const c = id ? MessengerStore.getConversation(id) : undefined;
+  const msgs = id ? MessengerStore.messagesFor(id) : [];
+
+  useEffect(() => {
     if (!id) return;
-    setC(MessengerStore.getConversation(id));
-    setMsgs(MessengerStore.messagesFor(id));
-    MessengerStore.markRead(id, me);
-  }, [id, me]);
-  useEffect(()=>{ refresh(); }, [refresh]);
+    void MessengerStore.markRead(id);
+    // Replies arrive while you are reading. The focus refresh covers a
+    // websocket that has quietly dropped.
+    const unsubscribe = subscribeToMessages(id, () => void MessengerStore.markRead(id));
+    const onFocus = () => void messagesCache(id).refresh();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      unsubscribe();
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [id]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(()=>{ scrollRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs.length]);
 
-  const toDataUrl = (file: File): Promise<{ id: string; name: string; type: string; size: number; dataUrl: string }> => new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve({ id: Math.random().toString(36).slice(2), name: file.name, type: file.type, size: file.size, dataUrl: String(reader.result) });
-    reader.readAsDataURL(file);
-  });
-
-  const onPickFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = Array.from(e.target.files || []);
-    setFiles(prev => [...prev, ...f]);
-    const prevs = await Promise.all(f.map(toDataUrl));
-    setAttachmentsPreview(prev => [...prev, ...prevs]);
+  const onPickFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // The files themselves go to storage on send. They used to be read into
+    // base64 data URLs and carried on the message row, inside the same 5MB
+    // origin quota as the rest of the app.
+    setFiles(prev => [...prev, ...Array.from(e.target.files || [])]);
   };
 
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState("");
+
   const send = async () => {
-    if (!text.trim()) return;
-    const atts = attachmentsPreview.length ? attachmentsPreview : undefined;
-    MessengerStore.sendMessage(c.id, me, text, atts, replyToId || undefined, users.find(u => u.id === me)?.name);
-    setText("");
-    setReplyToId(null);
-    setFiles([]);
-    setAttachmentsPreview([]);
-    refresh();
+    if (!c || (!text.trim() && files.length === 0) || sending) return;
+    setSending(true);
+    setSendError("");
+    try {
+      await MessengerStore.sendMessage(
+        c.id,
+        text,
+        files.length ? files : undefined,
+        replyToId || undefined,
+        users.find(u => u.id === me)?.name,
+      );
+      setText("");
+      setReplyToId(null);
+      setFiles([]);
+    } catch (err: unknown) {
+      // The message did not send. Saying so beats clearing the box and
+      // leaving the person to find out later that nobody replied.
+      setSendError(err instanceof Error ? err.message : "Could not send that message.");
+    } finally {
+      setSending(false);
+    }
   };
 
   const getInitials = (name?: string) => (name || "").split(/\s+/).slice(0,2).map(s=> s[0]).join('').toUpperCase() || "U";
@@ -156,10 +184,10 @@ const Chat = () => {
                     {it.msg!.attachments && it.msg!.attachments.length>0 && (
                       <div className="mt-2 flex flex-wrap gap-2">
                         {it.msg!.attachments.map(a => (
-                          a.type.startsWith('image/') ? (
-                            <a key={a.id} href={a.dataUrl} target="_blank" className="block"><img src={a.dataUrl} className="h-24 w-24 object-cover rounded border" /></a>
+                          a.type.startsWith('image/') && a.url ? (
+                            <a key={a.id} href={a.url} target="_blank" rel="noreferrer" className="block"><img src={a.url} alt={a.name} className="h-24 w-24 object-cover rounded border" /></a>
                           ) : (
-                            <a key={a.id} href={a.dataUrl} target="_blank" className="text-xs underline flex items-center gap-1"><FileIcon className="w-3 h-3" />{a.name}</a>
+                            <a key={a.id} href={a.url} target="_blank" rel="noreferrer" className="text-xs underline flex items-center gap-1"><FileIcon className="w-3 h-3" />{a.name}</a>
                           )
                         ))}
                       </div>
@@ -167,7 +195,7 @@ const Chat = () => {
                     <div className={`flex items-center gap-1 text-[10px] mt-1 ${it.msg!.authorId===me ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>
                       <span>{new Date(it.msg!.ts).toLocaleTimeString()}</span>
                       {it.msg!.authorId===me && (
-                        (c.members.every(uid => (it.msg!.readBy||[]).includes(uid))) ? <CheckCheck className="w-3 h-3" /> : <Check className="w-3 h-3" />
+                        (c.members.every(uid => uid === me || (c.readAt[uid] ?? "") >= it.msg!.ts)) ? <CheckCheck className="w-3 h-3" /> : <Check className="w-3 h-3" />
                       )}
                     </div>
                   </div>
@@ -195,17 +223,19 @@ const Chat = () => {
             <button className="p-1" onClick={()=> setReplyToId(null)} title="Cancel"><X className="w-3 h-3" /></button>
           </div>
         )}
-        {attachmentsPreview.length>0 && (
+        {files.length>0 && (
           <div className="mb-2 flex flex-wrap gap-2">
-            {attachmentsPreview.map(a => (
-              a.type.startsWith('image/') ? (
-                <img key={a.id} src={a.dataUrl} className="h-16 w-16 object-cover rounded border" />
-              ) : (
-                <span key={a.id} className="text-xs inline-flex items-center gap-1 border rounded px-2 py-1"><FileIcon className="w-3 h-3" />{a.name}</span>
-              )
+            {files.map((f, i) => (
+              <span key={`${f.name}-${i}`} className="text-xs inline-flex items-center gap-1 border rounded px-2 py-1">
+                <FileIcon className="w-3 h-3" />{f.name}
+                <button type="button" aria-label={`Remove ${f.name}`} onClick={()=> setFiles(prev => prev.filter((_, j) => j !== i))}>
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
             ))}
           </div>
         )}
+        {sendError && <p className="mb-2 text-sm text-danger">{sendError}</p>}
         <div className="flex items-center gap-2">
           <button className="p-2 rounded hover:bg-secondary text-muted-foreground" title="Emoji"><Smile className="w-5 h-5" /></button>
           <label className="p-2 rounded hover:bg-secondary text-muted-foreground cursor-pointer" title="Attach">
@@ -213,7 +243,7 @@ const Chat = () => {
             <input type="file" multiple className="hidden" onChange={onPickFiles} />
           </label>
           <Input className="flex-1" placeholder="Type a message" value={text} onChange={(e)=> { setText(e.target.value); emitTyping(); }} onKeyDown={async (e)=> { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); await send(); } }} />
-          <Button onClick={send}>Send</Button>
+          <Button onClick={()=> void send()} disabled={sending}>{sending ? "Sending…" : "Send"}</Button>
         </div>
       </div>
     </div>

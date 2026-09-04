@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { MessengerStore, type Conversation } from "@/lib/messengerStore";
+import { useCache } from "@/lib/collectionCache";
+import { MessengerStore, conversationsCache, type Conversation } from "@/lib/messengerStore";
 import { useAccounts, useStaffAccounts } from "@/lib/useAccounts";
 import { AuthStore } from "@/lib/authStore";
 import { PenSquare, Search, UsersRound, MessagesSquare } from "lucide-react";
@@ -13,18 +14,18 @@ import { Input as TextInput } from "@/components/ui/input";
 import { useNavigate } from "react-router-dom";
 
 const Conversations = () => {
-  const [list, setList] = useState<Conversation[]>(MessengerStore.listConversations());
+  // Conversations come from Postgres, so this re-renders when they arrive.
+  useCache(conversationsCache);
+  const list = MessengerStore.listConversations();
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const [isGroup, setIsGroup] = useState(false);
   const [name, setName] = useState("");
   const [members, setMembers] = useState<string[]>([]);
   const [memberQ, setMemberQ] = useState("");
+  const navigate = useNavigate();
   const users = useAccounts();
   const staff = useStaffAccounts();
-
-  const refresh = () => setList(MessengerStore.listConversations());
-  useEffect(()=>{ refresh(); }, []);
 
   const filtered = useMemo(() => list.filter(c => {
     const hay = `${c.name||''} ${c.members.map(id=> users.find(u=>u.id===id)?.name||'').join(' ')}`.toLowerCase();
@@ -32,15 +33,31 @@ const Conversations = () => {
   }), [list, q, users]);
 
   const startNew = (group: boolean) => { setIsGroup(group); setName(""); setMembers([]); setOpen(true); };
-  const save = () => {
-    const me = AuthStore.currentUser()?.id;
-    if (!me) return;
-    const mem = Array.from(new Set([...members, me]));
-    MessengerStore.createConversation(isGroup, mem, isGroup ? name : undefined);
-    setOpen(false); refresh();
+  const [createError, setCreateError] = useState("");
+  const save = async () => {
+    const meId = AuthStore.currentUser()?.id;
+    if (!meId) return;
+    if (members.length === 0) {
+      setCreateError("Pick at least one person to talk to.");
+      return;
+    }
+    setCreateError("");
+    try {
+      // The creator is added by the store; every other membership check asks
+      // whether you are already in the conversation.
+      const created = await MessengerStore.createConversation(
+        isGroup,
+        members,
+        isGroup ? name : undefined,
+      );
+      setOpen(false);
+      setMembers([]);
+      setName("");
+      navigate(`/messenger/${created.id}`);
+    } catch (err: unknown) {
+      setCreateError(err instanceof Error ? err.message : "Could not start that conversation.");
+    }
   };
-
-  const navigate = useNavigate();
 
   const me = AuthStore.currentUser()?.id;
 
@@ -50,11 +67,13 @@ const Conversations = () => {
       : c.members.filter((id) => id !== me).map((id) => users.find((u) => u.id === id)?.name || id).join(", ") || "Direct message";
 
   const previewFor = (c: Conversation) => {
-    const msgs = MessengerStore.messagesFor(c.id);
-    const last = msgs[msgs.length - 1];
+    // From the conversation row. Reading the message cache here showed "No
+    // messages yet" against every thread, because the list screen never loads
+    // the per-conversation caches.
+    const last = c.lastMessage;
     if (!last) return "No messages yet";
     const who = last.authorId === me ? "You" : users.find((u) => u.id === last.authorId)?.name?.split(" ")[0] || "";
-    return `${who ? who + ": " : ""}${last.body || (last.attachments?.length ? "Attachment" : "")}`;
+    return `${who ? who + ": " : ""}${last.body || (last.hasAttachment ? "Attachment" : "")}`;
   };
 
   const whenFor = (c: Conversation) => {
@@ -65,7 +84,7 @@ const Conversations = () => {
       : d.toLocaleDateString();
   };
 
-  const unreadFor = (c: Conversation) => (me ? c.unreadBy?.[me] || 0 : 0);
+  const unreadFor = (c: Conversation) => c.unread;
 
   // Most recently active first — the list was previously in insertion order.
   const ordered = useMemo(
@@ -210,9 +229,10 @@ const Conversations = () => {
               </div>
             </div>
           </div>
+          {createError && <p className="text-sm text-danger">{createError}</p>}
           <DialogFooter>
             <Button variant="secondary" onClick={()=> setOpen(false)}>Cancel</Button>
-            <Button onClick={save} disabled={isGroup ? !name.trim() || members.length===0 : members.length===0}>Create</Button>
+            <Button onClick={()=> void save()} disabled={isGroup ? !name.trim() || members.length===0 : members.length===0}>Create</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
