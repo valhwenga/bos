@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { NotificationsStore, notify } from "@/lib/notificationsStore";
+import { notify } from "@/lib/notificationsStore";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 const Tasks = () => {
@@ -99,9 +99,9 @@ const Tasks = () => {
     setList(CrmTasksStore.list());
     setOpen(false);
     if (!editing) {
-      if (newTask.assigneeId) notify(newTask.assigneeId, 'message', `New CRM Task: ${newTask.title}`, newTask.dueAt ? `Due: ${new Date(newTask.dueAt).toLocaleString()}` : undefined);
+      if (newTask.assigneeId) void notify(newTask.assigneeId, 'message', `New CRM Task: ${newTask.title}`, newTask.dueAt ? `Due: ${new Date(newTask.dueAt).toLocaleString()}` : undefined);
     } else if (newTask.assigneeId && newTask.assigneeId !== prevAssignee) {
-      notify(newTask.assigneeId, 'message', `Task Assigned: ${newTask.title}`, newTask.dueAt ? `Due: ${new Date(newTask.dueAt).toLocaleString()}` : undefined);
+      void notify(newTask.assigneeId, 'message', `Task Assigned: ${newTask.title}`, newTask.dueAt ? `Due: ${new Date(newTask.dueAt).toLocaleString()}` : undefined);
     }
     // reset form
     setTitle(""); setDescription(""); setDueAt(""); setPriority("medium"); setEntityType("lead"); setEntityId(CrmLeadsStore.list()[0]?.id || ""); setAssigneeId(users[0]?.id || "");
@@ -110,7 +110,7 @@ const Tasks = () => {
 
   const toggle = (t: CrmTask) => { void CrmTasksStore.upsert({ ...t, completed: !t.completed }); setList(CrmTasksStore.list()); };
 
-  const remind = (t: CrmTask) => { if (!t.assigneeId) return; notify(t.assigneeId, 'ticket', `Task due: ${t.title}`, `Due: ${t.dueAt ? new Date(t.dueAt).toLocaleString() : 'N/A'}`); };
+  const remind = (t: CrmTask) => { if (!t.assigneeId) return; void notify(t.assigneeId, 'ticket', `Task due: ${t.title}`, `Due: ${t.dueAt ? new Date(t.dueAt).toLocaleString() : 'N/A'}`); };
 
   const priorityTone = (priority: string) =>
     priority === "high" ? "bg-danger-soft text-danger"

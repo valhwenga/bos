@@ -83,32 +83,32 @@ const TicketDetail = () => {
       try {
         // Notify requester and assignee on status updates
         const requester = users.find(u => u.id === next.requester);
-        if (requester) notify(requester.id, "ticket", `Ticket ${next.id} status: ${s.replace(/_/g,' ')}`, next.title, `/support/tickets/${next.id}`);
-        if (next.assigneeId) notify(next.assigneeId, "ticket", `Ticket ${next.id} status: ${s.replace(/_/g,' ')}`, next.title, `/support/tickets/${next.id}`);
+        if (requester) void notify(requester.id, "ticket", `Ticket ${next.id} status: ${s.replace(/_/g,' ')}`, next.title, `/support/tickets/${next.id}`);
+        if (next.assigneeId) void notify(next.assigneeId, "ticket", `Ticket ${next.id} status: ${s.replace(/_/g,' ')}`, next.title, `/support/tickets/${next.id}`);
       } catch { void 0; }
     } else if (action === "comment") {
       toast({ title: "Comment added" });
     } else if (action === "assign") {
       toast({ title: "Assignment updated", description: details });
       try {
-        if (next.assigneeId) notify(next.assigneeId, "ticket", `Assigned: ${next.title}`, `You were assigned to ticket ${next.id}`, `/support/tickets/${next.id}`);
+        if (next.assigneeId) void notify(next.assigneeId, "ticket", `Assigned: ${next.title}`, `You were assigned to ticket ${next.id}`, `/support/tickets/${next.id}`);
       } catch { void 0; }
     } else if (action === "request_closure") {
       toast({ title: "Closure requested" });
       try {
-        if (next.assigneeId) notify(next.assigneeId, "ticket", `Closure requested: ${next.title}`, undefined, `/support/tickets/${next.id}`);
+        if (next.assigneeId) void notify(next.assigneeId, "ticket", `Closure requested: ${next.title}`, undefined, `/support/tickets/${next.id}`);
       } catch { void 0; }
     } else if (action === "approve_closure") {
       toast({ title: "Ticket closed" });
       try {
         const requester = users.find(u => u.id === next.requester);
-        if (requester) notify(requester.id, "ticket", `Ticket closed: ${next.title}`, undefined, `/support/tickets/${next.id}`);
+        if (requester) void notify(requester.id, "ticket", `Ticket closed: ${next.title}`, undefined, `/support/tickets/${next.id}`);
       } catch { void 0; }
     } else if (action === "reject_closure") {
       toast({ title: "Closure rejected", description: details });
       try {
         const requester = users.find(u => u.id === next.requester);
-        if (requester) notify(requester.id, "ticket", `Closure rejected: ${next.title}`, details, `/support/tickets/${next.id}`);
+        if (requester) void notify(requester.id, "ticket", `Closure rejected: ${next.title}`, details, `/support/tickets/${next.id}`);
       } catch { void 0; }
     }
   };

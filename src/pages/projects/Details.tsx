@@ -69,7 +69,7 @@ const Details: React.FC = () => {
     for (const c of checks) {
       const rid = `${project.id}:${c.key}`;
       if (msLeft <= c.threshold && !ProjectStore.reminderAlreadySent(rid)) {
-        notify(project.assignedToUserId, "ticket", `Reminder: ${project.name} due in ${c.label}`, `Due: ${new Date(project.dueAt).toLocaleString()}`, `/projects/${project.id}`);
+        void notify(project.assignedToUserId, "ticket", `Reminder: ${project.name} due in ${c.label}`, `Due: ${new Date(project.dueAt).toLocaleString()}`, `/projects/${project.id}`);
         ProjectStore.markReminderSent(rid);
       }
     }
@@ -137,7 +137,7 @@ const Details: React.FC = () => {
     setProject(next);
     void ProjectStore.upsertProject(next);
     if (project.assignedToUserId) {
-      notify(project.assignedToUserId, "ticket", `Project submitted for approval: ${project.name}`, undefined, `/projects/${project.id}`);
+      void notify(project.assignedToUserId, "ticket", `Project submitted for approval: ${project.name}`, undefined, `/projects/${project.id}`);
     }
   };
 
@@ -155,7 +155,7 @@ const Details: React.FC = () => {
     setProject(next);
     void ProjectStore.upsertProject(next);
     if (project.assignedToUserId) {
-      notify(project.assignedToUserId, "ticket", `Project approved & closed: ${project.name}`, undefined, `/projects/${project.id}`);
+      void notify(project.assignedToUserId, "ticket", `Project approved & closed: ${project.name}`, undefined, `/projects/${project.id}`);
     }
   };
 
@@ -168,7 +168,7 @@ const Details: React.FC = () => {
     setProject(next);
     void ProjectStore.upsertProject(next);
     if (project.assignedToUserId) {
-      notify(project.assignedToUserId, "ticket", `Project completion rejected: ${project.name}`, reason.trim(), `/projects/${project.id}`);
+      void notify(project.assignedToUserId, "ticket", `Project completion rejected: ${project.name}`, reason.trim(), `/projects/${project.id}`);
     }
   };
 

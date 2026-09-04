@@ -42,7 +42,7 @@ export const MessengerStore = {
     try {
       for (const uid of c.members) {
         if (uid === authorId) continue;
-        notify(uid, "message", authorName ? `New message from ${authorName}` : "New message", body.slice(0, 120), `/messenger/${convId}`);
+        void notify(uid, "message", authorName ? `New message from ${authorName}` : "New message", body.slice(0, 120), `/messenger/${convId}`);
       }
     } catch { void 0; }
     return m;

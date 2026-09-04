@@ -66,7 +66,7 @@ export const EmailStore = {
       const toEmails = [...(m.to || []), ...cc].map(a => a.email.toLowerCase());
       for (const u of users) {
         if (u.email && toEmails.includes(u.email.toLowerCase())) {
-          notify(u.id, "email", `New email: ${m.subject}`, undefined, `/email/${id}`);
+          void notify(u.id, "email", `New email: ${m.subject}`, undefined, `/email/${id}`);
         }
       }
     } catch { void 0; }

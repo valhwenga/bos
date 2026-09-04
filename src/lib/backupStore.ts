@@ -18,7 +18,6 @@ import { HRMPerformanceStore } from "./hrmPerformanceStore";
 import { HRMStore } from "./hrmStore";
 import { LeaveBalanceStore } from "./leaveBalanceStore";
 import { MessengerStore } from "./messengerStore";
-import { NotificationsStore } from "./notificationsStore";
 import { PayrollStore } from "./payrollStore";
 import { RecurringStore } from "./recurringStore";
 import { SalesStore } from "./salesStore";
@@ -169,6 +168,9 @@ export const BackupStore = {
       emails: [],
       expenses: ExpenseStore.list(),
       messenger: [],
+      // Notifications are per-recipient rows in Postgres now. They used to be
+      // exported from here — meaning a copy of other people's notifications,
+      // taken from whichever browser had sent them.
       notifications: [],
       recurring: RecurringStore.list(),
       // Roles and their access matrix are rows in Postgres now, covered by

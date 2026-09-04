@@ -18,7 +18,12 @@ import { SidebarNav } from "./SidebarNav";
 import { BrandMark } from "./Sidebar";
 import { UserStore } from "@/lib/userStore";
 import { AuthStore } from "@/lib/authStore";
-import { NotificationsStore, type AppNotification } from "@/lib/notificationsStore";
+import {
+  NotificationsStore,
+  notificationsCache,
+  subscribeToNotifications,
+} from "@/lib/notificationsStore";
+import { useCache } from "@/lib/collectionCache";
 import { getCurrentRole } from "@/lib/accessControl";
 import { cn } from "@/lib/utils";
 
@@ -35,7 +40,8 @@ const timeAgo = (iso: string) => {
 export const Header = () => {
   const navigate = useNavigate();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  // Rows come from Postgres, so this re-renders when they arrive or change.
+  useCache(notificationsCache);
 
   const profile = UserStore.get();
   // The signed-in account is the source of truth for identity; UserStore only
@@ -51,19 +57,22 @@ export const Header = () => {
   );
 
   useEffect(() => {
-    const refresh = () => {
-      if (!account?.id) return setNotifications([]);
-      setNotifications(NotificationsStore.forUser(account.id).slice(0, 8));
-    };
-    refresh();
-    window.addEventListener("app:notify", refresh as EventListener);
-    window.addEventListener("storage", refresh);
+    if (!account?.id) return;
+    // One arrives while you are on another screen. The focus refresh is the
+    // safety net: a websocket that has quietly dropped would otherwise leave
+    // the bell frozen, and not noticing it stopped is the failure mode here.
+    const unsubscribe = subscribeToNotifications();
+    const onFocus = () => void notificationsCache.refresh();
+    window.addEventListener("focus", onFocus);
     return () => {
-      window.removeEventListener("app:notify", refresh as EventListener);
-      window.removeEventListener("storage", refresh);
+      unsubscribe();
+      window.removeEventListener("focus", onFocus);
     };
   }, [account?.id]);
 
+  const notifications = account?.id
+    ? NotificationsStore.forUser(account.id).slice(0, 8)
+    : [];
   const unread = notifications.filter((n) => !n.read).length;
 
   const signOut = async () => {
@@ -133,10 +142,7 @@ export const Header = () => {
                   variant="ghost"
                   size="sm"
                   className="h-7 text-xs"
-                  onClick={() => {
-                    NotificationsStore.markAllRead(account.id);
-                    setNotifications(NotificationsStore.forUser(account.id).slice(0, 8));
-                  }}
+                  onClick={() => void NotificationsStore.markAllRead(account.id)}
                 >
                   Mark all read
                 </Button>
@@ -151,7 +157,7 @@ export const Header = () => {
                     <button
                       type="button"
                       onClick={() => {
-                        NotificationsStore.markRead(n.id);
+                        void NotificationsStore.markRead(n.id);
                         if (n.link) navigate(n.link);
                       }}
                       className={cn(

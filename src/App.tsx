@@ -70,7 +70,7 @@ import CrmReports from "./pages/crm/Reports";
 import CrmCustomerDetail from "./pages/crm/CustomerDetail";
 import { ProjectStore } from "./lib/projectStore";
 import { CrmTasksStore } from "./lib/crmTasksStore";
-import { notify } from "./lib/notificationsStore";
+import { notify, subscribeToNotifications } from "./lib/notificationsStore";
 import { RecurringStore } from "./lib/recurringStore";
 import { AccountingStore } from "./lib/accountingStore";
 import { EmailStore } from "./lib/emailStore";
@@ -250,13 +250,6 @@ const App = () => {
     // Don't request permission automatically - requires user gesture
     // Permission will be requested when user interacts with notification features
 
-    const pushBrowserNotify = (title: string, body: string) => {
-      if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-        try { new Notification(title, { body }); return; } catch { void 0; }
-      }
-      try { alert(`${title}\n\n${body}`); } catch { void 0; }
-    };
-
     const tick = () => {
       const sent = read(KEY, {} as Record<string, { w?: boolean; d?: boolean; h?: boolean }>);
       const now = Date.now();
@@ -294,10 +287,12 @@ const App = () => {
                 link = ev.projectId ? `/projects/${ev.projectId}` : undefined;
               }
 
+              // Only the assignee. This used to also raise a desktop
+              // notification — or a blocking alert() — on whoever happened to
+              // have the app open, for a deadline that was not theirs.
               if (assigneeId) {
-                notify(assigneeId, "ticket", msgTitle, msgBody, link);
+                void notify(assigneeId, "ticket", msgTitle, msgBody, link);
               }
-              pushBrowserNotify(msgTitle, msgBody);
               sent[ev.id] = { ...rec, [tag]: true };
             }
           }
@@ -316,22 +311,28 @@ const App = () => {
     };
   }, []);
 
+  // A desktop notification when one arrives for you.
+  //
+  // This used to listen for a window event that fired in the *sender's* tab,
+  // and guarded it by comparing the recipient against `UserStore.get().id` —
+  // a local profile that defaults to "u_1" and is unrelated to the signed-in
+  // account, so the comparison was meaningless. It also fell back to a
+  // blocking `alert()` when permission had not been granted, which is a modal
+  // dialog raised by somebody else's action.
+  //
+  // The subscription only ever delivers rows addressed to you, so there is
+  // nothing left to filter. No permission, no desktop notification — the bell
+  // in the header is the one that always works.
   useEffect(() => {
-    // Don't request permission automatically - requires user gesture
-    // Permission will be requested when user interacts with notification features
-    const onNotify = (e: Event) => {
-      const n = (e as CustomEvent<unknown>).detail as { title: string; description?: string; userId?: string } | undefined;
-      if (!n) return;
-      try { const cur = UserStore.get(); if (n.userId && cur?.id && n.userId !== cur.id) return; } catch { void 0; }
-      const title = n.title;
-      const body = n.description || "";
-      if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-        try { new Notification(title, { body }); return; } catch { void 0; }
+    const unsubscribe = subscribeToNotifications((n) => {
+      if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+      try {
+        new Notification(n.title, { body: n.description ?? "" });
+      } catch {
+        void 0;
       }
-      try { alert(`${title}${body ? `\n\n${body}` : ""}`); } catch { void 0; }
-    };
-    window.addEventListener("app:notify", onNotify as EventListener);
-    return () => window.removeEventListener("app:notify", onNotify as EventListener);
+    });
+    return unsubscribe;
   }, []);
 
   // CRM Tasks: auto due reminders (1 day / 1 hour before)
@@ -353,7 +354,7 @@ const App = () => {
           if (Math.abs(now - at) <= windowMs) {
             const rec = sent[t.id] || {};
             if (!rec[tag]) {
-              notify(t.assigneeId as string, 'message', `Task due ${label}: ${t.title}`, `Due at ${new Date(due).toLocaleString()}`, '/crm/tasks');
+              void notify(t.assigneeId as string, 'message', `Task due ${label}: ${t.title}`, `Due at ${new Date(due).toLocaleString()}`, '/crm/tasks');
               sent[t.id] = { ...rec, [tag]: true };
             }
           }
