@@ -9,7 +9,7 @@
 
 import { useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Paperclip, Archive, ArchiveRestore, Reply, ShieldAlert } from "lucide-react";
+import { Paperclip, Archive, ArchiveRestore, Reply, ShieldAlert, LifeBuoy } from "lucide-react";
 import { InboxStore, inboxCache, senderCheck } from "@/lib/inboxStore";
 import { useCache } from "@/lib/collectionCache";
 import { Button } from "@/components/ui/button";
@@ -89,12 +89,27 @@ const InboundMessage = () => {
               <><Archive className="mr-2 h-4 w-4" aria-hidden="true" />Archive</>
             )}
           </Button>
-          <Button onClick={reply}>
-            <Reply className="mr-2 h-4 w-4" aria-hidden="true" />
-            Reply
-          </Button>
+          {!m.ticket && (
+            <Button onClick={reply}>
+              <Reply className="mr-2 h-4 w-4" aria-hidden="true" />
+              Reply
+            </Button>
+          )}
         </div>
       </div>
+
+      {m.ticket && (
+        <div className="flex items-center justify-between gap-3 rounded-md border border-info/40 bg-info-soft px-4 py-3 text-sm text-info">
+          <span className="flex items-center gap-2">
+            <LifeBuoy className="h-4 w-4 shrink-0" aria-hidden="true" />
+            This opened ticket {m.ticket.reference}. Answer it there so the reply reaches the customer
+            and the ticket records it.
+          </span>
+          <Button size="sm" variant="outline" onClick={() => navigate(`/support/tickets/${m.ticket!.id}`)}>
+            Open ticket
+          </Button>
+        </div>
+      )}
 
       {check === "failed" && (
         <div className="flex gap-2 rounded-md border border-danger/40 bg-danger-soft px-4 py-3 text-sm text-danger">

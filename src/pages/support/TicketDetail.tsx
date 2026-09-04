@@ -31,12 +31,11 @@ const UNASSIGNED = "__unassigned__";
 
 const TicketDetail = () => {
   // Rows come from Postgres via caches, so this re-renders when they arrive.
-  useCache(ticketsCache);
+  const { rows: ticketRows } = useCache(ticketsCache);
   useCache(sendIdentitiesCache);
   useCache(clientsCache);
   const { id } = useParams();
   const navigate = useNavigate();
-  const [t, setT] = useState<Ticket | undefined>(undefined);
   const [comment, setComment] = useState("");
   // Defaults on for a ticket raised by email, off for one raised internally.
   const [emailReply, setEmailReply] = useState(true);
@@ -49,10 +48,16 @@ const TicketDetail = () => {
   const users = useAccounts();
   const staff = useStaffAccounts();
 
+  // Read from the cache rather than copied into state on mount. Copying showed
+  // "Ticket not found" whenever this page was reached before the tickets had
+  // loaded — arriving from the inbox rather than from the ticket list, say.
+  const t = useMemo(
+    () => (id ? ticketRows.find((row) => row.id === id) : undefined),
+    [ticketRows, id],
+  );
   const refresh = useCallback(() => {
-    setT(id ? SupportStore.get(id) : undefined);
-  }, [id]);
-  useEffect(()=>{ refresh(); }, [refresh]);
+    void ticketsCache.refresh();
+  }, []);
 
   const isManager = useMemo(() => {
     const role = getCurrentRole();

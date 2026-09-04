@@ -9,7 +9,7 @@
 
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ShieldCheck, ShieldAlert, ShieldQuestion, Paperclip, Archive } from "lucide-react";
+import { ShieldCheck, ShieldAlert, ShieldQuestion, Paperclip, Archive, LifeBuoy } from "lucide-react";
 import { InboxStore, inboxCache, senderCheck, subscribeToInbox, type InboundEmail } from "@/lib/inboxStore";
 import { useCache } from "@/lib/collectionCache";
 import { DataTable, type Column } from "@/components/ui/data-table";
@@ -42,6 +42,9 @@ export const SenderBadge = ({ email }: { email: InboundEmail }) => {
 const Inbox = () => {
   const { loading, error } = useCache(inboxCache);
   const [showArchived, setShowArchived] = useState(false);
+  // Empty means every address. Kept as the address itself rather than an index
+  // so it survives the list changing underneath as mail arrives.
+  const [address, setAddress] = useState("");
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -54,10 +57,13 @@ const Inbox = () => {
     };
   }, []);
 
-  const messages = showArchived
-    ? InboxStore.list().filter((m) => m.archived)
-    : InboxStore.active();
-  const suspicious = InboxStore.active().filter((m) => senderCheck(m) === "failed").length;
+  const addresses = InboxStore.addresses();
+  const base = showArchived ? InboxStore.list().filter((m) => m.archived) : InboxStore.active();
+  const messages = address ? base.filter((m) => m.to.includes(address)) : base;
+  const suspicious = messages.filter((m) => senderCheck(m) === "failed").length;
+  // The fetch takes the most recent 500. Saying so beats letting somebody
+  // conclude that older mail was never received.
+  const atLimit = InboxStore.list().length >= 500;
 
   const columns: Column<InboundEmail>[] = [
     {
@@ -81,7 +87,25 @@ const Inbox = () => {
           {m.attachments.length > 0 && (
             <Paperclip className="h-3 w-3 shrink-0 text-muted-foreground" aria-label="Has attachments" />
           )}
+          {m.ticket && (
+            <span
+              className="inline-flex shrink-0 items-center gap-1 rounded-sm bg-info-soft px-1.5 py-0.5 text-xs font-medium text-info"
+              title={`Opened ticket ${m.ticket.reference}`}
+            >
+              <LifeBuoy className="h-3 w-3" aria-hidden="true" />
+              {m.ticket.reference}
+            </span>
+          )}
         </span>
+      ),
+    },
+    {
+      id: "to",
+      header: "To",
+      hideOnMobile: true,
+      sortValue: (m) => m.to.join(", "),
+      cell: (m) => (
+        <span className="truncate text-xs text-muted-foreground">{m.to.join(", ") || "—"}</span>
       ),
     },
     {
@@ -123,6 +147,52 @@ const Inbox = () => {
         </div>
       )}
 
+      {addresses.length > 1 && !showArchived && (
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by address">
+          <button
+            type="button"
+            onClick={() => setAddress("")}
+            aria-pressed={address === ""}
+            className={cn(
+              "rounded-md border px-3 py-1.5 text-sm transition-colors",
+              address === "" ? "border-primary bg-primary-soft text-primary" : "hover:bg-surface-raised",
+            )}
+          >
+            All addresses
+            <span className="ml-1.5 text-xs text-muted-foreground">
+              {addresses.reduce((n, a) => n + a.unread, 0) || ""}
+            </span>
+          </button>
+          {addresses.map((a) => (
+            <button
+              key={a.address}
+              type="button"
+              onClick={() => setAddress(a.address)}
+              aria-pressed={address === a.address}
+              className={cn(
+                "rounded-md border px-3 py-1.5 text-sm transition-colors",
+                address === a.address
+                  ? "border-primary bg-primary-soft text-primary"
+                  : "hover:bg-surface-raised",
+              )}
+            >
+              <span className="font-mono text-xs">{a.address}</span>
+              {a.unread > 0 && (
+                <span className="ml-1.5 rounded-full bg-primary px-1.5 text-xs text-primary-foreground">
+                  {a.unread}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {atLimit && (
+        <p className="text-xs text-muted-foreground">
+          Showing the most recent 500 messages. Older mail is in the database but is not loaded here.
+        </p>
+      )}
+
       <DataTable
         rows={messages}
         columns={columns}
@@ -131,12 +201,20 @@ const Inbox = () => {
         searchAccessor={(m) => `${m.fromAddress} ${m.fromName ?? ""} ${m.subject} ${m.body}`}
         searchPlaceholder="Search by sender, subject or contents…"
         empty={{
-          title: loading ? "Loading…" : showArchived ? "Nothing archived" : "No mail yet",
+          title: loading
+            ? "Loading…"
+            : showArchived
+              ? "Nothing archived"
+              : address
+                ? `Nothing for ${address}`
+                : "No mail yet",
           description: loading
             ? "Reading the mailbox."
             : showArchived
               ? "Messages you archive are kept here."
-              : "Mail sent to the company's addresses appears here once inbound delivery is configured. See DEPLOYMENT.md.",
+              : address
+                ? "Other addresses may still have mail — clear the filter to see everything."
+                : "Mail sent to the company's addresses appears here once inbound delivery is configured. See DEPLOYMENT.md.",
         }}
       />
     </div>
