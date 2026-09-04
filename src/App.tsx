@@ -17,6 +17,7 @@ import ProjectDetails from "./pages/projects/Details";
 import UserRole from "./pages/UserRole";
 import ManageUsers from "./pages/users/ManageUsers";
 import Clients from "./pages/users/Clients";
+import AuditLogs from "./pages/users/AuditLogs";
 import UserProfile from "./pages/users/Profile";
 import HRMEmployees from "./pages/HRMEmployees";
 import HRMDepartments from "./pages/HRMDepartments";
@@ -440,6 +441,7 @@ const App = () => {
             <Route path="users" element={<AccessGuard module="settings"><ManageUsers /></AccessGuard>} />
             <Route path="users/client" element={<AccessGuard module="settings"><Clients /></AccessGuard>} />
             <Route path="users/pending" element={<AccessGuard module="settings"><PendingApprovals /></AccessGuard>} />
+            <Route path="users/audit" element={<AccessGuard module="settings"><AuditLogs /></AccessGuard>} />
             <Route path="products" element={<AccessGuard module="inventory"><Placeholder /></AccessGuard>} />
             <Route path="pos" element={<AccessGuard module="inventory"><Placeholder /></AccessGuard>} />
             <Route path="support" element={<AccessGuard module="support"><SupportDashboard /></AccessGuard>} />

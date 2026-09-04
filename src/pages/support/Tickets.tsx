@@ -67,7 +67,7 @@ const Tickets = () => {
     const due = new Date(now.getTime() + slaHrs*3600000).toISOString();
     const data = { ...form, clientId: myClientId, requester: me.id, createdAt: now.toISOString(), updatedAt: now.toISOString(), dueAt: due };
     void SupportStore.upsert(data);
-    AuditLogStore.append({ id: crypto.randomUUID?.() || String(Date.now()), ts: new Date().toISOString(), actor: "user", entity: "ticket", entityId: data.id, action: "create", details: data.title });
+    void AuditLogStore.append({ entity: "ticket", entityId: data.id, action: "create", details: data.title });
     setOpen(false);
     refresh();
   };

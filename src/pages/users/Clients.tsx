@@ -64,10 +64,10 @@ const Clients = () => {
     const ok = window.confirm("Delete this client? This action cannot be undone.");
     if (!ok) return;
     void ClientsStore.remove(id);
-    AuditLogStore.append({ id: crypto.randomUUID?.() || String(Date.now()), ts: new Date().toISOString(), actor: "admin", entity: "client", entityId: id, action: "delete" });
+    void AuditLogStore.append({ entity: "client", entityId: id, action: "delete" });
     refresh();
   };
-  const save = () => { if (!form.name.trim()) return; const data = { ...form, createdAt: editing ? form.createdAt : new Date().toISOString() }; void ClientsStore.upsert(data); AuditLogStore.append({ id: crypto.randomUUID?.() || String(Date.now()), ts: new Date().toISOString(), actor: "admin", entity: "client", entityId: data.id, action: editing ? "update" : "create" }); setOpen(false); refresh(); };
+  const save = () => { if (!form.name.trim()) return; const data = { ...form, createdAt: editing ? form.createdAt : new Date().toISOString() }; void ClientsStore.upsert(data); void AuditLogStore.append({ entity: "client", entityId: data.id, action: editing ? "update" : "create" }); setOpen(false); refresh(); };
 
   const generateTempPassword = () => {
     const p = Math.random().toString(36).slice(2, 8) + Math.random().toString(36).slice(2, 6);
@@ -91,7 +91,7 @@ const Clients = () => {
         roleId: loginRoleId,
         clientId: loginClient.id,
       });
-      AuditLogStore.append({ id: crypto.randomUUID?.() || String(Date.now()), ts: new Date().toISOString(), actor: "admin", entity: "auth.account", entityId: acc.id, action: "create", details: `clientId=${loginClient.id}` });
+      void AuditLogStore.append({ entity: "auth.account", entityId: acc.id, action: "create", details: `clientId=${loginClient.id}` });
       invalidateAccounts();
       setLoginTempPass(pass);
     } catch (e: unknown) {

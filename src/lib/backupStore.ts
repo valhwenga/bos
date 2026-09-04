@@ -23,8 +23,6 @@ import { PayrollStore } from "./payrollStore";
 import { RecurringStore } from "./recurringStore";
 import { SalesStore } from "./salesStore";
 import { UserStore } from "./userStore";
-import { AuditLogStore } from "./auditLogStore";
-import { AuditStore } from "./auditStore";
 import { AuthStore } from "./authStore";
 import { CreditNotesStore } from "./creditNotesStore";
 
@@ -73,8 +71,6 @@ export type BackupData = {
   recurring: any[];
   roles: any[];
   sales: any[];
-  auditLogs: any[];
-  audits: any[];
   auth: any[];
   // Full localStorage backup (for complete restore)
   fullLocalStorage: Record<string, any>;
@@ -125,7 +121,7 @@ export const BackupStore = {
       'crm', 'emails', 'expenses',
       'messenger', 'notifications', 'recurring',
       'roles', 'sales',
-      'auditLogs', 'audits', 'auth', 'fullLocalStorage'
+      'auth', 'fullLocalStorage'
     ];
 
     const backup: BackupData = {
@@ -179,8 +175,6 @@ export const BackupStore = {
       // the database backup.
       roles: [],
       sales: SalesStore.list(),
-      auditLogs: [],
-      audits: AuditLogStore.list(),
       auth: [],
       // Full localStorage backup for complete restore
       fullLocalStorage

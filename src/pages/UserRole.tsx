@@ -23,6 +23,7 @@ import { RolesStore, rolesCache, Modules, type Role, type AccessLevel, type Role
 import { useAccounts } from "@/lib/useAccounts";
 import { getCurrentRole } from "@/lib/accessControl";
 import { toast } from "@/components/ui/use-toast";
+import { AuditLogStore } from "@/lib/auditLogStore";
 
 const levelOptions: RoleLevel[] = ["Global", "Company", "Department", "Team", "External"];
 
@@ -45,6 +46,14 @@ const blankRole = (): Role => ({
   require2FA: false,
   security: { sessionTimeoutMinutes: 30 },
 });
+
+/** The granted modules, so an audit entry says what the role can now reach. */
+const describeAccess = (role: Role) => {
+  const granted = Modules.filter((m) => role.access[m.key] !== "none").map(
+    (m) => `${m.key}=${role.access[m.key]}`,
+  );
+  return granted.length ? granted.join(" ") : "no access to anything";
+};
 
 const accessTone = (level: AccessLevel) =>
   level === "full"
@@ -109,6 +118,7 @@ const UserRole = () => {
     if (!window.confirm(warning)) return;
     try {
       await RolesStore.remove(r.id);
+      void AuditLogStore.append({ entity: "role", entityId: r.id, action: "delete", details: r.name });
       toast({ title: "Role deleted", description: `${r.name} is gone.` });
     } catch (e: unknown) {
       toast({
@@ -128,6 +138,12 @@ const UserRole = () => {
     setFormError("");
     try {
       await RolesStore.upsert({ ...form, name: form.name.trim() });
+      void AuditLogStore.append({
+        entity: "role",
+        entityId: form.id,
+        action: editing ? "update" : "create",
+        details: editing ? `${form.name.trim()}: ${describeAccess(form)}` : form.name.trim(),
+      });
       setOpen(false);
       toast({
         title: editing ? "Permissions updated" : "Role created",

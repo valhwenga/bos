@@ -38,15 +38,9 @@ function generateTempPassword(): string {
 }
 
 const audit = (entityId: string, action: "create" | "update", details?: string) => {
-  AuditLogStore.append({
-    id: crypto.randomUUID?.() || String(Date.now()),
-    ts: new Date().toISOString(),
-    actor: "admin",
-    entity: "user",
-    entityId,
-    action,
-    details,
-  });
+  // Who and when are stamped by the database from the session; passing them
+  // from here recorded whatever the call site happened to type.
+  void AuditLogStore.append({ entity: "user", entityId, action, details });
 };
 
 const ManageUsers = () => {

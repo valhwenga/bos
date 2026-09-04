@@ -75,7 +75,7 @@ const TicketDetail = () => {
 
   const saveTicket = (next: Ticket, action: string, details?: string) => {
     void SupportStore.upsert({ ...next, updatedAt: new Date().toISOString() });
-    AuditLogStore.append({ id: crypto.randomUUID?.() || String(Date.now()), ts: new Date().toISOString(), actor: "user", entity: "ticket", entityId: next.id, action: "update", details: details || action });
+    void AuditLogStore.append({ entity: "ticket", entityId: next.id, action: "update", details: details || action });
     refresh();
     if (action.startsWith("status:")) {
       const s = action.split(":")[1];
