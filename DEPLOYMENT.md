@@ -226,8 +226,60 @@ duplicates. The local copy is renamed, not deleted.
 
 ### 12. Take a backup and prove you can restore it
 
-Supabase takes daily backups on paid plans. Before trusting it, do one restore
-into a scratch project. A backup you have never restored is a hypothesis.
+A backup you have never restored is a hypothesis.
+
+**Run the drill:**
+
+```
+scripts/restore-drill.sh
+```
+
+It dumps the database, restores it into a scratch database beside the original,
+and compares the two. Nothing is destroyed, so it can be run against a live
+system — which is the only kind of drill anybody actually runs. It checks rows,
+tables, auth users, policies, functions, triggers, enums, buckets and the
+realtime publication, then asks the restored copy a question only a working
+policy answers: can somebody without settings access read the audit log?
+
+Run against this repo's local stack it passes, and the numbers below are what a
+pass looks like.
+
+**Three things the drill established, which are worth knowing before you need
+them:**
+
+1. **Restore the whole database, not just the app schemas.** A dump scoped to
+   `public`, `auth` and `storage` is tidier — 7 errors on restore against about
+   50 — but it silently omits the `supabase_realtime` publication. An app
+   restored that way works in every visible respect *except* that nothing
+   arrives live: notifications, messenger and inbound mail appear only when
+   somebody reloads. If you do use a scoped dump, put it back by hand:
+
+   ```
+   create publication supabase_realtime;
+   alter publication supabase_realtime add table public.notifications;
+   alter publication supabase_realtime add table public.messages;
+   alter publication supabase_realtime add table public.inbound_emails;
+   ```
+
+2. **The errors on a full restore are noise, and you must not let that become a
+   habit of ignoring errors.** They are Supabase's own extensions and managed
+   schemas, which cannot be recreated in a second database — `pg_cron`,
+   `realtime` internals, default privileges. Every object the application owns
+   restored intact, including all 183 row level security policies, which the
+   drill then proves are live rather than merely present.
+
+3. **Files are not in the dump.** `storage.objects` rows restore; the files
+   they point at do not, because they live in object storage. A restored
+   database believes every attachment, employee document, invoice PDF and logo
+   still exists, hands out signed URLs for them, and the downloads fail. Back
+   the buckets up separately and restore them alongside — on hosted Supabase
+   that is a separate backup from the database one.
+
+**This drill is not the same as testing the hosted backups.** It proves a dump
+of this schema restores correctly. Whether Supabase's daily backup of *your*
+project is good is a different question, and answering it means restoring one
+into a scratch project on the provider. Do that too, once, before you rely on
+it.
 
 ### 13. Receiving email (optional)
 
